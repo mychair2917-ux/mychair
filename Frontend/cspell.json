@@ -1,0 +1,54 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "allowCompoundWords": true,
+  "ignorePaths": [
+    "node_modules",
+    "dist",
+    "build",
+    "public",
+    ".git",
+    "coverage",
+    "yarn.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "cspell.json"
+  ],
+  "words": [
+    "chocoui",
+    "classnames",
+    "clsx",
+    "eslint",
+    "formik",
+    "jsx",
+    "prettier",
+    "reactquery",
+    "rehype",
+    "routerdom",
+    "shadcn",
+    "tailwind",
+    "tanstack",
+    "mychair",
+    "tsx",
+    "unocss",
+    "useCallback",
+    "useEffect",
+    "useMemo",
+    "useRef",
+    "useState",
+    "vite",
+    "yup",
+    "zustand",
+    "segmentations",
+    "SPRINKLR",
+    "sprinklr"
+  ],
+  "ignoreWords": ["devDependencies", "prodDependencies"],
+  "ignoreRegExpList": [
+    "/\\b[A-Z]{2,}\\b/", // Ignore all-uppercase words (e.g., API, HTML, CSS)
+    "/`[^`]+`/", // Ignore words inside backticks (Markdown code)
+    "/[a-zA-Z]+[0-9]+/" // Ignore words with numbers (e.g., h1, h2, tailwind classes)
+  ],
+  "dictionaries": ["typescript", "node", "softwareTerms", "html", "css"],
+  "caseSensitive": false
+}

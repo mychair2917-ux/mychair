@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: salon-erp
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: salon-erp-config
+  namespace: salon-erp
+data:
+  MONGODB_URI: "mongodb://mongodb-service:27017"
+  MONGODB_DB_NAME: "salon_erp_prod"
+  REDIS_URI: "redis://redis-service:6379/0"
+  PROJECT_NAME: "Salon ERP SaaS"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: salon-erp-api
+  namespace: salon-erp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: salon-erp-api
+  template:
+    metadata:
+      labels:
+        app: salon-erp-api
+    spec:
+      containers:
+      - name: api
+        image: salon-erp-api:latest
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: salon-erp-config
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: salon-erp-api-service
+  namespace: salon-erp
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+  selector:
+    app: salon-erp-api
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: salon-erp-api-hpa
+  namespace: salon-erp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: salon-erp-api
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: salon-erp-worker
+  namespace: salon-erp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: salon-erp-worker
+  template:
+    metadata:
+      labels:
+        app: salon-erp-worker
+    spec:
+      containers:
+      - name: worker
+        image: salon-erp-api:latest
+        command: ["arq", "app.workers.arq_worker.WorkerSettings"]
+        envFrom:
+        - configMapRef:
+            name: salon-erp-config
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 512Mi

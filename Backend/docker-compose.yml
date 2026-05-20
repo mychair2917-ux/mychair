@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb+srv://pavan747803_db_user:CcCd4ZbrzVKQ6adi@my-chair.m4vrsb1.mongodb.net/?appName=My-Chair
+      - MONGODB_DB_NAME=my-chair
+      - REDIS_URI=redis://redis:6379/0
+      - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
+    depends_on:
+      - mongodb
+      - redis
+    restart: always
+
+  worker:
+    build: .
+    command: arq app.workers.arq_worker.WorkerSettings
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=salon_erp_prod
+      - REDIS_URI=redis://redis:6379/0
+    depends_on:
+      - mongodb
+      - redis
+    restart: always
+
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: always
+
+  redis:
+    image: redis:7.0-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+volumes:
+  mongodb_data:
+  redis_data:

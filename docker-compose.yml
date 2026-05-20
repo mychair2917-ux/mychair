@@ -1,0 +1,82 @@
+services:
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_BASE_URL=/api/v1
+        - VITE_APP_NAME=MyChair Salon ERP
+    container_name: mychair_frontend
+    ports:
+      - "127.0.0.1:8083:80"
+    restart: always
+    depends_on:
+      - api
+    networks:
+      - mychair_network
+
+  api:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: mychair_api
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb+srv://pavan747803_db_user:CcCd4ZbrzVKQ6adi@my-chair.m4vrsb1.mongodb.net/?appName=My-Chair
+      - MONGODB_DB_NAME=my-chair
+      - REDIS_URI=redis://redis:6379/0
+      - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
+    depends_on:
+      - mongodb
+      - redis
+    restart: always
+    networks:
+      - mychair_network
+
+  worker:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: mychair_worker
+    command: arq app.workers.arq_worker.WorkerSettings
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=salon_erp_prod
+      - REDIS_URI=redis://redis:6379/0
+    depends_on:
+      - mongodb
+      - redis
+    restart: always
+    networks:
+      - mychair_network
+
+  mongodb:
+    image: mongo:6.0
+    container_name: mychair_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: always
+    networks:
+      - mychair_network
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: mychair_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+    networks:
+      - mychair_network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  mychair_network:
+    driver: bridge
