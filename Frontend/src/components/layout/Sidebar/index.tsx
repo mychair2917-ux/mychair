@@ -98,7 +98,7 @@ const Sidebar: React.FC = () => {
           <Scissors className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="font-['Outfit'] text-xl font-bold tracking-wide text-white">My Chair</h1>
+          <h1 className="font-['Outfit'] text-xl font-bold tracking-wide text-white">My Chairs</h1>
           <p className="text-[10px] font-medium tracking-widest text-[var(--color-brand-gold-light)] uppercase">
             Salon & Spa
           </p>
