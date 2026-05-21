@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.models.tenant import Tenant
 from app.models.salon import Salon
 from app.models.user import User
+from app.models.employee import Employee
 from app.models.staff import Staff, StaffSchedule
 from app.models.customer import Customer
 from app.models.service import Service
@@ -38,6 +39,7 @@ async def init_db() -> None:
         Tenant,
         Salon,
         User,
+        Employee,
         Staff,
         StaffSchedule,
         Customer,

@@ -28,6 +28,17 @@ export const ROUTE_PATHS = {
   DASHBOARD: 'dashboard',
   PROFILE: 'profile',
   SETTINGS: 'settings',
+
+  // Salon ERP Module routes
+  SALON_MANAGEMENT: 'salon-management',
+  USER_MANAGEMENT: 'user-management',
+  ROLES_PERMISSIONS: 'roles-permissions',
+  SUBSCRIPTION_MANAGEMENT: 'subscription-management',
+  BILLING_FINANCE: 'billing-finance',
+  PRODUCTS_INVENTORY: 'products-inventory',
+  STAFF_MONITORING: 'staff-monitoring',
+  CUSTOMER_ANALYTICS: 'customer-analytics',
+  NOTIFICATIONS_COMMUNICATION: 'notifications-communication',
 };
 
 export const TOAST_TYPES = {

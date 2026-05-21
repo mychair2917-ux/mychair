@@ -12,7 +12,8 @@ class BaseTenantDocument(Document):
     """
     tenant_id: str = Field(default=None, index=True)
     is_deleted: bool = Field(default=False)
-    
+    deleted_at: Optional[datetime] = Field(default=None)
+
     # Audit fields
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)

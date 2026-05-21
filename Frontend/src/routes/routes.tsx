@@ -1,6 +1,6 @@
 import { lazy } from 'react';
 import { RouteObject } from 'react-router';
-import { Calendar, CalendarDays, Users, ShoppingBag, Scissors, PackageOpen, Boxes, LineChart, Megaphone, Wallet, Sparkles, UserPlus } from 'lucide-react';
+import { Store, Users, Shield, CreditCard, Wallet, Boxes, UserCheck, LineChart, Bell } from 'lucide-react';
 
 import App from '../App';
 import { ROLES, ROUTE_PATHS } from '../constants';
@@ -67,18 +67,15 @@ export const routes: RouteObject[] = [
       },
       
       // New Salon ERP Modules (Placeholders)
-      { path: `orgs/:orgId/calendar`, element: getPlaceholder('Calendar', 'Manage your team\'s schedule visually.', Calendar) },
-      { path: `orgs/:orgId/appointments`, element: getPlaceholder('Appointments', 'View and manage upcoming bookings.', CalendarDays) },
-      { path: `orgs/:orgId/walk-ins`, element: getPlaceholder('Walk-ins', 'Quick registration for walk-in clients.', UserPlus) },
-      { path: `orgs/:orgId/billing`, element: getPlaceholder('POS Billing', 'Fast and seamless checkout experience.', ShoppingBag) },
-      { path: `orgs/:orgId/clients`, element: getPlaceholder('Clients Directory', 'Complete client history and notes.', Users) },
-      { path: `orgs/:orgId/staff`, element: getPlaceholder('Staff Management', 'Schedules, performance, and attendance.', Sparkles) },
-      { path: `orgs/:orgId/services`, element: getPlaceholder('Services Menu', 'Configure services, pricing, and duration.', Scissors) },
-      { path: `orgs/:orgId/packages`, element: getPlaceholder('Packages & Memberships', 'Bundle services for better retention.', PackageOpen) },
-      { path: `orgs/:orgId/inventory`, element: getPlaceholder('Inventory & Stock', 'Track products and get low stock alerts.', Boxes) },
-      { path: `orgs/:orgId/reports`, element: getPlaceholder('Reports & Analytics', 'Insights into revenue and growth.', LineChart) },
-      { path: `orgs/:orgId/crm`, element: getPlaceholder('CRM & Marketing', 'Automated reminders and campaigns.', Megaphone) },
-      { path: `orgs/:orgId/payroll`, element: getPlaceholder('Payroll & Incentives', 'Staff commissions and salaries calculation.', Wallet) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.SALON_MANAGEMENT}`, element: getPlaceholder('Salon Management', 'Configure your salon branches, working hours, and general settings.', Store) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.USER_MANAGEMENT}`, element: getPlaceholder('User Management', 'Manage salon staff profiles and customer accounts.', Users) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.ROLES_PERMISSIONS}`, element: getPlaceholder('Role & Permissions', 'Configure system access levels and staff permissions.', Shield) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`, element: getPlaceholder('Subscription Management', 'Manage your SaaS subscription plans and billing details.', CreditCard) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.BILLING_FINANCE}`, element: getPlaceholder('Billing & Finance', 'View invoices, POS transactions, and financial analytics.', Wallet) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.PRODUCTS_INVENTORY}`, element: getPlaceholder('Products & Inventory', 'Track retail products, professional stock, and suppliers.', Boxes) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.STAFF_MONITORING}`, element: getPlaceholder('Staff & HR Monitoring', 'Monitor staff schedules, performance metrics, and shifts.', UserCheck) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`, element: getPlaceholder('Customer Analytics', 'Understand client retention, spending patterns, and behavior.', LineChart) },
+      { path: `orgs/:orgId/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`, element: getPlaceholder('Notifications & Communication', 'Manage SMS campaigns, email alerts, and in-app notifications.', Bell) },
 
       // 404
       {

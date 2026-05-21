@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     
     # Database
-    MONGODB_URI: str = Field(default="mongodb://localhost:27017")
-    MONGODB_DB_NAME: str = Field(default="salon_erp_prod")
+    MONGODB_URI: str = Field(
+     default="mongodb+srv://mychair2917_db_user:d1MdJTJ6Lp7RTCby@mychair.ned5lge.mongodb.net/Mychair?retryWrites=true&w=majority&tls=true"
+    )
+    MONGODB_DB_NAME: str = Field(default="Mychair")
     
     # Redis
     REDIS_URI: str = Field(default="redis://localhost:6379/0")

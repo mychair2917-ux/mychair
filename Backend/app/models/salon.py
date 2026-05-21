@@ -8,20 +8,16 @@ class Salon(BaseTenantDocument):
     Each Salon belongs to a Tenant and can have its own staff, schedules, and inventory.
     """
     name: str = Field(..., max_length=100)
-    phone: Optional[str] = Field(default=None)
+    phone: str = Field(default="")
     email: Optional[str] = Field(default=None)
-    
-    # Address details (embedded as lightweight object)
     address: Dict[str, Any] = Field(default_factory=dict)
-    
-    # Timezone handling - crucial for localized booking
-    timezone: str = Field(default="UTC")  # e.g., 'America/New_York', 'Asia/Kolkata'
-    
+    opening_hours: Dict[str, Any] = Field(default_factory=dict)
+    timezone: str = Field(default="UTC")
     is_active: bool = Field(default=True)
 
     class Settings:
         name = "salons"
         indexes = [
-            "tenant_id",
+            [("tenant_id", 1), ("name", 1)],
             "is_deleted",
         ]

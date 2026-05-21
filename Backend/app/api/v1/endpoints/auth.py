@@ -15,13 +15,14 @@ class BootstrapTenantRequest(BaseModel):
     owner_first_name: str
     owner_last_name: str
     owner_email: EmailStr
+    owner_phone: str
     owner_password: str
 
 @router.post("/bootstrap", response_model=TokenResponse)
 async def bootstrap_tenant(payload: BootstrapTenantRequest) -> dict:
     """
     SaaS Bootstrapping API.
-    Registers a brand new Salon Tenant along with its primary owner profile.
+    Registers a brand new Salon Tenant along with its primary salon_admin user.
     """
     # 1. Check if slug or email exists
     existing_tenant = await Tenant.find_one(Tenant.slug == payload.tenant_slug)
@@ -51,25 +52,30 @@ async def bootstrap_tenant(payload: BootstrapTenantRequest) -> dict:
     hashed_pwd = get_password_hash(payload.owner_password)
     user = User(
         email=payload.owner_email,
+        phone=payload.owner_phone,
         hashed_password=hashed_pwd,
         first_name=payload.owner_first_name,
         last_name=payload.owner_last_name,
-        role="owner",
-        is_active=True
+        role="salon_admin",
+        is_active=True,
     )
     await user.insert()
     
     user_id_str = str(user.id)
     
     # 4. Generate Session tokens
-    access_token = create_access_token(subject=user_id_str, tenant_id=tenant_id_str, role="owner")
-    refresh_token = create_refresh_token(subject=user_id_str, tenant_id=tenant_id_str, role="owner")
+    access_token = create_access_token(
+        subject=user_id_str, tenant_id=tenant_id_str, role="salon_admin"
+    )
+    refresh_token = create_refresh_token(
+        subject=user_id_str, tenant_id=tenant_id_str, role="salon_admin"
+    )
     
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "role": "owner",
-        "tenant_id": tenant_id_str
+        "role": "salon_admin",
+        "tenant_id": tenant_id_str,
     }
 
 

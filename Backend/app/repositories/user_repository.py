@@ -1,0 +1,58 @@
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+from pydantic import EmailStr
+from app.models.user import User
+from app.repositories.base import BaseRepository
+from app.utils.timezone import now_utc
+
+
+class UserRepository(BaseRepository[User]):
+    def __init__(self) -> None:
+        super().__init__(User)
+
+    async def get_by_email(
+        self,
+        email: EmailStr | str,
+        tenant_id: Optional[str] = None,
+    ) -> Optional[User]:
+        query: Dict[str, Any] = {"email": email, "is_deleted": False}
+        if tenant_id:
+            query["tenant_id"] = tenant_id
+        return await User.find_one(query)
+
+    async def get_by_email_global(self, email: EmailStr | str) -> Optional[User]:
+        return await User.find_one({"email": email, "is_deleted": False})
+
+    async def list_by_tenant(self, tenant_id: str) -> List[User]:
+        return await User.find(
+            {"tenant_id": tenant_id, "is_deleted": False}
+        ).to_list()
+
+    async def create_user(self, user: User) -> User:
+        await user.insert()
+        return user
+
+    async def update_fields(
+        self,
+        user_id: str,
+        tenant_id: str,
+        data: Dict[str, Any],
+    ) -> User:
+        user = await self.get(user_id)
+        if user.tenant_id != tenant_id:
+            from app.core.exceptions import TenantAccessDeniedException
+            raise TenantAccessDeniedException()
+        for field, value in data.items():
+            setattr(user, field, value)
+        await user.save()
+        return user
+
+    async def soft_delete_user(self, user_id: str, tenant_id: str) -> User:
+        user = await self.get(user_id)
+        if user.tenant_id != tenant_id:
+            from app.core.exceptions import TenantAccessDeniedException
+            raise TenantAccessDeniedException()
+        user.is_deleted = True
+        user.deleted_at = now_utc()
+        await user.save()
+        return user
