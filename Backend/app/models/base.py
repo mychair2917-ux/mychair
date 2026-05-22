@@ -10,7 +10,7 @@ class BaseTenantDocument(Document):
     Base Document for all multi-tenant and soft-deletable collections in the system.
     Supports auto-auditing, soft-deleting, and automated tenant context tagging.
     """
-    tenant_id: str = Field(default=None, index=True)
+    tenant_id: Optional[str] = Field(default=None, index=True)
     is_deleted: bool = Field(default=False)
     deleted_at: Optional[datetime] = Field(default=None)
 

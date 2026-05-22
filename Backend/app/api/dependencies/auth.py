@@ -1,5 +1,6 @@
 from fastapi import Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from beanie import PydanticObjectId
 from jose import jwt
 from app.core.config import settings
 from app.core.exceptions import AuthException, PermissionDeniedException
@@ -36,12 +37,23 @@ async def get_current_user(claims: dict = Depends(get_current_user_claims)) -> U
     
     if not user_id:
         raise AuthException("Token payload is missing user ID")
-        
+
+    try:
+        obj_id = PydanticObjectId(user_id)
+    except Exception:
+        raise AuthException("Invalid user ID in token")
+
     # Enforce active context just in case dependencies run out of middleware order
     tenant_context.set_tenant_id(tenant_id)
     tenant_context.set_user_id(user_id)
-    
-    user = await User.find_one(User.id == user_id, User.tenant_id == tenant_id, User.is_deleted == False)
+
+    if tenant_id == "system":
+        # Super admin users have tenant_id=None — must not filter by "system"
+        user = await User.find_one({"_id": obj_id, "is_deleted": False})
+    else:
+        user = await User.find_one(
+            {"_id": obj_id, "tenant_id": tenant_id, "is_deleted": False}
+        )
     if not user:
         raise AuthException("User associated with this token does not exist")
         

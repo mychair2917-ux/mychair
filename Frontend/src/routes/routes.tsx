@@ -4,7 +4,7 @@ import { Store, Users, Shield, CreditCard, Wallet, Boxes, UserCheck, LineChart, 
 
 import App from '../App';
 import { ROLES, ROUTE_PATHS } from '../constants';
-import { Login } from '../pages';
+import { Login, Invite, CreatePassword, SalonOwnerLogin, SalonOwnerDashboard } from '../pages';
 import OrgRedirect from './OrgRedirect';
 import RequireAuth from './RequireAuth';
 import RootRedirect from './RootRedirect';
@@ -33,6 +33,28 @@ export const routes: RouteObject[] = [
 
       // Public routes
       { path: ROUTE_PATHS.LOGIN, element: <Login /> },
+      { path: ROUTE_PATHS.CREATE_PASSWORD, element: <CreatePassword /> },
+      { path: ROUTE_PATHS.SALON_OWNER_LOGIN, element: <SalonOwnerLogin /> },
+
+      // Super admin invite (no org scope)
+      {
+        path: ROUTE_PATHS.INVITE,
+        element: (
+          <RequireAuth allowedRoles={[ROLES.SUPER_ADMIN]}>
+            <Invite />
+          </RequireAuth>
+        ),
+      },
+
+      // Salon owner dashboard
+      {
+        path: ROUTE_PATHS.SALON_OWNER_DASHBOARD,
+        element: (
+          <RequireAuth allowedRoles={[ROLES.SALON_OWNER]}>
+            <SalonOwnerDashboard />
+          </RequireAuth>
+        ),
+      },
 
       // Org-based routes
       {

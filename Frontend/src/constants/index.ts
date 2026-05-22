@@ -10,6 +10,7 @@ export const ROLES = {
   ADMIN: 'admin',
   USER: 'standard',
   SUPER_ADMIN: 'super_admin',
+  SALON_OWNER: 'salon_owner',
 } as const;
 
 export const THEME = {
@@ -39,6 +40,12 @@ export const ROUTE_PATHS = {
   STAFF_MONITORING: 'staff-monitoring',
   CUSTOMER_ANALYTICS: 'customer-analytics',
   NOTIFICATIONS_COMMUNICATION: 'notifications-communication',
+
+  // Super admin & salon owner invitation flow
+  INVITE: 'invite',
+  CREATE_PASSWORD: 'create-password',
+  SALON_OWNER_LOGIN: 'salon-owner/login',
+  SALON_OWNER_DASHBOARD: 'salon-owner/dashboard',
 };
 
 export const TOAST_TYPES = {
@@ -54,4 +61,6 @@ export const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'ima
 export const PUBLIC_ROUTES = [
   `/${ROUTE_PATHS.LOGIN}`,
   `/${ROUTE_PATHS.ROOT}`,
+  `/${ROUTE_PATHS.CREATE_PASSWORD}`,
+  `/${ROUTE_PATHS.SALON_OWNER_LOGIN}`,
 ];

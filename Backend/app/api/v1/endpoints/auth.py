@@ -4,10 +4,15 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest
+from app.schemas.invitation import SalonOwnerLoginRequest
+from app.services.salon_owner_auth_service import SalonOwnerAuthService
+from app.utils.api_response import success_response, error_response
 from app.core import tenant_context
 from pydantic import BaseModel, EmailStr
+from app.utils.timezone import now_utc
 
 router = APIRouter()
+salon_owner_auth_service = SalonOwnerAuthService()
 
 class BootstrapTenantRequest(BaseModel):
     tenant_name: str
@@ -82,8 +87,8 @@ async def bootstrap_tenant(payload: BootstrapTenantRequest) -> dict:
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> dict:
     """
-    User Sign-in API.
-    Validates user credentials and issues session-scoped JWT tokens.
+    Super Admin Sign-in API.
+    Validates Super Admin credentials and issues session-scoped JWT tokens.
     """
     user = await User.find_one(User.email == payload.email, User.is_deleted == False)
     if not user:
@@ -92,10 +97,17 @@ async def login(payload: LoginRequest) -> dict:
     if not verify_password(payload.password, user.hashed_password):
         raise AuthException("Invalid email or password")
         
-    if not user.is_active:
-        raise AuthException("User account is suspended")
+    if user.status != "ACTIVE" or not user.is_active:
+        raise AuthException("User account is inactive or suspended")
         
-    tenant_id_str = user.tenant_id
+    if user.role != "super_admin":
+        raise AuthException("Unauthorized role. Only SUPER_ADMIN is allowed.")
+        
+    # Update last_login
+    user.last_login = now_utc()
+    await user.save()
+        
+    tenant_id_str = user.tenant_id if user.tenant_id else "system"
     user_id_str = str(user.id)
     
     access_token = create_access_token(subject=user_id_str, tenant_id=tenant_id_str, role=user.role)
@@ -107,3 +119,15 @@ async def login(payload: LoginRequest) -> dict:
         "role": user.role,
         "tenant_id": tenant_id_str
     }
+
+
+@router.post("/salon-owner/login")
+async def salon_owner_login(payload: SalonOwnerLoginRequest):
+    """Salon owner sign-in after invitation acceptance."""
+    data, error_message = await salon_owner_auth_service.login(
+        email=payload.email,
+        password=payload.password,
+    )
+    if error_message:
+        return error_response(error_message, status_code=401)
+    return success_response("Login successful", data=data)

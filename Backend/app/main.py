@@ -59,8 +59,9 @@ async def salon_erp_exception_handler(request: Request, exc: SalonERPException) 
         status_code=exc.status_code,
         content={
             "success": False,
-            "error": exc.__class__.__name__,
-            "message": exc.detail
+            "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+            "data": None,
+            "errors": None,
         }
     )
 

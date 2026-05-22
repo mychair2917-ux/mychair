@@ -19,6 +19,9 @@ from app.models.subscription import Subscription
 from app.models.notification import Notification
 from app.models.audit import AuditLog
 from app.models.analytics import DailyRevenueStats, StaffPerformanceStats, ServicePopularityStats
+from app.models.owner_salon import OwnerSalon
+from app.models.salon_owner import SalonOwner
+from app.models.invitation_token import InvitationToken
 
 logger = logging.getLogger("db")
 
@@ -28,38 +31,49 @@ async def init_db() -> None:
     all application ODM models inside Beanie with indexes pre-cached.
     """
     logger.info("Initializing MongoDB Async Client...")
-    client = AsyncIOMotorClient(settings.MONGODB_URI)
-    # Monkeypatch client.append_metadata to prevent Beanie's check from calling it
-    # as a database object, since older motor versions fallback to treating it as client["append_metadata"]
-    client.append_metadata = lambda *args, **kwargs: None
-    database = client[settings.MONGODB_DB_NAME]
+    logger.info(f"Loaded Mongo URI: {settings.MONGODB_URI}")
+    try:
+        client = AsyncIOMotorClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
+        # Monkeypatch client.append_metadata to prevent Beanie's check from calling it
+        # as a database object, since older motor versions fallback to treating it as client["append_metadata"]
+        client.append_metadata = lambda *args, **kwargs: None
+        
+        await client.admin.command('ping')
+        logger.info("Database connected successfully")
+
+        database = client[settings.MONGODB_DB_NAME]
     
-    # List of all Beanie document models
-    models = [
-        Tenant,
-        Salon,
-        User,
-        Employee,
-        Staff,
-        StaffSchedule,
-        Customer,
-        Service,
-        Appointment,
-        Invoice,
-        Payment,
-        InventoryItem,
-        InventoryTransaction,
-        Attendance,
-        Subscription,
-        Notification,
-        AuditLog,
-        DailyRevenueStats,
-        StaffPerformanceStats,
-        ServicePopularityStats
-    ]
+        # List of all Beanie document models
+        models = [
+            Tenant,
+            Salon,
+            User,
+            Employee,
+            Staff,
+            StaffSchedule,
+            Customer,
+            Service,
+            Appointment,
+            Invoice,
+            Payment,
+            InventoryItem,
+            InventoryTransaction,
+            Attendance,
+            Subscription,
+            Notification,
+            AuditLog,
+            DailyRevenueStats,
+            StaffPerformanceStats,
+            ServicePopularityStats,
+            OwnerSalon,
+            SalonOwner,
+            InvitationToken,
+        ]
     
-    await init_beanie(
-        database=database,
-        document_models=models
-    )
-    logger.info("MongoDB and Beanie ODM successfully initialized!")
+        await init_beanie(
+            database=database,
+            document_models=models
+        )
+        logger.info("MongoDB and Beanie ODM successfully initialized!")
+    except Exception as e:
+        logger.error(f"Database connection failed: {e}")

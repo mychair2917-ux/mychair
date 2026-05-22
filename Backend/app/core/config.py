@@ -16,13 +16,11 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     
     # Database
-    MONGODB_URI: str = Field(
-     default="mongodb+srv://mychair2917_db_user:d1MdJTJ6Lp7RTCby@mychair.ned5lge.mongodb.net/Mychair?retryWrites=true&w=majority&tls=true"
-    )
+    MONGODB_URI: str = Field(default="mongodb://mongodb:27017")
     MONGODB_DB_NAME: str = Field(default="Mychair")
     
     # Redis
-    REDIS_URI: str = Field(default="redis://localhost:6379/0")
+    REDIS_URI: str = Field(default="redis://redis:6379/0")
     
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
@@ -30,5 +28,15 @@ class Settings(BaseSettings):
     # System Admin Credentials (for bootstrapping)
     SYSTEM_ADMIN_EMAIL: str = "admin@salonerp.com"
     SYSTEM_ADMIN_PASSWORD: str = "Admin@123456"
+
+    # Email (Resend)
+    RESEND_API_KEY: str = Field(default="")
+    FRONTEND_URL: str = Field(default="http://localhost:8082")
+    EMAIL_FROM: str = Field(default="MyChair <onboarding@resend.dev>")
+    # Resend test mode only delivers to this verified inbox (see resend.com/domains for production)
+    RESEND_TEST_EMAIL: str = Field(default="my.chair2917@gmail.com")
+
+    # Invitation
+    INVITATION_TOKEN_EXPIRE_HOURS: int = 72
 
 settings = Settings()

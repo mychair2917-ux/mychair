@@ -4,6 +4,8 @@ import { setupListeners } from '@reduxjs/toolkit/query';
 import apiStateReducer from '../slices/api/apiStatusSlice';
 import { baseApi } from '../slices/api/baseApi';
 import authReducer from '../slices/auth/authSlice';
+import '../slices/invitations/invitationsApi';
+import '../slices/salonOwner/salonOwnerApi';
 
 export const store = configureStore({
   reducer: {

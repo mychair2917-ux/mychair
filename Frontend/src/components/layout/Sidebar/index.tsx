@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LineChart,
   LogOut,
+  MailPlus,
   Scissors,
   Shield,
   Store,
@@ -16,8 +17,9 @@ import {
   Wallet,
 } from 'lucide-react';
 
-import { ROUTE_PATHS } from '../../../constants';
+import { ROLES, ROUTE_PATHS } from '../../../constants';
 import { logout } from '../../../redux/slices/auth/authSlice';
+import { useAppSelector } from '../../../redux/hooks';
 
 interface NavItem {
   name: string;
@@ -30,64 +32,74 @@ const Sidebar: React.FC = () => {
   const { orgId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const user = useAppSelector((state) => state.auth.user);
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
 
   const handleLogout = () => {
     dispatch(logout());
     navigate(`/${ROUTE_PATHS.LOGIN}`);
   };
 
-  const navItems: NavItem[] = [
-    {
-      name: 'Dashboard',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.DASHBOARD}`,
-      icon: LayoutDashboard,
-    },
-    {
-      name: 'Salon Management',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.SALON_MANAGEMENT}`,
-      icon: Store,
-    },
-    {
-      name: 'User Management',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.USER_MANAGEMENT}`,
-      icon: Users,
-    },
-    {
-      name: 'Role & Permissions',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.ROLES_PERMISSIONS}`,
-      icon: Shield,
-    },
-    {
-      name: 'Subscription Management',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`,
-      icon: CreditCard,
-    },
-    {
-      name: 'Billing & Finance',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.BILLING_FINANCE}`,
-      icon: Wallet,
-    },
-    {
-      name: 'Products & Inventory',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.PRODUCTS_INVENTORY}`,
-      icon: Boxes,
-    },
-    {
-      name: 'Staff & HR Monitoring',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.STAFF_MONITORING}`,
-      icon: UserCheck,
-    },
-    {
-      name: 'Customer Analytics',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`,
-      icon: LineChart,
-    },
-    {
-      name: 'Notifications & Communication',
-      path: `/orgs/${orgId}/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`,
-      icon: Bell,
-    },
-  ];
+  const navItems: NavItem[] = isSuperAdmin
+    ? [
+        {
+          name: 'Invite',
+          path: `/${ROUTE_PATHS.INVITE}`,
+          icon: MailPlus,
+        },
+      ]
+    : [
+        {
+          name: 'Dashboard',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.DASHBOARD}`,
+          icon: LayoutDashboard,
+        },
+        {
+          name: 'Salon Management',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.SALON_MANAGEMENT}`,
+          icon: Store,
+        },
+        {
+          name: 'User Management',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.USER_MANAGEMENT}`,
+          icon: Users,
+        },
+        {
+          name: 'Role & Permissions',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.ROLES_PERMISSIONS}`,
+          icon: Shield,
+        },
+        {
+          name: 'Subscription Management',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`,
+          icon: CreditCard,
+        },
+        {
+          name: 'Billing & Finance',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.BILLING_FINANCE}`,
+          icon: Wallet,
+        },
+        {
+          name: 'Products & Inventory',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.PRODUCTS_INVENTORY}`,
+          icon: Boxes,
+        },
+        {
+          name: 'Staff & HR Monitoring',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.STAFF_MONITORING}`,
+          icon: UserCheck,
+        },
+        {
+          name: 'Customer Analytics',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`,
+          icon: LineChart,
+        },
+        {
+          name: 'Notifications & Communication',
+          path: `/orgs/${orgId}/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`,
+          icon: Bell,
+        },
+      ];
 
   return (
     <aside className="z-50 flex h-screen w-72 flex-col bg-[var(--color-sidebar-bg)] text-[var(--color-sidebar-text)] shadow-2xl">

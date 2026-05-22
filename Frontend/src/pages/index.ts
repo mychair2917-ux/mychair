@@ -4,3 +4,7 @@ export { default as Profile } from './Profile';
 export { default as Settings } from './Settings';
 export { default as NotFound } from './NotFound';
 export { default as Placeholder } from './Placeholder';
+export { default as Invite } from './Invite';
+export { default as CreatePassword } from './CreatePassword';
+export { default as SalonOwnerLogin } from './SalonOwnerLogin';
+export { default as SalonOwnerDashboard } from './SalonOwnerDashboard';
