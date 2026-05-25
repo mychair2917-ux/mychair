@@ -1,9 +1,15 @@
 from typing import Optional, Tuple
 
 from app.core.security import verify_password, create_access_token, create_refresh_token
-from app.models.owner_salon import OwnerSalon
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.utils.timezone import now_utc
+
+
+def _full_name_from_user(user: User) -> str:
+    if user.first_name and user.last_name:
+        return f"{user.first_name} {user.last_name}".strip()
+    return (user.first_name or user.last_name or "").strip()
 
 
 class SalonOwnerAuthService:
@@ -30,19 +36,16 @@ class SalonOwnerAuthService:
         await user.save()
 
         user_id = str(user.id)
-        salon_id = user.tenant_id or ""
-
-        salon = await OwnerSalon.get(salon_id) if salon_id else None
-        username = salon.username if salon else ""
+        tenant_id = user.tenant_id or ""
 
         access_token = create_access_token(
             subject=user_id,
-            tenant_id=salon_id,
+            tenant_id=tenant_id,
             role=self.SALON_OWNER_ROLE,
         )
         refresh_token = create_refresh_token(
             subject=user_id,
-            tenant_id=salon_id,
+            tenant_id=tenant_id,
             role=self.SALON_OWNER_ROLE,
         )
 
@@ -50,27 +53,32 @@ class SalonOwnerAuthService:
             "access_token": access_token,
             "refresh_token": refresh_token,
             "role": user.role,
-            "salon_id": salon_id,
+            "salon_id": tenant_id,
             "email": user.email,
-            "username": username,
+            "username": user.username or "",
         }, None
 
     async def get_profile(self, owner_id: str) -> Tuple[Optional[dict], Optional[str]]:
         user = await User.get(owner_id)
-        if not user:
+        if not user or user.role != self.SALON_OWNER_ROLE:
             return None, "Salon owner not found"
 
         if not user.tenant_id:
             return None, "No salon associated with this account"
 
-        salon = await OwnerSalon.get(user.tenant_id)
-        if not salon:
-            return None, "Salon not found"
+        tenant = await Tenant.get(user.tenant_id)
+        slug = tenant.slug if tenant else ""
 
         return {
-            "salon_name": salon.salon_name,
-            "slug": salon.slug,
-            "email": salon.email,
-            "username": salon.username,
-            "address": salon.address,
+            "salon_name": user.salon_name or (tenant.name if tenant else ""),
+            "slug": slug,
+            "email": user.email,
+            "username": user.username or "",
+            "owner_full_name": _full_name_from_user(user),
+            "owner_phone_number": user.phone or "",
+            "salon_phone_number": user.salon_phone_number or "",
+            "salon_type": user.salon_type or "",
+            "branch_name": user.branch_name or "",
+            "subscription_plan": user.subscription_plan or "",
+            "address": user.address or "",
         }, None

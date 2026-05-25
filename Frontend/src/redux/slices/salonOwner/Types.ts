@@ -17,5 +17,11 @@ export interface SalonOwnerProfileData {
   slug: string;
   email: string;
   username: string;
+  owner_full_name?: string;
+  owner_phone_number?: string;
+  salon_phone_number?: string;
+  salon_type?: string;
+  branch_name?: string;
+  subscription_plan?: string;
   address: string;
 }

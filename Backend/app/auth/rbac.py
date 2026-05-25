@@ -10,6 +10,11 @@ def assert_valid_role(role: str) -> None:
 
 def can_create_role(creator_role: str, new_role: str) -> bool:
     """Role hierarchy for user creation."""
+    if new_role == "salon_owner":
+        return creator_role == "super_admin"
+    if creator_role == "salon_owner":
+        return new_role in ("salon_manager", "employee")
+
     assert_valid_role(creator_role)
     assert_valid_role(new_role)
 

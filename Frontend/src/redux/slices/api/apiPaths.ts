@@ -9,9 +9,14 @@ export const API_PATHS = {
     RESET_PASSWORD_LINK: '/auth/forgot-password',
   },
   INVITATIONS: {
-    CREATE: '/invitations',
-    VALIDATE: (token: string) => `/invitations/${token}`,
-    CREATE_PASSWORD: '/invitations/create-password',
+    CREATE: '/invites',
+    LIST: '/invites',
+    FORM_OPTIONS: '/invites/form-options',
+    VALIDATE: (token: string) => `/invites/${token}`,
+    CREATE_PASSWORD: '/invites/create-password',
+    ACCEPT: '/invites/accept',
+    RESEND: '/invites/resend',
+    CANCEL: '/invites/cancel',
   },
   SALON_OWNER: {
     PROFILE: '/salon-owner/profile',

@@ -32,14 +32,11 @@ export interface ToastOptions {
   };
 }
 
-// Extend the Window interface
 declare global {
   interface Window {
-    showToast: (options: ToastOptions) => void;
+    showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void;
   }
 }
-
-export {};
 
 export interface ToastProps {
   id: string;
@@ -48,7 +45,7 @@ export interface ToastProps {
   buttonLabel?: string;
   onButtonClick?: () => void;
   onClose: (id: string) => void;
-  duration?: number; // in ms
+  duration?: number;
   Icon?: React.ComponentType<SvgIconProps>;
   action?: {
     label: string;

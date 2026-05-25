@@ -19,8 +19,8 @@ from app.models.subscription import Subscription
 from app.models.notification import Notification
 from app.models.audit import AuditLog
 from app.models.analytics import DailyRevenueStats, StaffPerformanceStats, ServicePopularityStats
-from app.models.owner_salon import OwnerSalon
 from app.models.invitation_token import InvitationToken
+from app.models.invite import Invite
 
 logger = logging.getLogger("db")
 
@@ -64,8 +64,8 @@ async def init_db() -> None:
             DailyRevenueStats,
             StaffPerformanceStats,
             ServicePopularityStats,
-            OwnerSalon,
             InvitationToken,
+            Invite,
         ]
     
         await init_beanie(

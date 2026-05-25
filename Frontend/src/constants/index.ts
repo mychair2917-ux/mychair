@@ -11,6 +11,9 @@ export const ROLES = {
   USER: 'standard',
   SUPER_ADMIN: 'super_admin',
   SALON_OWNER: 'salon_owner',
+  SALON_ADMIN: 'salon_admin',
+  SALON_MANAGER: 'salon_manager',
+  EMPLOYEE: 'employee',
 } as const;
 
 export const THEME = {
@@ -44,6 +47,8 @@ export const ROUTE_PATHS = {
   // Super Admin routes (no org scope)
   ADMIN_DASHBOARD: 'admin/dashboard',
   ADMIN_INVITE: 'admin/invite',
+  SALON_INVITE: 'salon-owner/invite',
+  ORG_INVITE: 'invite-users',
   ADMIN_SALON_MANAGEMENT: 'admin/salon-management',
   ADMIN_USER_MANAGEMENT: 'admin/user-management',
   ADMIN_ROLES_PERMISSIONS: 'admin/roles-permissions',

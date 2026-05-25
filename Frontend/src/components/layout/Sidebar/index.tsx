@@ -20,6 +20,7 @@ import {
 import { ROLES, ROUTE_PATHS } from '../../../constants';
 import { logout } from '../../../redux/slices/auth/authSlice';
 import { useAppSelector } from '../../../redux/hooks';
+import { canUserInvite } from '../../../utils/invitePermissions';
 
 interface NavItem {
   name: string;
@@ -34,11 +35,19 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const user = useAppSelector((state) => state.auth.user);
   const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
+  const showInvite = canUserInvite(user?.role);
+  const invitePath = isSuperAdmin
+    ? `/${ROUTE_PATHS.ADMIN_INVITE}`
+    : user?.role === ROLES.SALON_OWNER
+      ? `/${ROUTE_PATHS.SALON_INVITE}`
+      : `/orgs/${orgId}/${ROUTE_PATHS.ORG_INVITE}`;
 
   const handleLogout = () => {
     dispatch(logout());
     navigate(`/${ROUTE_PATHS.LOGIN}`);
   };
+
+  const superAdminInvitePath = `/${ROUTE_PATHS.ADMIN_INVITE}`;
 
   const navItems: NavItem[] = isSuperAdmin
     ? [
@@ -47,11 +56,9 @@ const Sidebar: React.FC = () => {
           path: `/${ROUTE_PATHS.ADMIN_DASHBOARD}`,
           icon: LayoutDashboard,
         },
-        {
-          name: 'Invite',
-          path: `/${ROUTE_PATHS.ADMIN_INVITE}`,
-          icon: MailPlus,
-        },
+        ...(showInvite
+          ? [{ name: 'Invite', path: superAdminInvitePath, icon: MailPlus }]
+          : []),
         {
           name: 'Salon Management',
           path: `/${ROUTE_PATHS.ADMIN_SALON_MANAGEMENT}`,
@@ -104,6 +111,9 @@ const Sidebar: React.FC = () => {
           path: `/orgs/${orgId}/${ROUTE_PATHS.DASHBOARD}`,
           icon: LayoutDashboard,
         },
+        ...(showInvite
+          ? [{ name: 'Invite', path: invitePath, icon: MailPlus }]
+          : []),
         {
           name: 'Salon Management',
           path: `/orgs/${orgId}/${ROUTE_PATHS.SALON_MANAGEMENT}`,

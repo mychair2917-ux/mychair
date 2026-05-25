@@ -135,6 +135,72 @@ def _parse_resend_error(response: httpx.Response) -> str:
     return f"Email delivery failed: {message}"
 
 
+async def send_team_invitation_email(
+    to_email: str,
+    invitee_name: str,
+    role_label: str,
+    salon_name: str,
+    invitation_link: str,
+) -> Tuple[bool, Optional[str]]:
+    """Send staff/manager invitation email via Resend API."""
+    if not settings.RESEND_API_KEY:
+        return False, "RESEND_API_KEY is not configured on the server."
+
+    actual_to, redirected = _resolve_recipient(to_email)
+    redirect_banner = ""
+    if redirected:
+        redirect_banner = f"""
+              <div style="margin:0 0 20px;padding:12px 16px;background:#fff8e6;border:1px solid #f0d78c;border-radius:8px;">
+                <p style="margin:0;color:#7a5c00;font-size:13px;line-height:1.5;">
+                  <strong>Test mode:</strong> Delivered to Resend verified inbox.
+                  Intended recipient: <strong>{to_email}</strong>.
+                </p>
+              </div>"""
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f4f5;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;">
+        <tr><td style="padding:40px;">
+          {redirect_banner}
+          <h2 style="margin:0 0 16px;color:#1a1a2e;">You're invited to join {salon_name}</h2>
+          <p style="color:#4a4a5a;">Hi {invitee_name}, you have been invited as <strong>{role_label}</strong> on MyChair.</p>
+          <p style="margin:24px 0;"><a href="{invitation_link}" style="display:inline-block;padding:14px 36px;background:#d4a853;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Accept Invitation</a></p>
+          <p style="color:#8a8a9a;font-size:13px;">This link expires in 72 hours.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    payload = {
+        "from": settings.EMAIL_FROM,
+        "to": [actual_to],
+        "subject": f"MyChair — Invitation to join {salon_name} as {role_label}",
+        "html": html_content,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            if response.status_code in (200, 201):
+                return True, None
+            return False, _parse_resend_error(response)
+    except Exception as exc:
+        logger.error("Failed to send team invitation email: %s", exc)
+        return False, f"Email service unavailable: {exc}"
+
+
 async def send_invitation_email(
     to_email: str,
     salon_name: str,

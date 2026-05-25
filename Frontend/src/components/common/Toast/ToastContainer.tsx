@@ -6,20 +6,6 @@ import { ToastOptions } from './Types';
 
 let toastId = 0;
 
-/** Renders a container component for managing and displaying toast notifications.
-It handles toast creation, display, and removal, and registers a global handler to allow toasts to be triggered from anywhere in the application.
-Parameters:
-@param {None}
-Returns:
-@returns {JSX.Element} - A React component that displays a stack of toast messages.
-Exception Handling:
-None
-Side Effects:
-
-Registers a global toast handler via setToastHandler to enable external toast triggering.
-
-Cleans up the handler on unmount to prevent memory leaks and stale references.
-*/
 export const ToastContainer = () => {
   const [toasts, setToasts] = useState<Array<ToastOptions & { id: string }>>([]);
 
@@ -33,19 +19,23 @@ export const ToastContainer = () => {
   }, []);
 
   useEffect(() => {
-    // Register the toast handler when the component mounts
     setToastHandler(showToast);
-
-    // Important: Return cleanup function to avoid memory leaks and stale handlers
     return () => {
       setToastHandler(null);
     };
   }, [showToast]);
 
   return (
-    <div className="fixed top-5 right-5 z-9999 space-y-3">
+    <div
+      className="pointer-events-none fixed top-4 right-4 left-4 z-[9999] flex flex-col items-end gap-3 sm:top-5 sm:right-5 sm:left-auto"
+      aria-live="polite"
+      aria-relevant="additions"
+      role="status"
+    >
       {toasts.map((toast) => (
-        <Toast key={toast.id} {...toast} onClose={removeToast} />
+        <div key={toast.id} className="pointer-events-auto w-full max-w-sm">
+          <Toast {...toast} onClose={removeToast} />
+        </div>
       ))}
     </div>
   );

@@ -14,7 +14,7 @@ class User(BaseTenantDocument):
     hashed_password: str = Field(...)
     role: str = Field(
         default="employee",
-        description="One of: super_admin, salon_admin, salon_manager, employee",
+        description="One of: super_admin, salon_owner, salon_admin, salon_manager, employee",
     )
     status: str = Field(
         default="ACTIVE",
@@ -29,6 +29,15 @@ class User(BaseTenantDocument):
     # Optional display names (not required for auth)
     first_name: Optional[str] = Field(default=None, max_length=50)
     last_name: Optional[str] = Field(default=None, max_length=50)
+
+    # Salon owner invitation / profile (role=salon_owner)
+    username: Optional[str] = Field(default=None, max_length=100)
+    salon_name: Optional[str] = Field(default=None, max_length=150)
+    salon_phone_number: Optional[str] = Field(default=None, max_length=20)
+    salon_type: Optional[str] = Field(default=None, max_length=50)
+    branch_name: Optional[str] = Field(default=None, max_length=150)
+    subscription_plan: Optional[str] = Field(default=None, max_length=50)
+    address: Optional[str] = Field(default=None, max_length=500)
 
     class Settings:
         name = "users"

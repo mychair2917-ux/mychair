@@ -5,12 +5,12 @@ import { useNavigate } from 'react-router-dom';
 import { Scissors } from 'lucide-react';
 
 import { Button, FormField, Input } from '../../components/common';
-import { toast } from '../../components/common/Toast/toastService';
+import { showToast } from '../../components/common/Toast/toastService';
+import { getApiErrorMessage } from '../../utils/apiErrors';
 import { ROUTE_PATHS } from '../../constants';
 import { setCredentials } from '../../redux/slices/auth/authSlice';
 import { useSalonOwnerLoginMutation } from '../../redux/slices/salonOwner/salonOwnerApi';
 import { SalonOwnerLoginRequest } from '../../redux/slices/salonOwner/Types';
-import { ApiErrorResponse } from '../../redux/slices/api/Types';
 import { SalonOwnerLoginSchema } from '../../validations/InvitationSchema';
 
 const SalonOwnerLogin: React.FC = () => {
@@ -34,14 +34,13 @@ const SalonOwnerLogin: React.FC = () => {
             orgId: salon_id,
           })
         );
-        toast.success(response.message || 'Login successful');
+        showToast('success', response.message || 'Login successful');
         navigate(`/${ROUTE_PATHS.SALON_OWNER_DASHBOARD}`);
       } else {
-        toast.error(response.message || 'Login failed');
+        showToast('error', response.message || 'Login failed');
       }
     } catch (err: unknown) {
-      const apiError = err as { data?: ApiErrorResponse };
-      toast.error(apiError?.data?.message || 'Invalid email or password');
+      showToast('error', getApiErrorMessage(err, 'Invalid email or password'));
     } finally {
       setSubmitting(false);
     }

@@ -1,24 +1,41 @@
 import * as Yup from 'yup';
 
+const PHONE_REGEX = /^\+?[0-9]{7,15}$/;
+
+const optionalPhone = Yup.string()
+  .trim()
+  .test('phone-format', 'Enter a valid phone number (7–15 digits, optional + prefix)', (value) => {
+    if (!value) return true;
+    return PHONE_REGEX.test(value);
+  });
+
 export const InvitationSchema = Yup.object({
   salon_name: Yup.string()
     .trim()
     .min(2, 'Salon name must be at least 2 characters')
     .max(150, 'Salon name must be at most 150 characters')
     .required('Salon name is required'),
-  slug: Yup.string()
+  owner_full_name: Yup.string()
     .trim()
-    .min(2, 'Slug must be at least 2 characters')
-    .max(100, 'Slug must be at most 100 characters')
-    .matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be lowercase letters, numbers, and hyphens only')
-    .required('Slug is required'),
-  email: Yup.string().trim().email('Enter a valid email').required('Email is required'),
-  username: Yup.string()
+    .min(2, 'Owner full name must be at least 2 characters')
+    .max(150, 'Owner full name must be at most 150 characters')
+    .required('Owner full name is required'),
+  email: Yup.string()
     .trim()
-    .min(3, 'Username must be at least 3 characters')
-    .max(100, 'Username must be at most 100 characters')
-    .required('Username is required'),
+    .email('Enter a valid email address')
+    .required('Owner email is required'),
+  owner_phone_number: optionalPhone,
+  salon_phone_number: optionalPhone,
+  salon_type: Yup.string()
+    .trim()
+    .required('Salon type is required')
+    .notOneOf([''], 'Please select a salon type'),
+  branch_name: Yup.string().trim().max(150, 'Branch name must be at most 150 characters'),
   address: Yup.string().trim().max(500, 'Address must be at most 500 characters'),
+  subscription_plan: Yup.string()
+    .trim()
+    .required('Subscription plan is required')
+    .notOneOf([''], 'Please select a subscription plan'),
 });
 
 export const CreatePasswordSchema = Yup.object({

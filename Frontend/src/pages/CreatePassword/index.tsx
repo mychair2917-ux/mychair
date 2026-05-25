@@ -4,7 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Scissors } from 'lucide-react';
 
 import { Button, FormField, Input } from '../../components/common';
-import { toast } from '../../components/common/Toast/toastService';
+import { showToast } from '../../components/common/Toast/toastService';
+import { getApiErrorMessage } from '../../utils/apiErrors';
 import { ROUTE_PATHS } from '../../constants';
 import { useCreatePasswordMutation, useValidateInvitationQuery } from '../../redux/slices/invitations/invitationsApi';
 import { ApiErrorResponse } from '../../redux/slices/api/Types';
@@ -39,14 +40,18 @@ const CreatePassword: React.FC = () => {
       }).unwrap();
 
       if (response.success) {
-        toast.success(response.message || 'Password created successfully');
-        navigate(`/${ROUTE_PATHS.SALON_OWNER_LOGIN}`);
+        showToast('success', response.message || 'Password created successfully');
+        const role = response.data?.role ?? salonInfo?.role;
+        if (role === 'salon_owner') {
+          navigate(`/${ROUTE_PATHS.SALON_OWNER_LOGIN}`);
+        } else {
+          navigate(`/${ROUTE_PATHS.LOGIN}`);
+        }
       } else {
-        toast.error(response.message || 'Failed to create password');
+        showToast('error', response.message || 'Failed to create password');
       }
     } catch (err: unknown) {
-      const apiError = err as { data?: ApiErrorResponse };
-      toast.error(apiError?.data?.message || 'Failed to create password');
+      showToast('error', getApiErrorMessage(err, 'Failed to create password'));
     } finally {
       setSubmitting(false);
     }

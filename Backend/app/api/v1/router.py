@@ -5,7 +5,8 @@ api_router = APIRouter()
 
 # Registering endpoints
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-api_router.include_router(invitations.router, prefix="/invitations", tags=["Invitations"])
+api_router.include_router(invitations.router, prefix="/invites", tags=["Invitations"])
+api_router.include_router(invitations.router, prefix="/invitations", tags=["Invitations (legacy)"])
 api_router.include_router(salon_owner.router, prefix="/salon-owner", tags=["Salon Owner"])
 api_router.include_router(users.router, prefix="/users", tags=["Users & RBAC"])
 api_router.include_router(appointments.router, prefix="/appointments", tags=["Appointments & Calendar"])

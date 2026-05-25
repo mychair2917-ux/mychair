@@ -4,6 +4,7 @@ import { Store, Users, Shield, CreditCard, Wallet, Boxes, UserCheck, LineChart, 
 
 import App from '../App';
 import { ROLES, ROUTE_PATHS } from '../constants';
+import { ROLES_CAN_INVITE } from '../constants/invitation';
 import { Login, Invite, CreatePassword, SalonOwnerLogin, SalonOwnerDashboard } from '../pages';
 import OrgRedirect from './OrgRedirect';
 import RequireAuth from './RequireAuth';
@@ -54,16 +55,23 @@ export const routes: RouteObject[] = [
       {
         path: ROUTE_PATHS.ADMIN_INVITE,
         element: (
-          <RequireAuth allowedRoles={[ROLES.SUPER_ADMIN]}>
+          <RequireAuth allowedRoles={[...ROLES_CAN_INVITE]}>
             <Invite />
           </RequireAuth>
         ),
       },
-      // Keep legacy /invite path for backward compatibility
       {
         path: ROUTE_PATHS.INVITE,
         element: (
-          <RequireAuth allowedRoles={[ROLES.SUPER_ADMIN]}>
+          <RequireAuth allowedRoles={[...ROLES_CAN_INVITE]}>
+            <Invite />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: ROUTE_PATHS.SALON_INVITE,
+        element: (
+          <RequireAuth allowedRoles={[ROLES.SALON_OWNER]}>
             <Invite />
           </RequireAuth>
         ),
@@ -122,6 +130,16 @@ export const routes: RouteObject[] = [
       
       // New Salon ERP Modules (Placeholders)
       { path: `orgs/:orgId/${ROUTE_PATHS.SALON_MANAGEMENT}`, element: getPlaceholder('Salon Management', 'Configure your salon branches, working hours, and general settings.', Store) },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.ORG_INVITE}`,
+        element: (
+          <RequireAuth allowedRoles={[ROLES.SALON_ADMIN, ROLES.SALON_MANAGER]}>
+            <OrgRedirect>
+              <Invite />
+            </OrgRedirect>
+          </RequireAuth>
+        ),
+      },
       { path: `orgs/:orgId/${ROUTE_PATHS.USER_MANAGEMENT}`, element: getPlaceholder('User Management', 'Manage salon staff profiles and customer accounts.', Users) },
       { path: `orgs/:orgId/${ROUTE_PATHS.ROLES_PERMISSIONS}`, element: getPlaceholder('Role & Permissions', 'Configure system access levels and staff permissions.', Shield) },
       { path: `orgs/:orgId/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`, element: getPlaceholder('Subscription Management', 'Manage your SaaS subscription plans and billing details.', CreditCard) },
