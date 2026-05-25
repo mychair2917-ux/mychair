@@ -28,9 +28,10 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
       // Store credentials
       dispatch(
         setCredentials({
-          user: { 
-            email: email, 
+          user: {
+            email,
             role: response.role,
+            username: email.split('@')[0],
           },
           token: response.access_token,
           refreshToken: response.refresh_token,

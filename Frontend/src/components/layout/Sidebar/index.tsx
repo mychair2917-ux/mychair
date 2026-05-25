@@ -43,9 +43,59 @@ const Sidebar: React.FC = () => {
   const navItems: NavItem[] = isSuperAdmin
     ? [
         {
+          name: 'Dashboard',
+          path: `/${ROUTE_PATHS.ADMIN_DASHBOARD}`,
+          icon: LayoutDashboard,
+        },
+        {
           name: 'Invite',
-          path: `/${ROUTE_PATHS.INVITE}`,
+          path: `/${ROUTE_PATHS.ADMIN_INVITE}`,
           icon: MailPlus,
+        },
+        {
+          name: 'Salon Management',
+          path: `/${ROUTE_PATHS.ADMIN_SALON_MANAGEMENT}`,
+          icon: Store,
+        },
+        {
+          name: 'User Management',
+          path: `/${ROUTE_PATHS.ADMIN_USER_MANAGEMENT}`,
+          icon: Users,
+        },
+        {
+          name: 'Role & Permissions',
+          path: `/${ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS}`,
+          icon: Shield,
+        },
+        {
+          name: 'Subscription Management',
+          path: `/${ROUTE_PATHS.ADMIN_SUBSCRIPTION_MANAGEMENT}`,
+          icon: CreditCard,
+        },
+        {
+          name: 'Billing & Finance',
+          path: `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
+          icon: Wallet,
+        },
+        {
+          name: 'Products & Inventory',
+          path: `/${ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY}`,
+          icon: Boxes,
+        },
+        {
+          name: 'Staff & HR Monitoring',
+          path: `/${ROUTE_PATHS.ADMIN_STAFF_MONITORING}`,
+          icon: UserCheck,
+        },
+        {
+          name: 'Customer Analytics',
+          path: `/${ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS}`,
+          icon: LineChart,
+        },
+        {
+          name: 'Notifications & Communication',
+          path: `/${ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION}`,
+          icon: Bell,
         },
       ]
     : [

@@ -17,7 +17,7 @@ const RootRedirect = () => {
   }
 
   if (user?.role === ROLES.SUPER_ADMIN) {
-    return <Navigate to={`/${ROUTE_PATHS.INVITE}`} replace />;
+    return <Navigate to={`/${ROUTE_PATHS.ADMIN_DASHBOARD}`} replace />;
   }
 
   if (orgId) {

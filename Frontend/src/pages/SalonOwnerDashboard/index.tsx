@@ -5,12 +5,15 @@ import { Building2, LogOut, Mail, MapPin, User } from 'lucide-react';
 
 import { Button, Loader } from '../../components/common';
 import { ROUTE_PATHS } from '../../constants';
-import { logout } from '../../redux/slices/auth/authSlice';
+import { getUserDisplayName, logout } from '../../redux/slices/auth/authSlice';
+import { useAppSelector } from '../../redux/hooks';
 import { useGetSalonOwnerProfileQuery } from '../../redux/slices/salonOwner/salonOwnerApi';
 
 const SalonOwnerDashboard: React.FC = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const user = useAppSelector((state) => state.auth.user);
+  const displayName = getUserDisplayName(user);
   const { data, isLoading, isError } = useGetSalonOwnerProfileQuery();
 
   const profile = data?.data;
@@ -52,10 +55,15 @@ const SalonOwnerDashboard: React.FC = () => {
             <h1 className="text-xl font-bold text-gray-900">MyChair</h1>
             <p className="text-sm text-gray-500">Salon Owner Dashboard</p>
           </div>
-          <Button variant="ghost" onClick={handleLogout} className="!text-gray-600">
-            <LogOut className="h-4 w-4" />
-            Logout
-          </Button>
+          <div className="flex items-center gap-4">
+            {displayName && (
+              <span className="text-sm font-semibold text-gray-900">{displayName}</span>
+            )}
+            <Button variant="ghost" onClick={handleLogout} className="!text-gray-600">
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 

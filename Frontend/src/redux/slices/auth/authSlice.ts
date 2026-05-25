@@ -6,6 +6,13 @@ export interface AuthUser {
   username?: string;
 }
 
+export function getUserDisplayName(user: AuthUser | null | undefined): string {
+  if (!user) return '';
+  if (user.username?.trim()) return user.username.trim();
+  if (user.email) return user.email.split('@')[0];
+  return '';
+}
+
 export interface AuthState {
   token: string | null;
   refreshToken: string | null;

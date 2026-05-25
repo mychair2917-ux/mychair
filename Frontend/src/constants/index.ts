@@ -41,6 +41,19 @@ export const ROUTE_PATHS = {
   CUSTOMER_ANALYTICS: 'customer-analytics',
   NOTIFICATIONS_COMMUNICATION: 'notifications-communication',
 
+  // Super Admin routes (no org scope)
+  ADMIN_DASHBOARD: 'admin/dashboard',
+  ADMIN_INVITE: 'admin/invite',
+  ADMIN_SALON_MANAGEMENT: 'admin/salon-management',
+  ADMIN_USER_MANAGEMENT: 'admin/user-management',
+  ADMIN_ROLES_PERMISSIONS: 'admin/roles-permissions',
+  ADMIN_SUBSCRIPTION_MANAGEMENT: 'admin/subscription-management',
+  ADMIN_BILLING_FINANCE: 'admin/billing-finance',
+  ADMIN_PRODUCTS_INVENTORY: 'admin/products-inventory',
+  ADMIN_STAFF_MONITORING: 'admin/staff-monitoring',
+  ADMIN_CUSTOMER_ANALYTICS: 'admin/customer-analytics',
+  ADMIN_NOTIFICATIONS_COMMUNICATION: 'admin/notifications-communication',
+
   // Super admin & salon owner invitation flow
   INVITE: 'invite',
   CREATE_PASSWORD: 'create-password',

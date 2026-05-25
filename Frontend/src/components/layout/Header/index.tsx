@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppSelector } from '../../../redux/hooks';
+import { getUserDisplayName } from '../../../redux/slices/auth/authSlice';
 import { 
   Search, Bell, MapPin, Plus, Clock, Moon, Sun, 
   CreditCard, CalendarPlus, LogOut, ChevronDown 
@@ -7,6 +8,7 @@ import {
 
 const Header: React.FC = () => {
   const user = useAppSelector((state) => state.auth.user);
+  const displayName = getUserDisplayName(user);
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -77,18 +79,15 @@ const Header: React.FC = () => {
 
         {/* Profile */}
         <div className="flex items-center gap-3 pl-4 border-l border-[var(--color-border-soft)] cursor-pointer group">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold text-[var(--color-text-primary)] group-hover:text-[var(--color-brand-gold-dark)] transition-colors">
-              {user?.name || 'Jane Doe'}
+          {displayName && (
+            <p className="text-sm font-semibold text-[var(--color-text-primary)] group-hover:text-[var(--color-brand-gold-dark)] transition-colors hidden sm:block">
+              {displayName}
             </p>
-            <p className="text-xs text-[var(--color-text-secondary)]">
-              {user?.role || 'Salon Manager'}
-            </p>
-          </div>
+          )}
           <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-[var(--color-brand-gold-dark)] to-[var(--color-brand-gold-light)] p-[2px]">
             <div className="h-full w-full rounded-full bg-white flex items-center justify-center border-2 border-white">
               <span className="text-[var(--color-brand-gold-dark)] font-bold text-sm">
-                {(user?.name?.[0] || 'J').toUpperCase()}
+                {(displayName[0] || '?').toUpperCase()}
               </span>
             </div>
           </div>

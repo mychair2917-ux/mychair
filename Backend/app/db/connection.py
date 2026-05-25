@@ -20,7 +20,6 @@ from app.models.notification import Notification
 from app.models.audit import AuditLog
 from app.models.analytics import DailyRevenueStats, StaffPerformanceStats, ServicePopularityStats
 from app.models.owner_salon import OwnerSalon
-from app.models.salon_owner import SalonOwner
 from app.models.invitation_token import InvitationToken
 
 logger = logging.getLogger("db")
@@ -66,7 +65,6 @@ async def init_db() -> None:
             StaffPerformanceStats,
             ServicePopularityStats,
             OwnerSalon,
-            SalonOwner,
             InvitationToken,
         ]
     

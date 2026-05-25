@@ -24,6 +24,12 @@ const getPlaceholder = (title: string, description: string, Icon: React.ElementT
   </RequireAuth>
 );
 
+const getSuperAdminPlaceholder = (title: string, description: string, Icon: React.ElementType) => (
+  <RequireAuth allowedRoles={[ROLES.SUPER_ADMIN]}>
+    <Placeholder title={title} description={description} icon={Icon} />
+  </RequireAuth>
+);
+
 export const routes: RouteObject[] = [
   {
     path: ROUTE_PATHS.ROOT,
@@ -36,7 +42,24 @@ export const routes: RouteObject[] = [
       { path: ROUTE_PATHS.CREATE_PASSWORD, element: <CreatePassword /> },
       { path: ROUTE_PATHS.SALON_OWNER_LOGIN, element: <SalonOwnerLogin /> },
 
-      // Super admin invite (no org scope)
+      // Super Admin routes (no org scope)
+      {
+        path: ROUTE_PATHS.ADMIN_DASHBOARD,
+        element: (
+          <RequireAuth allowedRoles={[ROLES.SUPER_ADMIN]}>
+            <Dashboard />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_INVITE,
+        element: (
+          <RequireAuth allowedRoles={[ROLES.SUPER_ADMIN]}>
+            <Invite />
+          </RequireAuth>
+        ),
+      },
+      // Keep legacy /invite path for backward compatibility
       {
         path: ROUTE_PATHS.INVITE,
         element: (
@@ -45,6 +68,15 @@ export const routes: RouteObject[] = [
           </RequireAuth>
         ),
       },
+      { path: ROUTE_PATHS.ADMIN_SALON_MANAGEMENT, element: getSuperAdminPlaceholder('Salon Management', 'Oversee all salon branches, configurations, and operational settings across the platform.', Store) },
+      { path: ROUTE_PATHS.ADMIN_USER_MANAGEMENT, element: getSuperAdminPlaceholder('User Management', 'Manage all platform users, salon owners, and staff accounts.', Users) },
+      { path: ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS, element: getSuperAdminPlaceholder('Role & Permissions', 'Configure platform-wide access levels, roles, and permission policies.', Shield) },
+      { path: ROUTE_PATHS.ADMIN_SUBSCRIPTION_MANAGEMENT, element: getSuperAdminPlaceholder('Subscription Management', 'Manage SaaS subscription tiers, plan assignments, and renewals.', CreditCard) },
+      { path: ROUTE_PATHS.ADMIN_BILLING_FINANCE, element: getSuperAdminPlaceholder('Billing & Finance', 'View platform-wide invoices, revenue analytics, and financial reports.', Wallet) },
+      { path: ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY, element: getSuperAdminPlaceholder('Products & Inventory', 'Monitor product catalogs, inventory levels, and supplier management.', Boxes) },
+      { path: ROUTE_PATHS.ADMIN_STAFF_MONITORING, element: getSuperAdminPlaceholder('Staff & HR Monitoring', 'Track staff performance, attendance, and HR metrics across all salons.', UserCheck) },
+      { path: ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS, element: getSuperAdminPlaceholder('Customer Analytics', 'Analyze customer retention, spending patterns, and engagement across the platform.', LineChart) },
+      { path: ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION, element: getSuperAdminPlaceholder('Notifications & Communication', 'Manage platform-wide notifications, campaigns, and communication channels.', Bell) },
 
       // Salon owner dashboard
       {

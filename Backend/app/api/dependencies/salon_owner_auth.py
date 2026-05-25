@@ -4,9 +4,11 @@ from jose import jwt
 
 from app.core.config import settings
 from app.core.exceptions import AuthException
-from app.models.salon_owner import SalonOwner
+from app.models.user import User
 
 security_scheme = HTTPBearer(auto_error=False)
+
+SALON_OWNER_ROLE = "salon_owner"
 
 
 async def get_current_salon_owner_claims(
@@ -26,7 +28,7 @@ async def get_current_salon_owner_claims(
     except jwt.JWTError:
         raise AuthException("Could not validate credentials")
 
-    if payload.get("role") != "salon_owner":
+    if payload.get("role") != SALON_OWNER_ROLE:
         raise AuthException("Unauthorized. Salon owner access required.")
 
     return payload
@@ -34,16 +36,19 @@ async def get_current_salon_owner_claims(
 
 async def get_current_salon_owner(
     claims: dict = Depends(get_current_salon_owner_claims),
-) -> SalonOwner:
+) -> User:
     owner_id = claims.get("sub")
     if not owner_id:
         raise AuthException("Token payload is missing owner ID")
 
-    owner = await SalonOwner.get(owner_id)
-    if not owner:
+    user = await User.get(owner_id)
+    if not user or user.is_deleted:
         raise AuthException("Salon owner associated with this token does not exist")
 
-    if not owner.is_active:
+    if user.role != SALON_OWNER_ROLE:
+        raise AuthException("Unauthorized. Salon owner access required.")
+
+    if not user.is_active or user.status != "ACTIVE":
         raise AuthException("Salon owner account is inactive")
 
-    return owner
+    return user

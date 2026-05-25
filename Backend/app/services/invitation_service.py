@@ -6,32 +6,41 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.models.invitation_token import InvitationToken
 from app.models.owner_salon import OwnerSalon
-from app.models.salon_owner import SalonOwner
+from app.models.user import User
 from app.services.email_service import send_invitation_email
-from app.utils.timezone import now_utc
+from app.utils.timezone import now_utc, make_aware
 
 
 class InvitationService:
     """Business logic for salon owner invitation lifecycle."""
 
+    SALON_OWNER_ROLE = "salon_owner"
+
     @staticmethod
     def _generate_token() -> str:
         return secrets.token_urlsafe(48)
 
+    @staticmethod
+    def _pending_invitation_query(email: str) -> dict:
+        return {
+            "email": email,
+            "role": InvitationService.SALON_OWNER_ROLE,
+            "status": "INACTIVE",
+            "is_active": False,
+            "is_deleted": False,
+        }
+
     async def _cleanup_stale_invitation(self, email: str, slug: str) -> None:
         """Remove incomplete invitations so a failed email send can be retried."""
-        owner = await SalonOwner.find_one(
-            SalonOwner.email == email,
-            SalonOwner.invitation_accepted == False,
-        )
+        owner = await User.find_one(self._pending_invitation_query(email))
         if not owner:
             return
 
-        if owner.salon_id:
+        if owner.tenant_id:
             await InvitationToken.find(
                 InvitationToken.owner_id == str(owner.id)
             ).delete()
-            salon = await OwnerSalon.get(owner.salon_id)
+            salon = await OwnerSalon.get(owner.tenant_id)
             if salon and salon.slug == slug:
                 await salon.delete()
 
@@ -48,9 +57,9 @@ class InvitationService:
             errors["email"] = ["Email already exists"]
         if await OwnerSalon.find_one(OwnerSalon.slug == slug):
             errors["slug"] = ["Slug already exists"]
-        if await SalonOwner.find_one(SalonOwner.email == email):
+        if await User.find_one({"email": email, "is_deleted": False}):
             errors["email"] = ["Email already exists"]
-        if await SalonOwner.find_one(SalonOwner.username == username):
+        if await OwnerSalon.find_one(OwnerSalon.username == username):
             errors["username"] = ["Username already exists"]
         return errors if errors else None
 
@@ -88,11 +97,12 @@ class InvitationService:
                 "email": [email_error or "Failed to send invitation email. Please try again."]
             }
 
-        owner = SalonOwner(
+        owner = User(
             email=email,
-            username=username,
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            role=self.SALON_OWNER_ROLE,
             is_active=False,
-            invitation_accepted=False,
+            status="INACTIVE",
         )
         await owner.insert()
         owner_id = str(owner.id)
@@ -108,8 +118,7 @@ class InvitationService:
         await salon.insert()
         salon_id = str(salon.id)
 
-        owner.salon_id = salon_id
-        owner.updated_at = now_utc()
+        owner.tenant_id = salon_id
         await owner.save()
 
         expires_at = now_utc() + timedelta(hours=settings.INVITATION_TOKEN_EXPIRE_HOURS)
@@ -142,14 +151,14 @@ class InvitationService:
         if invitation.is_used:
             return None, "This invitation has already been used"
 
-        if invitation.expires_at < now_utc():
+        if make_aware(invitation.expires_at) < now_utc():
             return None, "Invitation token has expired"
 
         salon = await OwnerSalon.get(invitation.salon_id)
         if not salon:
             return None, "Associated salon not found"
 
-        owner = await SalonOwner.get(invitation.owner_id)
+        owner = await User.get(invitation.owner_id)
         if not owner:
             return None, "Associated owner not found"
 
@@ -177,17 +186,16 @@ class InvitationService:
         if invitation.is_used:
             return None, {"token": ["This invitation has already been used"]}
 
-        if invitation.expires_at < now_utc():
+        if make_aware(invitation.expires_at) < now_utc():
             return None, {"token": ["Invitation token has expired"]}
 
-        owner = await SalonOwner.get(invitation.owner_id)
+        owner = await User.get(invitation.owner_id)
         if not owner:
             return None, {"token": ["Owner account not found"]}
 
-        owner.password_hash = get_password_hash(password)
+        owner.hashed_password = get_password_hash(password)
         owner.is_active = True
-        owner.invitation_accepted = True
-        owner.updated_at = now_utc()
+        owner.status = "ACTIVE"
         await owner.save()
 
         invitation.is_used = True
