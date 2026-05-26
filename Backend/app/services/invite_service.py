@@ -10,7 +10,6 @@ from app.auth.invitation_rbac import (
     ROLES_REQUIRING_SALON_SETUP,
     assert_can_invite_role,
     resolve_tenant_id_for_invite,
-<<<<<<< Updated upstream
     uses_direct_password_provisioning,
 )
 from app.auth.rbac_config import (
@@ -19,15 +18,10 @@ from app.auth.rbac_config import (
     invite_list_roles_visible,
     invite_list_scoped_to_inviter,
     normalize_role,
-=======
-    viewable_invite_roles,
->>>>>>> Stashed changes
 )
 from app.constants.invitation_options import SALON_TYPES, SUBSCRIPTION_PLANS
 from app.core.config import settings
 from app.core.security import get_password_hash
-from beanie.operators import In
-
 from app.models.invite import Invite
 from app.models.invitation_token import InvitationToken
 from app.models.tenant import Tenant
@@ -416,13 +410,10 @@ class InviteService:
         self, actor: User, status: Optional[str] = None
     ) -> List[dict]:
         """
-        List invitations scoped by actor role:
-        - super_admin: all invitations
-        - salon_owner / salon_admin: all invitations for their salon (tenant)
-        - salon_manager: staff invitations for their salon only
-        - others: invitations they sent for roles they may invite
+        List invitations scoped by actor role (see rbac_config.invite_list_*).
+        super_admin: all; others: tenant + inviter scope + visible target roles.
         """
-        role_filter = viewable_invite_roles(actor.role)
+        role_filter = invite_list_roles_visible(actor.role)
         if role_filter is not None and not role_filter:
             return []
 
@@ -432,38 +423,19 @@ class InviteService:
         if role_filter is not None:
             query["role"] = {"$in": list(role_filter)}
 
-<<<<<<< Updated upstream
-        role_filter = invite_list_roles_visible(actor.role)
         normalized = normalize_role(actor.role)
         scope_to_inviter = invite_list_scoped_to_inviter(actor.role)
 
         if normalized == "super_admin":
-            invites = await Invite.find(query).sort(-Invite.created_at).to_list()
+            invites = await Invite.find(query).sort("-created_at").to_list()
         elif actor.tenant_id:
-            conditions: list = [Invite.salon_id == actor.tenant_id]
+            query["salon_id"] = actor.tenant_id
             if scope_to_inviter:
-                conditions.append(Invite.invited_by == str(actor.id))
-            if query.get("status"):
-                conditions.append(Invite.status == query["status"])
-            if role_filter is not None:
-                conditions.append(In(Invite.role, list(role_filter)))
-            invites = await Invite.find(*conditions).sort(-Invite.created_at).to_list()
-        else:
-            conditions = [Invite.invited_by == str(actor.id)]
-            if query.get("status"):
-                conditions.append(Invite.status == query["status"])
-            if role_filter is not None:
-                conditions.append(In(Invite.role, list(role_filter)))
-            invites = await Invite.find(*conditions).sort(-Invite.created_at).to_list()
-=======
-        if actor.role != "super_admin":
-            if actor.tenant_id:
-                query["salon_id"] = actor.tenant_id
-            else:
                 query["invited_by"] = str(actor.id)
-
-        invites = await Invite.find(query).sort(-Invite.created_at).to_list()
->>>>>>> Stashed changes
+            invites = await Invite.find(query).sort("-created_at").to_list()
+        else:
+            query["invited_by"] = str(actor.id)
+            invites = await Invite.find(query).sort("-created_at").to_list()
 
         return [await self._serialize_invite(inv) for inv in invites]
 

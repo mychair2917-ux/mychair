@@ -1,34 +1,31 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.auth.invitation_rbac import (
-    ROLE_EMPLOYEE,
-    ROLE_SALON_MANAGER,
-    ROLE_SALON_OWNER,
-    viewable_invite_roles,
-)
+from app.auth.rbac_config import ROLE_EMPLOYEE, ROLE_SALON_MANAGER, invite_list_roles_visible
 from app.services.invite_service import InviteService
 from tests.conftest import make_user
 
 
-class TestViewableInviteRoles:
+class TestInviteListRolesVisible:
     def test_super_admin_sees_all_roles(self):
-        assert viewable_invite_roles("super_admin") is None
+        assert invite_list_roles_visible("super_admin") is None
 
-    def test_salon_owner_sees_all_roles_in_salon(self):
-        assert viewable_invite_roles(ROLE_SALON_OWNER) is None
+    def test_salon_owner_sees_manager_and_staff(self):
+        assert invite_list_roles_visible("salon_owner") == frozenset(
+            {ROLE_SALON_MANAGER, ROLE_EMPLOYEE}
+        )
 
     def test_manager_sees_staff_only(self):
-        assert viewable_invite_roles(ROLE_SALON_MANAGER) == frozenset({ROLE_EMPLOYEE})
+        assert invite_list_roles_visible(ROLE_SALON_MANAGER) == frozenset({ROLE_EMPLOYEE})
 
     def test_employee_sees_none(self):
-        assert viewable_invite_roles(ROLE_EMPLOYEE) == frozenset()
+        assert invite_list_roles_visible("employee") == frozenset()
 
 
 @pytest.mark.asyncio
 class TestListInvitesScope:
-    async def test_manager_scoped_to_tenant_and_staff(self):
-        actor = make_user(ROLE_SALON_MANAGER, tenant_id="tenant-abc")
+    async def test_manager_scoped_to_tenant_inviter_and_staff(self):
+        actor = make_user(ROLE_SALON_MANAGER, tenant_id="tenant-abc", user_id="mgr-1")
         service = InviteService()
 
         mock_find = MagicMock()
@@ -41,11 +38,12 @@ class TestListInvitesScope:
             {
                 "role": {"$in": [ROLE_EMPLOYEE]},
                 "salon_id": "tenant-abc",
+                "invited_by": "mgr-1",
             }
         )
 
     async def test_employee_gets_empty_list(self):
-        actor = make_user(ROLE_EMPLOYEE)
+        actor = make_user("employee")
         service = InviteService()
         result = await service.list_invites(actor)
         assert result == []

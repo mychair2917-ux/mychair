@@ -51,29 +51,16 @@ def assert_can_invite_role(actor_role: str, target_role: str) -> None:
         )
 
 
-<<<<<<< Updated upstream
 def uses_direct_password_provisioning(actor_role: str, target_role: str) -> bool:
     """
     Salon owner/admin/manager set password when inviting manager or staff.
     No invitation email — account is active immediately.
-  """
+    """
     if target_role not in ROLES_DIRECT_PASSWORD_SETUP:
         return False
     if actor_role == "super_admin":
         return False
     return actor_role in TENANT_INVITER_ROLES
-=======
-def viewable_invite_roles(actor_role: str) -> Optional[FrozenSet[str]]:
-    """
-    Roles visible in invitation list for this actor (within tenant scope).
-    None = all invitation roles in scope; empty set = none.
-    """
-    if actor_role == "super_admin":
-        return None
-    if actor_role in (ROLE_SALON_OWNER, ROLE_SALON_ADMIN):
-        return None
-    return INVITABLE_ROLES.get(actor_role, frozenset())
->>>>>>> Stashed changes
 
 
 def resolve_tenant_id_for_invite(
