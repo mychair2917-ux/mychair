@@ -4,7 +4,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 
 from app.api.dependencies.auth import get_current_user, get_current_user_claims
-from app.auth.invitation_rbac import SALON_OWNER_ROLE, assert_can_invite
+from app.auth.invitation_rbac import ROLE_SALON_OWNER, assert_can_invite
 from app.core.config import settings
 from app.core.exceptions import AuthException
 from app.models.user import User
@@ -35,7 +35,7 @@ async def _user_from_claims(claims: dict) -> User:
 
     if not user:
         raise AuthException("User associated with this token does not exist")
-    if not user.is_active and user.role != SALON_OWNER_ROLE:
+    if not user.is_active and user.role != ROLE_SALON_OWNER:
         raise AuthException("User account is inactive or suspended")
     return user
 
@@ -45,7 +45,7 @@ async def get_invite_actor(
 ) -> InviteActor:
     """JWT user with permission to send invitations."""
     user = await _user_from_claims(claims)
-    if user.role == SALON_OWNER_ROLE:
+    if user.role == ROLE_SALON_OWNER:
         if user.status != "ACTIVE" or not user.is_active:
             raise AuthException("Salon owner account is inactive")
     assert_can_invite(user.role)

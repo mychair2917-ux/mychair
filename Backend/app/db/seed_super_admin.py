@@ -13,8 +13,8 @@ async def seed():
     # Initialize the database connection
     await init_db()
     
-    email = "mychair2918@gmail.com"
-    password = "Tudip@123"
+    email = os.environ.get("SEED_SUPER_ADMIN_EMAIL", "mychar2917@gmail.com")
+    password = os.environ.get("SEED_SUPER_ADMIN_PASSWORD", "Tudip@123")
     
     # Check if Super Admin already exists
     existing_admin = await User.find_one(User.email == email)
