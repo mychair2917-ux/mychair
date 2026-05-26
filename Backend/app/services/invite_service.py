@@ -10,6 +10,7 @@ from app.auth.invitation_rbac import (
     ROLES_REQUIRING_SALON_SETUP,
     assert_can_invite_role,
     resolve_tenant_id_for_invite,
+<<<<<<< Updated upstream
     uses_direct_password_provisioning,
 )
 from app.auth.rbac_config import (
@@ -18,6 +19,9 @@ from app.auth.rbac_config import (
     invite_list_roles_visible,
     invite_list_scoped_to_inviter,
     normalize_role,
+=======
+    viewable_invite_roles,
+>>>>>>> Stashed changes
 )
 from app.constants.invitation_options import SALON_TYPES, SUBSCRIPTION_PLANS
 from app.core.config import settings
@@ -411,10 +415,24 @@ class InviteService:
     async def list_invites(
         self, actor: User, status: Optional[str] = None
     ) -> List[dict]:
+        """
+        List invitations scoped by actor role:
+        - super_admin: all invitations
+        - salon_owner / salon_admin: all invitations for their salon (tenant)
+        - salon_manager: staff invitations for their salon only
+        - others: invitations they sent for roles they may invite
+        """
+        role_filter = viewable_invite_roles(actor.role)
+        if role_filter is not None and not role_filter:
+            return []
+
         query: Dict[str, Any] = {}
         if status:
             query["status"] = status.strip().lower()
+        if role_filter is not None:
+            query["role"] = {"$in": list(role_filter)}
 
+<<<<<<< Updated upstream
         role_filter = invite_list_roles_visible(actor.role)
         normalized = normalize_role(actor.role)
         scope_to_inviter = invite_list_scoped_to_inviter(actor.role)
@@ -437,6 +455,15 @@ class InviteService:
             if role_filter is not None:
                 conditions.append(In(Invite.role, list(role_filter)))
             invites = await Invite.find(*conditions).sort(-Invite.created_at).to_list()
+=======
+        if actor.role != "super_admin":
+            if actor.tenant_id:
+                query["salon_id"] = actor.tenant_id
+            else:
+                query["invited_by"] = str(actor.id)
+
+        invites = await Invite.find(query).sort(-Invite.created_at).to_list()
+>>>>>>> Stashed changes
 
         return [await self._serialize_invite(inv) for inv in invites]
 

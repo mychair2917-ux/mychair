@@ -33,9 +33,17 @@ async def get_invitation_form_options(actor: User = Depends(get_invite_actor)):
 
 @router.get("")
 async def list_invites(
-    status: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(
+        default=None,
+        description="Filter by status: pending, accepted, expired, cancelled",
+    ),
     actor: User = Depends(get_invite_actor),
 ):
+    """
+    List invitations visible to the current user.
+    super_admin sees all; salon owner/admin sees their salon;
+    manager sees staff invites for their salon.
+    """
     data = await invite_service.list_invites(actor, status=status)
     return success_response("Invitations retrieved successfully", data=data)
 
