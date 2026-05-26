@@ -35,6 +35,8 @@ export const ROUTE_PATHS = {
 
   // Salon ERP Module routes
   SALON_MANAGEMENT: 'salon-management',
+  SALON_EMPLOYEES: 'salon-management/employees',
+  SALON_SERVICES: 'salon-management/services',
   USER_MANAGEMENT: 'user-management',
   ROLES_PERMISSIONS: 'roles-permissions',
   SUBSCRIPTION_MANAGEMENT: 'subscription-management',
@@ -50,6 +52,8 @@ export const ROUTE_PATHS = {
   SALON_INVITE: 'salon-owner/invite',
   ORG_INVITE: 'invite-users',
   ADMIN_SALON_MANAGEMENT: 'admin/salon-management',
+  ADMIN_SALON_EMPLOYEES: 'admin/salon-management/employees',
+  ADMIN_SALON_SERVICES: 'admin/salon-management/services',
   ADMIN_USER_MANAGEMENT: 'admin/user-management',
   ADMIN_ROLES_PERMISSIONS: 'admin/roles-permissions',
   ADMIN_SUBSCRIPTION_MANAGEMENT: 'admin/subscription-management',

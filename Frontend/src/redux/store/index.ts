@@ -6,6 +6,7 @@ import { baseApi } from '../slices/api/baseApi';
 import authReducer from '../slices/auth/authSlice';
 import '../slices/invitations/invitationsApi';
 import '../slices/salonOwner/salonOwnerApi';
+import '../slices/employees/employeesApi';
 
 export const store = configureStore({
   reducer: {

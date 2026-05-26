@@ -20,6 +20,8 @@ export const MODULES = {
   DASHBOARD: 'dashboard',
   INVITE: 'invite',
   SALON_MANAGEMENT: 'salon_management',
+  EMPLOYEES: 'employees',
+  SERVICES: 'services',
   USER_MANAGEMENT: 'user_management',
   ROLES_PERMISSIONS: 'roles_permissions',
   SUBSCRIPTION_MANAGEMENT: 'subscription_management',
@@ -45,15 +47,24 @@ const ROLE_ALIASES: Record<string, string> = {
 const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
   [ROLES.SUPER_ADMIN]: ALL_MODULES,
   [ROLES.SALON_OWNER]: ALL_MODULES.filter((m) => m !== MODULES.SUBSCRIPTION_MANAGEMENT),
-  [ROLES.SALON_ADMIN]: ALL_MODULES.filter((m) => m !== MODULES.SUBSCRIPTION_MANAGEMENT),
+  [ROLES.SALON_ADMIN]: ALL_MODULES.filter(
+    (m) => m !== MODULES.SUBSCRIPTION_MANAGEMENT && m !== MODULES.EMPLOYEES
+  ),
   [ROLES.SALON_MANAGER]: [
     MODULES.DASHBOARD,
     MODULES.INVITE,
     MODULES.SALON_MANAGEMENT,
+    MODULES.SERVICES,
     MODULES.PRODUCTS_INVENTORY,
     MODULES.NOTIFICATIONS_COMMUNICATION,
   ],
-  [ROLES.EMPLOYEE]: [MODULES.DASHBOARD, MODULES.PROFILE, MODULES.SETTINGS],
+  [ROLES.EMPLOYEE]: [
+    MODULES.DASHBOARD,
+    MODULES.SALON_MANAGEMENT,
+    MODULES.SERVICES,
+    MODULES.PROFILE,
+    MODULES.SETTINGS,
+  ],
 };
 
 export function normalizeRole(role: string | undefined): string | undefined {
@@ -100,16 +111,54 @@ export function isEmployeeDashboard(role: string | undefined): boolean {
   return normalizeRole(role) === ROLES.EMPLOYEE;
 }
 
-export interface SidebarNavItem {
+export interface SidebarNavChild {
   name: string;
   module: ModuleKey;
   path: string;
+}
+
+export interface SidebarNavItem {
+  name: string;
+  module: ModuleKey;
+  path?: string;
   icon: ElementType;
   badge?: string;
+  children?: SidebarNavChild[];
 }
 
 function orgPath(orgId: string, segment: string): string {
   return `/orgs/${orgId}/${segment}`;
+}
+
+function salonManagementChildren(
+  role: string | undefined,
+  employeesPath: string,
+  servicesPath: string
+): SidebarNavChild[] {
+  const children: SidebarNavChild[] = [];
+  if (canAccessModule(role, MODULES.EMPLOYEES)) {
+    children.push({ name: 'Employees', module: MODULES.EMPLOYEES, path: employeesPath });
+  }
+  if (canAccessModule(role, MODULES.SERVICES)) {
+    children.push({ name: 'Services', module: MODULES.SERVICES, path: servicesPath });
+  }
+  return children;
+}
+
+export function isPlatformTenantId(tenantId: string | null | undefined): boolean {
+  return !tenantId || tenantId === 'system';
+}
+
+export function resolveEmployeeListTenantId(
+  role: string | undefined,
+  routeOrgId: string | undefined,
+  storedOrgId: string | null | undefined
+): string | undefined {
+  const candidate = routeOrgId ?? storedOrgId ?? undefined;
+  if (isPlatformTenantId(candidate)) {
+    return isSuperAdmin(role) ? undefined : candidate;
+  }
+  return candidate;
 }
 
 /** Build sidebar navigation for the current user context. */
@@ -137,8 +186,12 @@ export function getSidebarNavItems(
         {
           name: 'Salon Management',
           module: MODULES.SALON_MANAGEMENT,
-          path: `/${ROUTE_PATHS.ADMIN_SALON_MANAGEMENT}`,
           icon: Store,
+          children: salonManagementChildren(
+            role,
+            `/${ROUTE_PATHS.ADMIN_SALON_EMPLOYEES}`,
+            `/${ROUTE_PATHS.ADMIN_SALON_SERVICES}`
+          ),
         },
         {
           name: 'User Management',
@@ -209,8 +262,12 @@ export function getSidebarNavItems(
           {
             name: 'Salon Management',
             module: MODULES.SALON_MANAGEMENT,
-            path: orgPath(orgId, ROUTE_PATHS.SALON_MANAGEMENT),
             icon: Store,
+            children: salonManagementChildren(
+              role,
+              orgPath(orgId, ROUTE_PATHS.SALON_EMPLOYEES),
+              orgPath(orgId, ROUTE_PATHS.SALON_SERVICES)
+            ),
           },
           {
             name: 'User Management',
@@ -263,7 +320,19 @@ export function getSidebarNavItems(
         ]
       : [];
 
-  return allItems.filter((item) => canAccessModule(role, item.module));
+  return allItems
+    .map((item) => {
+      if (item.children?.length) {
+        const visibleChildren = item.children.filter((child) =>
+          canAccessModule(role, child.module)
+        );
+        if (!visibleChildren.length) return null;
+        return { ...item, children: visibleChildren };
+      }
+      if (!item.path) return null;
+      return item;
+    })
+    .filter((item): item is SidebarNavItem => item !== null && canAccessModule(role, item.module));
 }
 
 /** Map org route segments to RBAC modules for route guards. */
@@ -272,6 +341,8 @@ export const ORG_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.PROFILE]: MODULES.PROFILE,
   [ROUTE_PATHS.SETTINGS]: MODULES.SETTINGS,
   [ROUTE_PATHS.SALON_MANAGEMENT]: MODULES.SALON_MANAGEMENT,
+  [ROUTE_PATHS.SALON_EMPLOYEES]: MODULES.EMPLOYEES,
+  [ROUTE_PATHS.SALON_SERVICES]: MODULES.SERVICES,
   [ROUTE_PATHS.ORG_INVITE]: MODULES.INVITE,
   [ROUTE_PATHS.USER_MANAGEMENT]: MODULES.USER_MANAGEMENT,
   [ROUTE_PATHS.ROLES_PERMISSIONS]: MODULES.ROLES_PERMISSIONS,
@@ -288,6 +359,8 @@ export const ADMIN_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.ADMIN_INVITE]: MODULES.INVITE,
   [ROUTE_PATHS.INVITE]: MODULES.INVITE,
   [ROUTE_PATHS.ADMIN_SALON_MANAGEMENT]: MODULES.SALON_MANAGEMENT,
+  [ROUTE_PATHS.ADMIN_SALON_EMPLOYEES]: MODULES.EMPLOYEES,
+  [ROUTE_PATHS.ADMIN_SALON_SERVICES]: MODULES.SERVICES,
   [ROUTE_PATHS.ADMIN_USER_MANAGEMENT]: MODULES.USER_MANAGEMENT,
   [ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS]: MODULES.ROLES_PERMISSIONS,
   [ROUTE_PATHS.ADMIN_SUBSCRIPTION_MANAGEMENT]: MODULES.SUBSCRIPTION_MANAGEMENT,

@@ -16,6 +16,12 @@ const Dashboard = lazy(() => import('../pages').then((module) => ({ default: mod
 const Profile = lazy(() => import('../pages').then((module) => ({ default: module.Profile })));
 const Settings = lazy(() => import('../pages').then((module) => ({ default: module.Settings })));
 const Placeholder = lazy(() => import('../pages').then((module) => ({ default: module.Placeholder })));
+const Employees = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Employees }))
+);
+const Services = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Services }))
+);
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
   <ProtectedRoute module={module}>
@@ -83,13 +89,12 @@ export const routes: RouteObject[] = [
         ),
       },
       {
-        path: ROUTE_PATHS.ADMIN_SALON_MANAGEMENT,
-        element: adminPlaceholder(
-          MODULES.SALON_MANAGEMENT,
-          'Salon Management',
-          'Oversee all salon branches, configurations, and operational settings across the platform.',
-          Store
-        ),
+        path: ROUTE_PATHS.ADMIN_SALON_EMPLOYEES,
+        element: protectAdmin(MODULES.EMPLOYEES, <Employees />),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_SALON_SERVICES,
+        element: protectAdmin(MODULES.SERVICES, <Services />),
       },
       {
         path: ROUTE_PATHS.ADMIN_USER_MANAGEMENT,
@@ -177,13 +182,12 @@ export const routes: RouteObject[] = [
         element: protectOrg(MODULES.SETTINGS, <Settings />),
       },
       {
-        path: `orgs/:orgId/${ROUTE_PATHS.SALON_MANAGEMENT}`,
-        element: orgPlaceholder(
-          MODULES.SALON_MANAGEMENT,
-          'Salon Management',
-          'Configure your salon branches, working hours, and general settings.',
-          Store
-        ),
+        path: `orgs/:orgId/${ROUTE_PATHS.SALON_EMPLOYEES}`,
+        element: protectOrg(MODULES.EMPLOYEES, <Employees />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.SALON_SERVICES}`,
+        element: protectOrg(MODULES.SERVICES, <Services />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.ORG_INVITE}`,

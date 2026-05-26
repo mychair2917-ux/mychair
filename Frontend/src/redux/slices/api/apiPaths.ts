@@ -21,4 +21,10 @@ export const API_PATHS = {
   SALON_OWNER: {
     PROFILE: '/salon-owner/profile',
   },
+  EMPLOYEES: {
+    LIST: '/employees',
+    DETAIL: (id: string) => `/employees/${id}`,
+    STATUS: (id: string) => `/employees/${id}/status`,
+    RESET_PASSWORD: (id: string) => `/employees/${id}/reset-password`,
+  },
 };

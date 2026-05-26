@@ -34,6 +34,8 @@ class Module(str, Enum):
     DASHBOARD = "dashboard"
     INVITE = "invite"
     SALON_MANAGEMENT = "salon_management"
+    EMPLOYEES = "employees"
+    SERVICES = "services"
     USER_MANAGEMENT = "user_management"
     ROLES_PERMISSIONS = "roles_permissions"
     SUBSCRIPTION_MANAGEMENT = "subscription_management"
@@ -57,19 +59,30 @@ ROLE_MODULE_ACCESS: dict[str, FrozenSet[Module]] = {
     ROLE_SALON_ADMIN: frozenset(
         m
         for m in Module
-        if m != Module.SUBSCRIPTION_MANAGEMENT
+        if m not in (Module.SUBSCRIPTION_MANAGEMENT, Module.EMPLOYEES)
     ),
     ROLE_SALON_MANAGER: frozenset(
         {
             Module.DASHBOARD,
             Module.INVITE,
             Module.SALON_MANAGEMENT,
+            Module.SERVICES,
             Module.PRODUCTS_INVENTORY,
             Module.NOTIFICATIONS_COMMUNICATION,
         }
     ),
-    ROLE_EMPLOYEE: frozenset({Module.DASHBOARD, Module.PROFILE, Module.SETTINGS}),
+    ROLE_EMPLOYEE: frozenset(
+        {
+            Module.DASHBOARD,
+            Module.SALON_MANAGEMENT,
+            Module.SERVICES,
+            Module.PROFILE,
+            Module.SETTINGS,
+        }
+    ),
 }
+
+EMPLOYEE_TABLE_ROLES: FrozenSet[str] = frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE})
 
 
 def normalize_role(role: Optional[str]) -> Optional[str]:
@@ -110,6 +123,14 @@ def invite_list_roles_visible(actor_role: str) -> Optional[FrozenSet[str]]:
         return frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE})
     if normalized == ROLE_SALON_MANAGER:
         return frozenset({ROLE_EMPLOYEE})
+    return frozenset()
+
+
+def employee_list_roles_visible(actor_role: str) -> FrozenSet[str]:
+    """Roles shown on the Employees page for this actor."""
+    normalized = normalize_role(actor_role)
+    if normalized in (ROLE_SUPER_ADMIN, ROLE_SALON_OWNER):
+        return EMPLOYEE_TABLE_ROLES
     return frozenset()
 
 

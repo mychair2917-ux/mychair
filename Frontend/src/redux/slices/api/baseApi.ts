@@ -4,7 +4,7 @@ import { logout } from '../auth/authSlice';
 
 export const baseApi = createApi({
   reducerPath: 'api',
-  tagTypes: ['Invites'],
+  tagTypes: ['Invites', 'Employees'],
   baseQuery: fetchBaseQuery({
     baseUrl: import.meta.env.VITE_BASE_URL || '/api',
     prepareHeaders: (headers, { getState }) => {

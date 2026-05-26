@@ -8,3 +8,5 @@ export { default as Invite } from './Invite';
 export { default as CreatePassword } from './CreatePassword';
 export { default as SalonOwnerLogin } from './SalonOwnerLogin';
 export { default as SalonOwnerDashboard } from './SalonOwnerDashboard';
+export { default as Employees } from './SalonManagement/Employees';
+export { default as Services } from './SalonManagement/Services';
