@@ -96,7 +96,8 @@ const Invite: React.FC = () => {
             Invite Users
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Send role-based invitations. Available roles depend on your access level.
+            Invite salon owners by email, or create manager/staff accounts with a login
+            password (no email required for your team).
           </p>
         </div>
         <Button

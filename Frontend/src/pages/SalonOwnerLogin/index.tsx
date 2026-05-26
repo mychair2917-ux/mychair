@@ -35,7 +35,7 @@ const SalonOwnerLogin: React.FC = () => {
           })
         );
         showToast('success', response.message || 'Login successful');
-        navigate(`/${ROUTE_PATHS.SALON_OWNER_DASHBOARD}`);
+        navigate(`/orgs/${salon_id}/${ROUTE_PATHS.DASHBOARD}`);
       } else {
         showToast('error', response.message || 'Login failed');
       }

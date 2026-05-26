@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 
-import { ROLES, ROUTE_PATHS } from '../constants';
+import { isSuperAdmin } from '../config/rbac';
+import { ROUTE_PATHS } from '../constants';
 import { useAppSelector } from '../redux/hooks';
 
 const RootRedirect = () => {
@@ -12,11 +13,7 @@ const RootRedirect = () => {
     return <Navigate to={`/${ROUTE_PATHS.LOGIN}`} replace />;
   }
 
-  if (user?.role === ROLES.SALON_OWNER) {
-    return <Navigate to={`/${ROUTE_PATHS.SALON_OWNER_DASHBOARD}`} replace />;
-  }
-
-  if (user?.role === ROLES.SUPER_ADMIN) {
+  if (isSuperAdmin(user?.role)) {
     return <Navigate to={`/${ROUTE_PATHS.ADMIN_DASHBOARD}`} replace />;
   }
 

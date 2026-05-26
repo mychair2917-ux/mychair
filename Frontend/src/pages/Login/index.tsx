@@ -40,9 +40,11 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
       );
       
       if (response.role === ROLES.SUPER_ADMIN) {
-        navigate(`/${ROUTE_PATHS.INVITE}`);
-      } else {
+        navigate(`/${ROUTE_PATHS.ADMIN_DASHBOARD}`);
+      } else if (response.tenant_id && response.tenant_id !== 'system') {
         navigate(`/orgs/${response.tenant_id}/${ROUTE_PATHS.DASHBOARD}`);
+      } else {
+        navigate(`/${ROUTE_PATHS.ROOT}`);
       }
     } catch (err: unknown) {
       const apiErr = err as { data?: { message?: string; detail?: string } };
@@ -58,7 +60,11 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
         <div className="flex justify-center mb-6">
            <h1 className="text-3xl font-bold text-gray-900">Salon ERP</h1>
         </div>
-        <h2 className="text-xl font-semibold text-center mb-6 text-gray-700">Super Admin Login</h2>
+        <h2 className="text-xl font-semibold text-center mb-6 text-gray-700">Sign In</h2>
+        <p className="mb-4 text-center text-xs text-gray-500">
+          Super admin, salon owner, and email-based accounts. Manager/staff with phone login use
+          their phone number via team login.
+        </p>
         
         {isLoggedOut && (
           <div className="mb-4 p-3 bg-blue-50 text-blue-700 rounded text-sm text-center">

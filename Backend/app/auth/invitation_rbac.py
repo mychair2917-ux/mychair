@@ -20,6 +20,11 @@ INVITABLE_ROLES: dict[str, FrozenSet[str]] = {
 
 ROLES_REQUIRING_SALON_SETUP = frozenset({ROLE_SALON_OWNER})
 ROLES_REQUIRING_TENANT = frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE, ROLE_SALON_ADMIN})
+ROLES_DIRECT_PASSWORD_SETUP = frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE})
+
+TENANT_INVITER_ROLES = frozenset(
+    {ROLE_SALON_OWNER, ROLE_SALON_ADMIN, ROLE_SALON_MANAGER}
+)
 
 
 def can_invite(actor_role: str) -> bool:
@@ -44,6 +49,18 @@ def assert_can_invite_role(actor_role: str, target_role: str) -> None:
         raise PermissionDeniedException(
             detail=f"Role '{actor_role}' cannot invite users with role '{target_role}'"
         )
+
+
+def uses_direct_password_provisioning(actor_role: str, target_role: str) -> bool:
+    """
+    Salon owner/admin/manager set password when inviting manager or staff.
+    No invitation email — account is active immediately.
+  """
+    if target_role not in ROLES_DIRECT_PASSWORD_SETUP:
+        return False
+    if actor_role == "super_admin":
+        return False
+    return actor_role in TENANT_INVITER_ROLES
 
 
 def resolve_tenant_id_for_invite(

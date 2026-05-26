@@ -1,34 +1,24 @@
 import React from 'react';
-import { Navigate, useParams } from 'react-router';
 
-import { ROUTE_PATHS } from '../constants';
-import { useAppSelector } from '../redux/hooks';
+import { ModuleKey } from '../config/rbac';
+import ProtectedRoute from './ProtectedRoute';
 
 interface RequireAuthProps {
   children: React.ReactElement;
   allowedRoles?: string[];
+  module?: ModuleKey;
+  superAdminOnly?: boolean;
 }
 
-const RequireAuth = ({ children, allowedRoles }: RequireAuthProps) => {
-  const token = useAppSelector((state) => state.auth.token);
-  const user = useAppSelector((state) => state.auth.user);
-  
-  const { orgId } = useParams<{ orgId: string }>();
-
-  if (!token) {
-    return <Navigate to={`/${ROUTE_PATHS.LOGIN}`} replace />;
-  }
-
-  // Check role-based access if needed
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return orgId ? (
-      <Navigate to={`/orgs/${orgId}/${ROUTE_PATHS.NOT_FOUND}`} replace />
-    ) : (
-      <Navigate to={`/${ROUTE_PATHS.NOT_FOUND}`} replace />
-    );
-  }
-
-  return children;
-};
+/** @deprecated Prefer ProtectedRoute with module prop; kept for compatibility. */
+const RequireAuth = ({ children, allowedRoles, module, superAdminOnly }: RequireAuthProps) => (
+  <ProtectedRoute
+    module={module}
+    allowedRoles={allowedRoles}
+    superAdminOnly={superAdminOnly}
+  >
+    {children}
+  </ProtectedRoute>
+);
 
 export default RequireAuth;

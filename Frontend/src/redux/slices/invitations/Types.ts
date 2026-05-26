@@ -15,8 +15,11 @@ export interface InvitationFormOptionsData {
 export interface CreateInviteRequest {
   role: string;
   full_name: string;
-  email: string;
+  email?: string;
   phone?: string;
+  password?: string;
+  confirm_password?: string;
+  username?: string;
   tenant_id?: string;
   branch_id?: string;
   branch_name?: string;
@@ -67,6 +70,8 @@ export interface InviteListItem {
   created_at: string;
   accepted_at?: string | null;
   resend_count: number;
+  login_phone?: string | null;
+  provisioned?: boolean;
 }
 
 export interface ValidateInvitationResponseData {

@@ -36,6 +36,22 @@ ROLE_USER_PERMISSIONS: Dict[str, Set[str]] = {
 # Feature permissions for appointments, billing, inventory, etc.
 ROLE_FEATURE_PERMISSIONS: Dict[str, Set[str]] = {
     "super_admin": {"*"},
+    "salon_owner": {
+        "appointments.create",
+        "appointments.view",
+        "appointments.cancel",
+        "inventory.edit",
+        "inventory.view",
+        "billing.create",
+        "billing.refund",
+        "billing.view",
+        "staff.manage",
+        "salon.manage",
+        "attendance.view",
+        "attendance.manage",
+        "analytics.view",
+        "crm.manage",
+    },
     "salon_admin": {
         "appointments.create",
         "appointments.view",

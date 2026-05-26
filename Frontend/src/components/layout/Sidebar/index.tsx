@@ -1,165 +1,27 @@
 import React from 'react';
 import { useDispatch } from 'react-redux';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
-import {
-  Bell,
-  Boxes,
-  CreditCard,
-  LayoutDashboard,
-  LineChart,
-  LogOut,
-  MailPlus,
-  Scissors,
-  Shield,
-  Store,
-  UserCheck,
-  Users,
-  Wallet,
-} from 'lucide-react';
+import { LogOut, Scissors } from 'lucide-react';
 
-import { ROLES, ROUTE_PATHS } from '../../../constants';
+import { getSidebarNavItems } from '../../../config/rbac';
+import { ROUTE_PATHS } from '../../../constants';
 import { logout } from '../../../redux/slices/auth/authSlice';
 import { useAppSelector } from '../../../redux/hooks';
-import { canUserInvite } from '../../../utils/invitePermissions';
-
-interface NavItem {
-  name: string;
-  path: string;
-  icon: React.ElementType;
-  badge?: string;
-}
 
 const Sidebar: React.FC = () => {
   const { orgId } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const user = useAppSelector((state) => state.auth.user);
-  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
-  const showInvite = canUserInvite(user?.role);
-  const invitePath = isSuperAdmin
-    ? `/${ROUTE_PATHS.ADMIN_INVITE}`
-    : user?.role === ROLES.SALON_OWNER
-      ? `/${ROUTE_PATHS.SALON_INVITE}`
-      : `/orgs/${orgId}/${ROUTE_PATHS.ORG_INVITE}`;
+  const storedOrgId = useAppSelector((state) => state.auth.orgId);
+  const effectiveOrgId = orgId ?? storedOrgId ?? undefined;
+
+  const navItems = getSidebarNavItems(user?.role, effectiveOrgId);
 
   const handleLogout = () => {
     dispatch(logout());
     navigate(`/${ROUTE_PATHS.LOGIN}`);
   };
-
-  const superAdminInvitePath = `/${ROUTE_PATHS.ADMIN_INVITE}`;
-
-  const navItems: NavItem[] = isSuperAdmin
-    ? [
-        {
-          name: 'Dashboard',
-          path: `/${ROUTE_PATHS.ADMIN_DASHBOARD}`,
-          icon: LayoutDashboard,
-        },
-        ...(showInvite
-          ? [{ name: 'Invite', path: superAdminInvitePath, icon: MailPlus }]
-          : []),
-        {
-          name: 'Salon Management',
-          path: `/${ROUTE_PATHS.ADMIN_SALON_MANAGEMENT}`,
-          icon: Store,
-        },
-        {
-          name: 'User Management',
-          path: `/${ROUTE_PATHS.ADMIN_USER_MANAGEMENT}`,
-          icon: Users,
-        },
-        {
-          name: 'Role & Permissions',
-          path: `/${ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS}`,
-          icon: Shield,
-        },
-        {
-          name: 'Subscription Management',
-          path: `/${ROUTE_PATHS.ADMIN_SUBSCRIPTION_MANAGEMENT}`,
-          icon: CreditCard,
-        },
-        {
-          name: 'Billing & Finance',
-          path: `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
-          icon: Wallet,
-        },
-        {
-          name: 'Products & Inventory',
-          path: `/${ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY}`,
-          icon: Boxes,
-        },
-        {
-          name: 'Staff & HR Monitoring',
-          path: `/${ROUTE_PATHS.ADMIN_STAFF_MONITORING}`,
-          icon: UserCheck,
-        },
-        {
-          name: 'Customer Analytics',
-          path: `/${ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS}`,
-          icon: LineChart,
-        },
-        {
-          name: 'Notifications & Communication',
-          path: `/${ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION}`,
-          icon: Bell,
-        },
-      ]
-    : [
-        {
-          name: 'Dashboard',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.DASHBOARD}`,
-          icon: LayoutDashboard,
-        },
-        ...(showInvite
-          ? [{ name: 'Invite', path: invitePath, icon: MailPlus }]
-          : []),
-        {
-          name: 'Salon Management',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.SALON_MANAGEMENT}`,
-          icon: Store,
-        },
-        {
-          name: 'User Management',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.USER_MANAGEMENT}`,
-          icon: Users,
-        },
-        {
-          name: 'Role & Permissions',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.ROLES_PERMISSIONS}`,
-          icon: Shield,
-        },
-        {
-          name: 'Subscription Management',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`,
-          icon: CreditCard,
-        },
-        {
-          name: 'Billing & Finance',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.BILLING_FINANCE}`,
-          icon: Wallet,
-        },
-        {
-          name: 'Products & Inventory',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.PRODUCTS_INVENTORY}`,
-          icon: Boxes,
-        },
-        {
-          name: 'Staff & HR Monitoring',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.STAFF_MONITORING}`,
-          icon: UserCheck,
-        },
-        {
-          name: 'Customer Analytics',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`,
-          icon: LineChart,
-        },
-        {
-          name: 'Notifications & Communication',
-          path: `/orgs/${orgId}/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`,
-          icon: Bell,
-        },
-      ];
 
   return (
     <aside className="z-50 flex h-screen w-72 flex-col bg-[var(--color-sidebar-bg)] text-[var(--color-sidebar-text)] shadow-2xl">

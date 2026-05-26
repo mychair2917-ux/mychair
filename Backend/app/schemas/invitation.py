@@ -23,8 +23,11 @@ INVITE_ROLES = {ROLE_SALON_OWNER, ROLE_SALON_MANAGER, ROLE_EMPLOYEE}
 class CreateInviteRequest(BaseModel):
     role: str = Field(..., min_length=1, max_length=50)
     full_name: str = Field(..., min_length=2, max_length=150)
-    email: EmailStr
+    email: Optional[EmailStr] = Field(default=None)
     phone: str = Field(default="", max_length=20)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    confirm_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    username: Optional[str] = Field(default=None, min_length=3, max_length=100)
 
     tenant_id: Optional[str] = Field(default=None, description="Required for manager/staff when inviter is super admin")
 
@@ -40,7 +43,6 @@ class CreateInviteRequest(BaseModel):
     address: str = Field(default="", max_length=500)
     gst_number: str = Field(default="", max_length=20)
     slug: Optional[str] = Field(default=None, min_length=2, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-    username: Optional[str] = Field(default=None, min_length=3, max_length=100)
 
     @field_validator("role")
     @classmethod
@@ -84,6 +86,8 @@ class CreateInviteRequest(BaseModel):
     def validate_role_fields(self) -> "CreateInviteRequest":
         if self.role in ROLES_REQUIRING_SALON_SETUP:
             missing = []
+            if not self.email:
+                missing.append("email")
             if not self.salon_name or len(self.salon_name.strip()) < 2:
                 missing.append("salon_name")
             if not self.salon_type:
@@ -92,6 +96,10 @@ class CreateInviteRequest(BaseModel):
                 missing.append("subscription_plan")
             if missing:
                 raise ValueError(f"Salon owner invitations require: {', '.join(missing)}")
+            return self
+
+        if self.password and self.confirm_password and self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
         return self
 
 
@@ -163,6 +171,11 @@ class CancelInviteRequest(BaseModel):
 
 class SalonOwnerLoginRequest(BaseModel):
     email: EmailStr
+    password: str = Field(..., min_length=1)
+
+
+class TeamLoginRequest(BaseModel):
+    phone: str = Field(..., min_length=7, max_length=20)
     password: str = Field(..., min_length=1)
 
 

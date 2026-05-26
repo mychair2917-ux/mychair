@@ -19,7 +19,9 @@ import {
 } from '../../validations/inviteSchema';
 import {
   isSalonOwnerInviteRole,
+  isStaffInviteRole,
   requiresTenantSelection,
+  usesDirectPasswordProvisioning,
 } from '../../utils/invitePermissions';
 import { applyApiFieldErrors, getApiErrorMessage } from '../../utils/apiErrors';
 
@@ -49,9 +51,12 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
     const payload: CreateInviteRequest = {
       role: values.role,
       full_name: values.full_name.trim(),
-      email: values.email.trim(),
     };
+    if (values.email?.trim()) payload.email = values.email.trim();
     if (values.phone?.trim()) payload.phone = values.phone.trim();
+    if (values.password) payload.password = values.password;
+    if (values.confirm_password) payload.confirm_password = values.confirm_password;
+    if (values.username?.trim()) payload.username = values.username.trim();
     if (values.tenant_id) payload.tenant_id = values.tenant_id;
     if (values.branch_name?.trim()) payload.branch_name = values.branch_name.trim();
     if (values.reporting_manager_id) payload.reporting_manager_id = values.reporting_manager_id;
@@ -77,7 +82,14 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
     try {
       const result = await onSubmit(buildPayload(values));
       if (result.success) {
-        showToast('success', result.message || 'Invitation sent successfully');
+        const directSetup = usesDirectPasswordProvisioning(inviterRole, values.role);
+        showToast(
+          'success',
+          result.message ||
+            (directSetup
+              ? 'Team member account created. They can sign in with their phone and password.'
+              : 'Invitation sent successfully')
+        );
         resetForm();
         onClose();
       } else {
@@ -105,9 +117,11 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
         initialValues={{ ...defaultInviteFormValues, role: initialRole }}
         enableReinitialize
         validate={async (values) => {
+          const directSetup = usesDirectPasswordProvisioning(inviterRole, values.role);
           const schema = buildInviteValidationSchema(
             values.role,
-            requiresTenantSelection(inviterRole, values.role)
+            requiresTenantSelection(inviterRole, values.role),
+            directSetup
           );
           try {
             await schema.validate(values, { abortEarly: false });
@@ -130,7 +144,8 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
         {({ values, errors, touched, handleChange, handleBlur, isSubmitting: formSubmitting }) => {
           const needsTenant = requiresTenantSelection(inviterRole, values.role);
           const showSalonSetup = isSalonOwnerInviteRole(values.role);
-          const showTeamFields = Boolean(values.role && !showSalonSetup);
+          const showTeamFields = isStaffInviteRole(values.role);
+          const directPasswordSetup = usesDirectPasswordProvisioning(inviterRole, values.role);
 
           return (
             <Form noValidate>
@@ -304,25 +319,28 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       onBlur={handleBlur}
                     />
                   </FormField>
-                  <FormField
-                    label="Email"
-                    name="email"
-                    required
-                    error={errors.email}
-                    touched={touched.email}
-                  >
-                    <Input
-                      id="email"
+                  {!directPasswordSetup && (
+                    <FormField
+                      label="Email"
                       name="email"
-                      type="email"
-                      value={values.email}
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                    />
-                  </FormField>
+                      required
+                      error={errors.email}
+                      touched={touched.email}
+                    >
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        value={values.email}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                      />
+                    </FormField>
+                  )}
                   <FormField
-                    label="Phone"
+                    label={directPasswordSetup ? 'Phone (login ID)' : 'Phone'}
                     name="phone"
+                    required={directPasswordSetup}
                     error={errors.phone}
                     touched={touched.phone}
                   >
@@ -333,8 +351,61 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       value={values.phone}
                       onChange={handleChange}
                       onBlur={handleBlur}
+                      placeholder={directPasswordSetup ? 'Used to sign in' : undefined}
                     />
                   </FormField>
+                  {directPasswordSetup && (
+                    <>
+                      <FormField
+                        label="Username"
+                        name="username"
+                        error={errors.username}
+                        touched={touched.username}
+                      >
+                        <Input
+                          id="username"
+                          name="username"
+                          value={values.username}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          placeholder="Optional display name"
+                        />
+                      </FormField>
+                      <FormField
+                        label="Password"
+                        name="password"
+                        required
+                        error={errors.password}
+                        touched={touched.password}
+                      >
+                        <Input
+                          id="password"
+                          name="password"
+                          type="password"
+                          value={values.password}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          placeholder="Login password for this user"
+                        />
+                      </FormField>
+                      <FormField
+                        label="Confirm Password"
+                        name="confirm_password"
+                        required
+                        error={errors.confirm_password}
+                        touched={touched.confirm_password}
+                      >
+                        <Input
+                          id="confirm_password"
+                          name="confirm_password"
+                          type="password"
+                          value={values.confirm_password}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                        />
+                      </FormField>
+                    </>
+                  )}
 
                   {showTeamFields && (
                     <>
@@ -385,9 +456,9 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                   variant="primary"
                   className="!bg-[var(--color-brand-gold)] hover:!bg-[var(--color-brand-gold-dark)]"
                   isLoading={isSubmitting || formSubmitting}
-                  loadingText="Sending..."
+                  loadingText={directPasswordSetup ? 'Creating...' : 'Sending...'}
                 >
-                  Send Invitation
+                  {directPasswordSetup ? 'Create Account' : 'Send Invitation'}
                 </Button>
               </ModalFooter>
             </Form>

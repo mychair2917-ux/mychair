@@ -4,15 +4,19 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest
-from app.schemas.invitation import SalonOwnerLoginRequest
+from app.schemas.invitation import SalonOwnerLoginRequest, TeamLoginRequest
+from app.services.auth_login_service import AuthLoginService
 from app.services.salon_owner_auth_service import SalonOwnerAuthService
+from app.services.team_auth_service import TeamAuthService
 from app.utils.api_response import success_response, error_response
 from app.core import tenant_context
 from pydantic import BaseModel, EmailStr
 from app.utils.timezone import now_utc
 
 router = APIRouter()
+auth_login_service = AuthLoginService()
 salon_owner_auth_service = SalonOwnerAuthService()
+team_auth_service = TeamAuthService()
 
 class BootstrapTenantRequest(BaseModel):
     tenant_name: str
@@ -87,38 +91,28 @@ async def bootstrap_tenant(payload: BootstrapTenantRequest) -> dict:
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest) -> dict:
     """
-    Super Admin Sign-in API.
-    Validates Super Admin credentials and issues session-scoped JWT tokens.
+    Email sign-in for super_admin, salon_owner, salon_admin, and email-based team users.
+    Manager/staff provisioned with phone only should use POST /auth/team/login.
     """
-    user = await User.find_one(User.email == payload.email, User.is_deleted == False)
-    if not user:
-        raise AuthException("Invalid email or password")
-        
-    if not verify_password(payload.password, user.hashed_password):
-        raise AuthException("Invalid email or password")
-        
-    if user.status != "ACTIVE" or not user.is_active:
-        raise AuthException("User account is inactive or suspended")
-        
-    if user.role != "super_admin":
-        raise AuthException("Unauthorized role. Only SUPER_ADMIN is allowed.")
-        
-    # Update last_login
-    user.last_login = now_utc()
-    await user.save()
-        
-    tenant_id_str = user.tenant_id if user.tenant_id else "system"
-    user_id_str = str(user.id)
-    
-    access_token = create_access_token(subject=user_id_str, tenant_id=tenant_id_str, role=user.role)
-    refresh_token = create_refresh_token(subject=user_id_str, tenant_id=tenant_id_str, role=user.role)
-    
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "role": user.role,
-        "tenant_id": tenant_id_str
-    }
+    data, error_message = await auth_login_service.login(
+        email=str(payload.email),
+        password=payload.password,
+    )
+    if error_message:
+        raise AuthException(error_message)
+    return data
+
+
+@router.post("/team/login")
+async def team_login(payload: TeamLoginRequest):
+    """Salon manager or staff sign-in with phone and password set by their salon."""
+    data, error_message = await team_auth_service.login(
+        phone=payload.phone,
+        password=payload.password,
+    )
+    if error_message:
+        return error_response(error_message, status_code=401)
+    return success_response("Login successful", data=data)
 
 
 @router.post("/salon-owner/login")

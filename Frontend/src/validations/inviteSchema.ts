@@ -11,11 +11,19 @@ const optionalPhone = Yup.string()
     return PHONE_REGEX.test(value);
   });
 
+const requiredPhone = Yup.string()
+  .trim()
+  .required('Phone is required for login')
+  .matches(PHONE_REGEX, 'Enter a valid phone number (7–15 digits, optional + prefix)');
+
 export interface InviteFormValues {
   role: string;
   full_name: string;
   email: string;
   phone: string;
+  password: string;
+  confirm_password: string;
+  username: string;
   tenant_id: string;
   branch_name: string;
   reporting_manager_id: string;
@@ -32,6 +40,9 @@ export const defaultInviteFormValues: InviteFormValues = {
   full_name: '',
   email: '',
   phone: '',
+  password: '',
+  confirm_password: '',
+  username: '',
   tenant_id: '',
   branch_name: '',
   reporting_manager_id: '',
@@ -45,7 +56,8 @@ export const defaultInviteFormValues: InviteFormValues = {
 
 export function buildInviteValidationSchema(
   selectedRole: string,
-  requiresTenant: boolean
+  requiresTenant: boolean,
+  directPasswordSetup: boolean
 ): Yup.ObjectSchema<InviteFormValues> {
   const base: Record<string, Yup.AnySchema> = {
     role: Yup.string().required('Role is required').notOneOf([''], 'Please select a role'),
@@ -54,8 +66,19 @@ export function buildInviteValidationSchema(
       .min(2, 'Full name must be at least 2 characters')
       .max(150)
       .required('Full name is required'),
-    email: Yup.string().trim().email('Enter a valid email').required('Email is required'),
-    phone: optionalPhone,
+    email: directPasswordSetup
+      ? Yup.string().trim().email('Enter a valid email')
+      : Yup.string().trim().email('Enter a valid email').required('Email is required'),
+    phone: directPasswordSetup ? requiredPhone : optionalPhone,
+    password: directPasswordSetup
+      ? Yup.string().min(8, 'Password must be at least 8 characters').required('Password is required')
+      : Yup.string(),
+    confirm_password: directPasswordSetup
+      ? Yup.string()
+          .oneOf([Yup.ref('password')], 'Passwords must match')
+          .required('Please confirm the password')
+      : Yup.string(),
+    username: Yup.string().trim().max(100),
     tenant_id: requiresTenant
       ? Yup.string().required('Salon is required').notOneOf([''], 'Please select a salon')
       : Yup.string(),
@@ -70,6 +93,7 @@ export function buildInviteValidationSchema(
   };
 
   if (selectedRole === INVITE_ROLES.SALON_OWNER) {
+    base.email = Yup.string().trim().email('Enter a valid email').required('Email is required');
     base.salon_name = Yup.string()
       .trim()
       .min(2, 'Salon name is required')

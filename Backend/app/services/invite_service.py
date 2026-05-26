@@ -8,13 +8,22 @@ from app.auth.invitation_rbac import (
     ROLE_SALON_MANAGER,
     ROLE_SALON_OWNER,
     ROLES_REQUIRING_SALON_SETUP,
-    ROLES_REQUIRING_TENANT,
     assert_can_invite_role,
     resolve_tenant_id_for_invite,
+    uses_direct_password_provisioning,
+)
+from app.auth.rbac_config import (
+    ROLE_SALON_ADMIN,
+    ROLE_SALON_OWNER as RBAC_SALON_OWNER,
+    invite_list_roles_visible,
+    invite_list_scoped_to_inviter,
+    normalize_role,
 )
 from app.constants.invitation_options import SALON_TYPES, SUBSCRIPTION_PLANS
 from app.core.config import settings
 from app.core.security import get_password_hash
+from beanie.operators import In
+
 from app.models.invite import Invite
 from app.models.invitation_token import InvitationToken
 from app.models.tenant import Tenant
@@ -39,6 +48,26 @@ class InviteService:
     @staticmethod
     def _generate_token() -> str:
         return secrets.token_urlsafe(48)
+
+    @staticmethod
+    def _internal_email_for_phone(phone: str, tenant_id: str) -> str:
+        digits = re.sub(r"\D", "", phone)
+        return f"staff.{digits}@{tenant_id}.mychair.internal"
+
+    @staticmethod
+    def _validate_direct_provision_payload(
+        payload: CreateInviteRequest,
+    ) -> Optional[dict]:
+        errors: dict = {}
+        if not payload.phone or not payload.phone.strip():
+            errors["phone"] = ["Phone is required for manager and staff"]
+        if not payload.password:
+            errors["password"] = ["Password is required"]
+        if not payload.confirm_password:
+            errors["confirm_password"] = ["Please confirm the password"]
+        elif payload.password != payload.confirm_password:
+            errors["confirm_password"] = ["Passwords do not match"]
+        return errors if errors else None
 
     @staticmethod
     def _split_full_name(full_name: str) -> Tuple[str, str]:
@@ -141,6 +170,14 @@ class InviteService:
         if not tenant or tenant.is_deleted:
             return None, {"tenant_id": ["Selected salon does not exist"]}
 
+        if uses_direct_password_provisioning(actor.role, payload.role):
+            return await self._create_team_member_direct(
+                actor, payload, tenant_id, tenant.name
+            )
+
+        if not payload.email:
+            return None, {"email": ["Email is required for this invitation"]}
+
         existing_user = await User.find_one(
             User.email == payload.email,
             User.tenant_id == tenant_id,
@@ -213,6 +250,104 @@ class InviteService:
 
         return self._invite_response(invite, tenant.name), None
 
+    async def _create_team_member_direct(
+        self,
+        actor: User,
+        payload: CreateInviteRequest,
+        tenant_id: str,
+        tenant_name: str,
+    ) -> Tuple[Optional[dict], Optional[dict]]:
+        """Salon owner/admin/manager creates manager or staff with a login password (no email)."""
+        field_errors = self._validate_direct_provision_payload(payload)
+        if field_errors:
+            return None, field_errors
+
+        phone = payload.phone.strip()
+        email = (
+            str(payload.email)
+            if payload.email
+            else self._internal_email_for_phone(phone, tenant_id)
+        )
+        username = payload.username.strip() if payload.username else None
+
+        existing_phone = await User.find_one(
+            User.phone == phone,
+            User.tenant_id == tenant_id,
+            User.is_deleted == False,
+        )
+        if existing_phone:
+            return None, {"phone": ["This phone number is already registered in this salon"]}
+
+        existing_email = await User.find_one(
+            User.email == email,
+            User.tenant_id == tenant_id,
+            User.is_deleted == False,
+        )
+        if existing_email:
+            return None, {
+                "phone": ["A user with this phone or contact already exists in this salon"]
+            }
+
+        if username:
+            existing_username = await User.find_one(
+                User.username == username,
+                User.tenant_id == tenant_id,
+                User.is_deleted == False,
+            )
+            if existing_username:
+                return None, {"username": ["This username is already taken in this salon"]}
+
+        if payload.reporting_manager_id:
+            manager = await User.get(payload.reporting_manager_id)
+            if (
+                not manager
+                or manager.tenant_id != tenant_id
+                or manager.role != ROLE_SALON_MANAGER
+            ):
+                return None, {"reporting_manager_id": ["Invalid reporting manager"]}
+
+        first_name, last_name = self._split_full_name(payload.full_name)
+        user = User(
+            email=email,
+            phone=phone,
+            username=username,
+            hashed_password=get_password_hash(payload.password),
+            first_name=first_name,
+            last_name=last_name,
+            role=payload.role,
+            is_active=True,
+            status="ACTIVE",
+            tenant_id=tenant_id,
+            branch_name=payload.branch_name or None,
+            created_by=str(actor.id),
+        )
+        await user.insert()
+
+        now = now_utc()
+        invite = Invite(
+            invited_by=str(actor.id),
+            invited_email=email,
+            role=payload.role,
+            full_name=payload.full_name,
+            phone=phone,
+            salon_id=tenant_id,
+            branch_id=payload.branch_id,
+            branch_name=payload.branch_name or None,
+            reporting_manager_id=payload.reporting_manager_id,
+            token=self._generate_token(),
+            expires_at=now + timedelta(days=3650),
+            status="accepted",
+            accepted_at=now,
+            user_id=str(user.id),
+        )
+        await invite.insert()
+
+        response = self._invite_response(invite, tenant_name)
+        response["provisioned"] = True
+        response["login_phone"] = phone
+        response["invitation_sent"] = False
+        return response, None
+
     async def _create_salon_owner_invite(
         self, actor: User, payload: CreateInviteRequest
     ) -> Tuple[Optional[dict], Optional[dict]]:
@@ -280,18 +415,28 @@ class InviteService:
         if status:
             query["status"] = status.strip().lower()
 
-        if actor.role == "super_admin":
+        role_filter = invite_list_roles_visible(actor.role)
+        normalized = normalize_role(actor.role)
+        scope_to_inviter = invite_list_scoped_to_inviter(actor.role)
+
+        if normalized == "super_admin":
             invites = await Invite.find(query).sort(-Invite.created_at).to_list()
         elif actor.tenant_id:
-            invites = await Invite.find(
-                Invite.salon_id == actor.tenant_id,
-                **query,
-            ).sort(-Invite.created_at).to_list()
+            conditions: list = [Invite.salon_id == actor.tenant_id]
+            if scope_to_inviter:
+                conditions.append(Invite.invited_by == str(actor.id))
+            if query.get("status"):
+                conditions.append(Invite.status == query["status"])
+            if role_filter is not None:
+                conditions.append(In(Invite.role, list(role_filter)))
+            invites = await Invite.find(*conditions).sort(-Invite.created_at).to_list()
         else:
-            invites = await Invite.find(
-                Invite.invited_by == str(actor.id),
-                **query,
-            ).sort(-Invite.created_at).to_list()
+            conditions = [Invite.invited_by == str(actor.id)]
+            if query.get("status"):
+                conditions.append(Invite.status == query["status"])
+            if role_filter is not None:
+                conditions.append(In(Invite.role, list(role_filter)))
+            invites = await Invite.find(*conditions).sort(-Invite.created_at).to_list()
 
         return [await self._serialize_invite(inv) for inv in invites]
 
@@ -300,6 +445,12 @@ class InviteService:
         if not salon_name and invite.salon_id:
             tenant = await Tenant.get(invite.salon_id)
             salon_name = tenant.name if tenant else None
+
+        login_phone = invite.phone
+        if not login_phone and invite.user_id:
+            user = await User.get(invite.user_id)
+            if user:
+                login_phone = user.phone
 
         return {
             "id": str(invite.id),
@@ -315,6 +466,8 @@ class InviteService:
             "created_at": invite.created_at.isoformat(),
             "accepted_at": invite.accepted_at.isoformat() if invite.accepted_at else None,
             "resend_count": invite.resend_count,
+            "login_phone": login_phone,
+            "provisioned": invite.status == "accepted" and invite.accepted_at is not None,
         }
 
     @staticmethod
@@ -324,16 +477,21 @@ class InviteService:
         return invite.status
 
     async def _can_manage_invite(self, actor: User, invite: Invite) -> bool:
-        if actor.role == "super_admin":
+        normalized = normalize_role(actor.role)
+        if normalized == "super_admin":
             return True
-        if str(invite.invited_by) == str(actor.id):
-            return True
-        if (
-            invite.salon_id
-            and actor.tenant_id == invite.salon_id
-            and actor.role in ("salon_owner", "salon_admin")
-        ):
-            return True
+        if str(invite.invited_by) != str(actor.id):
+            return False
+        if normalized in (RBAC_SALON_OWNER, ROLE_SALON_ADMIN):
+            return (
+                invite.salon_id == actor.tenant_id
+                and invite.role in (ROLE_SALON_MANAGER, ROLE_EMPLOYEE)
+            )
+        if normalized == ROLE_SALON_MANAGER:
+            return (
+                invite.salon_id == actor.tenant_id
+                and invite.role == ROLE_EMPLOYEE
+            )
         return False
 
     async def resend_invite(

@@ -5,6 +5,8 @@ from jose import jwt
 
 from app.api.dependencies.auth import get_current_user, get_current_user_claims
 from app.auth.invitation_rbac import ROLE_SALON_OWNER, assert_can_invite
+from app.auth.rbac_config import can_view_invite, normalize_role
+from app.core.exceptions import PermissionDeniedException
 from app.core.config import settings
 from app.core.exceptions import AuthException
 from app.models.user import User
@@ -45,6 +47,15 @@ async def get_invite_actor(
 ) -> InviteActor:
     """JWT user with permission to send invitations."""
     user = await _user_from_claims(claims)
+    normalized = normalize_role(user.role)
+    if normalized == "employee":
+        raise PermissionDeniedException(
+            detail="Your role is not permitted to access invitations"
+        )
+    if not can_view_invite(user.role):
+        raise PermissionDeniedException(
+            detail="Your role is not permitted to access invitations"
+        )
     if user.role == ROLE_SALON_OWNER:
         if user.status != "ACTIVE" or not user.is_active:
             raise AuthException("Salon owner account is inactive")

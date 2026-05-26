@@ -43,7 +43,7 @@ const InvitesTable: React.FC<InvitesTableProps> = ({
         <thead className="bg-gray-50">
           <tr>
             <th className="px-4 py-3 text-left font-semibold text-gray-600">Name</th>
-            <th className="px-4 py-3 text-left font-semibold text-gray-600">Email</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-600">Contact</th>
             <th className="px-4 py-3 text-left font-semibold text-gray-600">Role</th>
             <th className="px-4 py-3 text-left font-semibold text-gray-600">Salon</th>
             <th className="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
@@ -56,7 +56,13 @@ const InvitesTable: React.FC<InvitesTableProps> = ({
             return (
               <tr key={invite.id}>
                 <td className="px-4 py-3 font-medium text-gray-900">{invite.full_name}</td>
-                <td className="px-4 py-3 text-gray-600">{invite.invited_email}</td>
+                <td className="px-4 py-3 text-gray-600">
+                  {invite.login_phone
+                    ? invite.login_phone
+                    : invite.invited_email?.includes('.mychair.internal')
+                      ? '—'
+                      : invite.invited_email}
+                </td>
                 <td className="px-4 py-3 text-gray-600">
                   {INVITE_ROLE_LABELS[invite.role] ?? invite.role}
                 </td>
@@ -69,7 +75,7 @@ const InvitesTable: React.FC<InvitesTableProps> = ({
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {isPending && onResend && (
+                  {isPending && !invite.provisioned && onResend && (
                     <Button
                       type="button"
                       variant="ghost"
