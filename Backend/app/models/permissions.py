@@ -83,6 +83,7 @@ ROLE_FEATURE_PERMISSIONS: Dict[str, Set[str]] = {
         "crm.manage",
     },
     "employee": {
+        "appointments.create",
         "appointments.view",
         "attendance.create",
         "inventory.view",

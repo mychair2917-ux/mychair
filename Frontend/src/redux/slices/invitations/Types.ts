@@ -71,7 +71,25 @@ export interface InviteListItem {
   accepted_at?: string | null;
   resend_count: number;
   login_phone?: string | null;
+  login_email?: string | null;
   provisioned?: boolean;
+}
+
+export interface PaginatedInviteListData {
+  items: InviteListItem[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface InviteListParams {
+  status?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+  sort_by?: string;
+  sort_order?: string;
 }
 
 export interface ValidateInvitationResponseData {

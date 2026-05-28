@@ -9,7 +9,8 @@ import {
   CreatePasswordRequest,
   CreatePasswordResponseData,
   InvitationFormOptionsData,
-  InviteListItem,
+  InviteListParams,
+  PaginatedInviteListData,
   ResendInviteRequest,
   ValidateInvitationResponseData,
 } from './Types';
@@ -22,15 +23,21 @@ export const invitationsApi = baseApi.injectEndpoints({
         method: HTTP_METHODS.GET,
       }),
     }),
-    listInvites: builder.query<
-      ApiResponse<InviteListItem[]>,
-      { status?: string } | void
-    >({
-      query: (params) => ({
-        url: API_PATHS.INVITATIONS.LIST,
-        method: HTTP_METHODS.GET,
-        params: params?.status ? { status: params.status } : undefined,
-      }),
+    listInvites: builder.query<ApiResponse<PaginatedInviteListData>, InviteListParams | void>({
+      query: (params) => {
+        const queryParams: Record<string, string | number> = {};
+        if (params?.status) queryParams.status = params.status;
+        if (params?.page) queryParams.page = params.page;
+        if (params?.limit) queryParams.limit = params.limit;
+        if (params?.search) queryParams.search = params.search;
+        if (params?.sort_by) queryParams.sort_by = params.sort_by;
+        if (params?.sort_order) queryParams.sort_order = params.sort_order;
+        return {
+          url: API_PATHS.INVITATIONS.LIST,
+          method: HTTP_METHODS.GET,
+          params: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+        };
+      },
       providesTags: ['Invites'],
     }),
     createInvitation: builder.mutation<

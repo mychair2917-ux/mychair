@@ -4,6 +4,7 @@ from app.models.appointment import Appointment, ServiceSnapshot
 from app.models.staff import Staff, StaffSchedule
 from app.models.service import Service
 from app.models.customer import Customer
+from app.models.user import User
 from app.repositories.appointment import AppointmentRepository
 from app.core.exceptions import BookingConflictException, ResourceNotFoundException
 from app.core import tenant_context
@@ -130,6 +131,80 @@ class AppointmentService:
         await appointment.save()
         
         # Trigger background notifications and tasks here (e.g. queue_reminder)
+        return appointment
+
+    async def create_frontdesk_appointment(
+        self,
+        salon_id: str,
+        customer_id: str,
+        start_datetime: datetime,
+        services: List[dict],
+        payment_type: str,
+        total_amount: float,
+        notes: Optional[str] = None,
+        booking_source: str = "WALK_IN",
+    ) -> Appointment:
+        """
+        Creates a receptionist/POS appointment with per-service staff assignments.
+        This keeps the flow fast for walk-ins while still snapshotting services.
+        """
+        start_dt = make_aware(start_datetime)
+        customer = await Customer.find_one(Customer.id == customer_id, Customer.is_deleted == False)
+        if not customer:
+            raise ResourceNotFoundException("Customer not found")
+
+        total_duration = 0
+        service_snapshots: List[ServiceSnapshot] = []
+        appointment_staff_id = services[0]["staff_id"]
+
+        for item in services:
+            svc = await Service.find_one(Service.id == item["service_id"], Service.is_deleted == False)
+            if not svc:
+                raise ResourceNotFoundException(f"Service ID '{item['service_id']}' not found")
+
+            staff_user = await User.find_one(User.id == item["staff_id"], User.is_deleted == False)
+            staff_name = None
+            if staff_user:
+                staff_name = " ".join(
+                    part for part in [staff_user.first_name, staff_user.last_name] if part
+                ).strip() or staff_user.email
+            else:
+                staff = await Staff.find_one(Staff.id == item["staff_id"], Staff.is_deleted == False)
+                if not staff:
+                    raise ResourceNotFoundException(f"Staff ID '{item['staff_id']}' not found")
+
+            total_duration += svc.duration_minutes
+            service_snapshots.append(
+                ServiceSnapshot(
+                    service_id=str(svc.id),
+                    name=svc.name,
+                    price=item["price"],
+                    duration_minutes=svc.duration_minutes,
+                    tax_rate=svc.tax_rate,
+                    staff_id=item["staff_id"],
+                    staff_name=staff_name,
+                )
+            )
+
+        end_dt = start_dt + timedelta(minutes=total_duration)
+        appointment_data = {
+            "salon_id": salon_id,
+            "customer_id": customer_id,
+            "staff_id": appointment_staff_id,
+            "start_datetime": start_dt,
+            "end_datetime": end_dt,
+            "services": service_snapshots,
+            "total_price": total_amount,
+            "status": "BOOKED",
+            "booking_source": booking_source,
+            "notes": notes,
+            "payment_type": payment_type,
+            "paid_amount": total_amount,
+        }
+
+        appointment = await self.appointment_repo.create(appointment_data)
+        appointment.add_status("BOOKED", changed_by=tenant_context.get_user_id())
+        await appointment.save()
         return appointment
 
     async def change_status(self, appointment_id: str, new_status: str, reason: Optional[str] = None) -> Appointment:

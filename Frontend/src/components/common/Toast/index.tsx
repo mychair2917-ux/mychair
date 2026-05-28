@@ -57,7 +57,7 @@ const Toast = ({
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const user = localStorage.getItem('user_info');
-  const orgId = useAppSelector((state) => state.selectedOrganization.selectedOrganization?.id);
+  const orgId = useAppSelector((state) => state.auth.orgId);
   const prevOrgIdRef = useRef<string | null | undefined>(null);
 
   const handleClose = () => {

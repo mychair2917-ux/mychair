@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from app.models.appointment import Appointment
 from app.repositories.base import BaseRepository
 from app.core import tenant_context
@@ -59,3 +59,43 @@ class AppointmentRepository(BaseRepository[Appointment]):
         """
         filters = {"customer_id": customer_id}
         return await self.list(filters=filters, limit=limit, sort="-start_datetime")
+
+    async def list_paginated(
+        self,
+        salon_id: str,
+        page: int = 1,
+        limit: int = 20,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        sort_by: str = "start_datetime",
+        sort_order: str = "desc",
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+    ) -> Tuple[List[Appointment], int]:
+        """
+        Paginated appointment list for a salon with optional filtering, search, and sorting.
+        Returns (items, total_count).
+        """
+        filters: Dict[str, Any] = {"salon_id": salon_id, "is_deleted": False}
+
+        if status:
+            filters["status"] = status.upper()
+
+        if date_from:
+            filters.setdefault("start_datetime", {})["$gte"] = date_from
+        if date_to:
+            filters.setdefault("start_datetime", {})["$lte"] = date_to
+
+        merged = self._build_tenant_query(filters)
+
+        total = await self.model.find(merged).count()
+
+        allowed_sort = {"start_datetime", "created_at", "status", "total_price"}
+        sort_field = sort_by if sort_by in allowed_sort else "start_datetime"
+        sort_prefix = "-" if sort_order.lower() == "desc" else "+"
+        sort_expr = f"{sort_prefix}{sort_field}"
+
+        skip = (page - 1) * limit
+        items = await self.model.find(merged).sort(sort_expr).skip(skip).limit(limit).to_list()
+
+        return items, total

@@ -33,6 +33,7 @@ TENANT_SCOPED_ROLES: FrozenSet[str] = frozenset(
 class Module(str, Enum):
     DASHBOARD = "dashboard"
     INVITE = "invite"
+    APPOINTMENTS = "appointments"
     SALON_MANAGEMENT = "salon_management"
     EMPLOYEES = "employees"
     SERVICES = "services"
@@ -65,6 +66,7 @@ ROLE_MODULE_ACCESS: dict[str, FrozenSet[Module]] = {
         {
             Module.DASHBOARD,
             Module.INVITE,
+            Module.APPOINTMENTS,
             Module.SALON_MANAGEMENT,
             Module.SERVICES,
             Module.PRODUCTS_INVENTORY,
@@ -74,6 +76,7 @@ ROLE_MODULE_ACCESS: dict[str, FrozenSet[Module]] = {
     ROLE_EMPLOYEE: frozenset(
         {
             Module.DASHBOARD,
+            Module.APPOINTMENTS,
             Module.SALON_MANAGEMENT,
             Module.SERVICES,
             Module.PROFILE,

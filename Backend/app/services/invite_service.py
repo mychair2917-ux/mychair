@@ -1,7 +1,7 @@
 import re
 import secrets
 from datetime import timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.auth.invitation_rbac import (
     ROLE_EMPLOYEE,
@@ -57,8 +57,8 @@ class InviteService:
         payload: CreateInviteRequest,
     ) -> Optional[dict]:
         errors: dict = {}
-        if not payload.phone or not payload.phone.strip():
-            errors["phone"] = ["Phone is required for manager and staff"]
+        if not payload.email:
+            errors["email"] = ["Email is required"]
         if not payload.password:
             errors["password"] = ["Password is required"]
         if not payload.confirm_password:
@@ -255,26 +255,14 @@ class InviteService:
         tenant_id: str,
         tenant_name: str,
     ) -> Tuple[Optional[dict], Optional[dict]]:
-        """Salon owner/admin/manager creates manager or staff with a login password (no email)."""
+        """Salon owner/admin/manager creates manager or staff with email+password immediately."""
         field_errors = self._validate_direct_provision_payload(payload)
         if field_errors:
             return None, field_errors
 
-        phone = payload.phone.strip()
-        email = (
-            str(payload.email)
-            if payload.email
-            else self._internal_email_for_phone(phone, tenant_id)
-        )
+        email = str(payload.email)
+        phone = payload.phone.strip() if payload.phone and payload.phone.strip() else None
         username = payload.username.strip() if payload.username else None
-
-        existing_phone = await User.find_one(
-            User.phone == phone,
-            User.tenant_id == tenant_id,
-            User.is_deleted == False,
-        )
-        if existing_phone:
-            return None, {"phone": ["This phone number is already registered in this salon"]}
 
         existing_email = await User.find_one(
             User.email == email,
@@ -282,9 +270,16 @@ class InviteService:
             User.is_deleted == False,
         )
         if existing_email:
-            return None, {
-                "phone": ["A user with this phone or contact already exists in this salon"]
-            }
+            return None, {"email": ["This email is already registered in this salon"]}
+
+        if phone:
+            existing_phone = await User.find_one(
+                User.phone == phone,
+                User.tenant_id == tenant_id,
+                User.is_deleted == False,
+            )
+            if existing_phone:
+                return None, {"phone": ["This phone number is already registered in this salon"]}
 
         if username:
             existing_username = await User.find_one(
@@ -342,7 +337,7 @@ class InviteService:
 
         response = self._invite_response(invite, tenant_name)
         response["provisioned"] = True
-        response["login_phone"] = phone
+        response["login_email"] = email
         response["invitation_sent"] = False
         return response, None
 
@@ -407,15 +402,22 @@ class InviteService:
         }
 
     async def list_invites(
-        self, actor: User, status: Optional[str] = None
-    ) -> List[dict]:
+        self,
+        actor: User,
+        status: Optional[str] = None,
+        page: int = 1,
+        limit: int = 20,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> Dict[str, Any]:
         """
-        List invitations scoped by actor role (see rbac_config.invite_list_*).
+        List invitations scoped by actor role with pagination, search, and sorting.
         super_admin: all; others: tenant + inviter scope + visible target roles.
         """
         role_filter = invite_list_roles_visible(actor.role)
         if role_filter is not None and not role_filter:
-            return []
+            return {"items": [], "total": 0, "page": page, "limit": limit, "pages": 0}
 
         query: Dict[str, Any] = {}
         if status:
@@ -423,21 +425,44 @@ class InviteService:
         if role_filter is not None:
             query["role"] = {"$in": list(role_filter)}
 
+        if search and search.strip():
+            term = search.strip()
+            query["$or"] = [
+                {"full_name": {"$regex": term, "$options": "i"}},
+                {"invited_email": {"$regex": term, "$options": "i"}},
+            ]
+
         normalized = normalize_role(actor.role)
         scope_to_inviter = invite_list_scoped_to_inviter(actor.role)
 
         if normalized == "super_admin":
-            invites = await Invite.find(query).sort("-created_at").to_list()
+            pass
         elif actor.tenant_id:
             query["salon_id"] = actor.tenant_id
             if scope_to_inviter:
                 query["invited_by"] = str(actor.id)
-            invites = await Invite.find(query).sort("-created_at").to_list()
         else:
             query["invited_by"] = str(actor.id)
-            invites = await Invite.find(query).sort("-created_at").to_list()
 
-        return [await self._serialize_invite(inv) for inv in invites]
+        allowed_sort_fields = {"created_at", "full_name", "invited_email", "role", "status"}
+        sort_field = sort_by if sort_by in allowed_sort_fields else "created_at"
+        sort_prefix = "-" if sort_order.lower() == "desc" else "+"
+        sort_expr = f"{sort_prefix}{sort_field}"
+
+        total = await Invite.find(query).count()
+        skip = (page - 1) * limit
+        invites = await Invite.find(query).sort(sort_expr).skip(skip).limit(limit).to_list()
+
+        items = [await self._serialize_invite(inv) for inv in invites]
+        pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": pages,
+        }
 
     async def _serialize_invite(self, invite: Invite) -> dict:
         salon_name = invite.salon_name

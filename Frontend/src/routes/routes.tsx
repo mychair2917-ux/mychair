@@ -22,6 +22,9 @@ const Employees = lazy(() =>
 const Services = lazy(() =>
   import('../pages').then((module) => ({ default: module.Services }))
 );
+const Appointments = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Appointments }))
+);
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
   <ProtectedRoute module={module}>
@@ -63,6 +66,10 @@ export const routes: RouteObject[] = [
             <Invite />
           </ProtectedRoute>
         ),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_APPOINTMENTS,
+        element: protectAdmin(MODULES.APPOINTMENTS, <Appointments />),
       },
       {
         path: ROUTE_PATHS.INVITE,
@@ -192,6 +199,10 @@ export const routes: RouteObject[] = [
       {
         path: `orgs/:orgId/${ROUTE_PATHS.ORG_INVITE}`,
         element: protectOrg(MODULES.INVITE, <Invite />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.APPOINTMENTS}`,
+        element: protectOrg(MODULES.APPOINTMENTS, <Appointments />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.USER_MANAGEMENT}`,

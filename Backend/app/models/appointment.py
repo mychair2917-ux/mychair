@@ -11,6 +11,8 @@ class ServiceSnapshot(BaseModel):
     price: float
     duration_minutes: int
     tax_rate: float
+    staff_id: Optional[str] = None
+    staff_name: Optional[str] = None
 
 class StatusHistory(BaseModel):
     """Tracks state progressions of an appointment."""
@@ -44,6 +46,8 @@ class Appointment(BaseTenantDocument):
     # Additional Context
     booking_source: str = Field(default="RECEPTIONIST")  # RECEPTIONIST, CLIENT_APP, WEB_WIDGET
     notes: Optional[str] = Field(default=None)
+    payment_type: Optional[str] = Field(default=None)
+    paid_amount: float = Field(default=0.0)
     
     # Cancellation details (if applicable)
     cancellation_reason: Optional[str] = Field(default=None)

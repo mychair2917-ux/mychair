@@ -10,3 +10,4 @@ export { default as SalonOwnerLogin } from './SalonOwnerLogin';
 export { default as SalonOwnerDashboard } from './SalonOwnerDashboard';
 export { default as Employees } from './SalonManagement/Employees';
 export { default as Services } from './SalonManagement/Services';
+export { default as Appointments } from './Appointments';

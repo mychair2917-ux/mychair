@@ -27,4 +27,13 @@ export const API_PATHS = {
     STATUS: (id: string) => `/employees/${id}/status`,
     RESET_PASSWORD: (id: string) => `/employees/${id}/reset-password`,
   },
+  APPOINTMENTS: {
+    TODAY: '/appointments/frontdesk/today',
+    CREATE_FRONTDESK: '/appointments/frontdesk',
+    LIST: '/appointments/list',
+    CLIENTS: '/appointments/clients',
+    CLIENT_HISTORY: (id: string) => `/appointments/clients/${id}/history`,
+    SERVICES: '/appointments/services',
+    STAFF: '/appointments/staff',
+  },
 };

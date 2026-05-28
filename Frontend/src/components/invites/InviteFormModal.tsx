@@ -51,8 +51,8 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
     const payload: CreateInviteRequest = {
       role: values.role,
       full_name: values.full_name.trim(),
+      email: values.email.trim(),
     };
-    if (values.email?.trim()) payload.email = values.email.trim();
     if (values.phone?.trim()) payload.phone = values.phone.trim();
     if (values.password) payload.password = values.password;
     if (values.confirm_password) payload.confirm_password = values.confirm_password;
@@ -83,15 +83,18 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
       const result = await onSubmit(buildPayload(values));
       if (result.success) {
         const directSetup = usesDirectPasswordProvisioning(inviterRole, values.role);
+        // Stop submitting state BEFORE closing to avoid state update on unmounted component
+        setSubmitting(false);
         showToast(
           'success',
           result.message ||
             (directSetup
-              ? 'Team member account created. They can sign in with their phone and password.'
-              : 'Invitation sent successfully')
+              ? 'Team member account created. They can sign in with their email and password.'
+              : 'Invitation sent successfully. The user will receive an email to set their password.')
         );
         resetForm();
         onClose();
+        return;
       } else {
         showToast('error', result.message || 'Failed to send invitation');
       }
@@ -103,15 +106,15 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
       } else {
         showToast('error', getApiErrorMessage(err, 'Please correct the highlighted fields'));
       }
-    } finally {
-      setSubmitting(false);
     }
+    setSubmitting(false);
   };
 
   return (
     <Modal open={open} onClose={onClose} size="lg" isShowIcon>
       <ModalHeader>
         <h2 className="text-xl font-semibold">Invite User</h2>
+        <p className="mt-0.5 text-sm text-gray-500">All users sign in with email and password.</p>
       </ModalHeader>
       <Formik<InviteFormValues>
         initialValues={{ ...defaultInviteFormValues, role: initialRole }}
@@ -151,6 +154,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
             <Form noValidate>
               <ModalBody className="!pt-0">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {/* Role selector */}
                   <FormField
                     label="Role"
                     name="role"
@@ -171,6 +175,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                     />
                   </FormField>
 
+                  {/* Salon selector for super admin inviting staff */}
                   {needsTenant && (
                     <FormField
                       label="Salon"
@@ -192,6 +197,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                     </FormField>
                   )}
 
+                  {/* Salon owner specific fields */}
                   {showSalonSetup && (
                     <>
                       <FormField
@@ -304,6 +310,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                     </>
                   )}
 
+                  {/* Common personal details — same for all roles */}
                   <FormField
                     label="Full Name"
                     name="full_name"
@@ -319,28 +326,30 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       onBlur={handleBlur}
                     />
                   </FormField>
-                  {!directPasswordSetup && (
-                    <FormField
-                      label="Email"
-                      name="email"
-                      required
-                      error={errors.email}
-                      touched={touched.email}
-                    >
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        value={values.email}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                      />
-                    </FormField>
-                  )}
+
+                  {/* Email — required for ALL roles */}
                   <FormField
-                    label={directPasswordSetup ? 'Phone (login ID)' : 'Phone'}
+                    label="Email"
+                    name="email"
+                    required
+                    error={errors.email}
+                    touched={touched.email}
+                  >
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={values.email}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      placeholder="Used to sign in"
+                    />
+                  </FormField>
+
+                  {/* Phone — always optional, contact field only */}
+                  <FormField
+                    label="Phone"
                     name="phone"
-                    required={directPasswordSetup}
                     error={errors.phone}
                     touched={touched.phone}
                   >
@@ -351,9 +360,11 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       value={values.phone}
                       onChange={handleChange}
                       onBlur={handleBlur}
-                      placeholder={directPasswordSetup ? 'Used to sign in' : undefined}
+                      placeholder="Optional contact number"
                     />
                   </FormField>
+
+                  {/* Password fields — only when owner/admin/manager is creating staff account */}
                   {directPasswordSetup && (
                     <>
                       <FormField
@@ -385,7 +396,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                           value={values.password}
                           onChange={handleChange}
                           onBlur={handleBlur}
-                          placeholder="Login password for this user"
+                          placeholder="Login password"
                         />
                       </FormField>
                       <FormField
@@ -407,6 +418,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                     </>
                   )}
 
+                  {/* Team-specific fields */}
                   {showTeamFields && (
                     <>
                       <FormField
@@ -445,6 +457,13 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       )}
                     </>
                   )}
+                </div>
+
+                {/* Login info hint */}
+                <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+                  {directPasswordSetup
+                    ? 'The account will be created immediately. The user can sign in with their email and the password you set.'
+                    : 'An invitation email will be sent. The user will click the link to set their own password and activate their account.'}
                 </div>
               </ModalBody>
               <ModalFooter className="!pt-0">

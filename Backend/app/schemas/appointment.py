@@ -3,6 +3,47 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 from app.utils.timezone import now_utc, make_aware
 
+
+class AppointmentServiceCreate(BaseModel):
+    service_id: str
+    staff_id: str
+    price: float = Field(..., ge=0)
+
+
+class CustomerQuickCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    phone: str = Field(..., min_length=5, max_length=20)
+    email: Optional[str] = Field(default=None, max_length=120)
+
+
+class FrontDeskAppointmentCreate(BaseModel):
+    salon_id: str
+    customer_id: str
+    start_datetime: datetime
+    services: List[AppointmentServiceCreate] = Field(..., min_items=1)
+    payment_type: str = Field(..., description="Cash or UPI")
+    total_amount: float = Field(..., ge=0)
+    booking_source: str = Field(default="WALK_IN")
+    notes: Optional[str] = None
+
+    @field_validator("payment_type")
+    @classmethod
+    def validate_payment_type(cls, v: str) -> str:
+        normalized = v.upper()
+        if normalized not in {"CASH", "UPI"}:
+            raise ValueError("Payment type must be Cash or UPI")
+        return normalized
+
+
+class AppointmentServiceResponse(BaseModel):
+    service_id: str
+    name: str
+    price: float
+    duration_minutes: int
+    tax_rate: float
+    staff_id: Optional[str] = None
+    staff_name: Optional[str] = None
+
 class AppointmentCreate(BaseModel):
     salon_id: str = Field(..., description="Target Salon Branch ID")
     customer_id: str = Field(..., description="Client Customer ID")
@@ -46,3 +87,6 @@ class AppointmentResponse(BaseModel):
     status: str
     notes: Optional[str]
     booking_source: str
+    services: List[AppointmentServiceResponse] = Field(default_factory=list)
+    payment_type: Optional[str] = None
+    paid_amount: float = 0.0
