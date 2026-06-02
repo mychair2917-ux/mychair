@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   CalendarDays,
   ChevronLeft,
@@ -12,28 +12,43 @@ import {
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 
-import { Button, Input, Select } from '../../components/common';
+import { Button, CommonDropdown, Input, Select } from '../../components/common';
 import { showToast } from '../../components/common/Toast/toastService';
 import { useAppSelector } from '../../redux/hooks';
 import {
   useCreateAppointmentClientMutation,
   useCreateFrontDeskAppointmentMutation,
   useGetAppointmentClientHistoryQuery,
-  useGetAppointmentServicesQuery,
+  useGetAppointmentSalonProductsQuery,
+  useGetAppointmentSalonServicesQuery,
   useGetAppointmentStaffQuery,
   useGetTodayAppointmentsQuery,
   useLazySearchAppointmentClientsQuery,
   useListAppointmentsQuery,
 } from '../../redux/slices/appointments/appointmentsApi';
-import { AppointmentClient, AppointmentListItem } from '../../redux/slices/appointments/Types';
+import {
+  AppointmentClient,
+  AppointmentListItem,
+  AppointmentProductOption,
+} from '../../redux/slices/appointments/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
+import { cn } from '../../utils/cn';
 
 /* ─── types ─────────────────────────────────────────────── */
 type Tab = 'entry' | 'list';
 
 type ServiceRow = {
   id: string;
+  salon_service_id: string;
   service_id: string;
+  staff_id: string;
+  price: string;
+};
+
+type ProductRow = {
+  id: string;
+  salon_product_id: string;
+  product_id: string;
   staff_id: string;
   price: string;
 };
@@ -41,9 +56,16 @@ type ServiceRow = {
 /* ─── constants ──────────────────────────────────────────── */
 const PAGE_SIZE = 15;
 
-const paymentOptions = [
+const paymentMethodOptions = [
   { value: 'CASH', label: 'Cash' },
   { value: 'UPI', label: 'UPI' },
+  { value: 'CARD', label: 'Card' },
+];
+
+const paymentStatusOptions = [
+  { value: 'PAID', label: 'Paid' },
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'PARTIALLY_PAID', label: 'Partially Paid' },
 ];
 
 const statusOptions = [
@@ -70,7 +92,27 @@ const statusStyles: Record<string, string> = {
 
 /* ─── helpers ────────────────────────────────────────────── */
 function createRow(): ServiceRow {
-  return { id: crypto.randomUUID(), service_id: '', staff_id: '', price: '' };
+  return { id: crypto.randomUUID(), salon_service_id: '', service_id: '', staff_id: '', price: '' };
+}
+
+function createProductRow(): ProductRow {
+  return { id: crypto.randomUUID(), salon_product_id: '', product_id: '', staff_id: '', price: '' };
+}
+
+function hasValidPrice(value: string): boolean {
+  return value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
+}
+
+function isServiceRowComplete(row: ServiceRow): boolean {
+  return Boolean(row.salon_service_id && row.staff_id && hasValidPrice(row.price));
+}
+
+function isProductRowBlank(row: ProductRow): boolean {
+  return !row.salon_product_id && !row.product_id && !row.staff_id && row.price.trim() === '';
+}
+
+function isProductRowComplete(row: ProductRow): boolean {
+  return Boolean(row.salon_product_id && row.staff_id && hasValidPrice(row.price));
 }
 
 function toDateTimeInputValue(date: Date): string {
@@ -105,7 +147,8 @@ const AppointmentQueueCard: React.FC<{ appointment: AppointmentListItem }> = ({ 
       <span className="text-gray-500">₹{appointment.total_price}</span>
     </div>
     <p className="mt-2 line-clamp-2 text-xs text-gray-500">
-      {appointment.services.map((s) => s.name).join(', ') || 'No services'}
+      {[...appointment.services.map((s) => s.name), ...appointment.products.map((p) => p.name)].join(', ') ||
+        'No services or products'}
     </p>
   </div>
 );
@@ -129,12 +172,15 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
   const [sortBy] = useState('start_datetime');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search
   const handleSearchChange = (val: string) => {
     setSearch(val);
-    clearTimeout((window as any).__apptSearchTimer);
-    (window as any).__apptSearchTimer = setTimeout(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    searchTimerRef.current = setTimeout(() => {
       setDebouncedSearch(val);
       setPage(1);
     }, 400);
@@ -209,7 +255,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
               <th className="px-3 py-3 text-left font-semibold text-gray-500">ID</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Client</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Phone</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Services</th>
+              <th className="px-3 py-3 text-left font-semibold text-gray-500">Items</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Staff</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Date & Time</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Status</th>
@@ -245,13 +291,13 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                     {appt.id.slice(-8).toUpperCase()}
                   </td>
                   <td className="px-3 py-3 font-medium text-gray-900">{appt.customer_name}</td>
-                  <td className="px-3 py-3 text-gray-600">{appt.customer_phone || '—'}</td>
+                  <td className="px-3 py-3 text-gray-600">{appt.customer_phone || '-'}</td>
                   <td className="px-3 py-3 text-gray-600 max-w-40">
                     <span className="line-clamp-2">
-                      {appt.services.map((s) => s.name).join(', ') || '—'}
+                      {[...appt.services.map((s) => s.name), ...appt.products.map((p) => p.name)].join(', ') || '-'}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-gray-600">{appt.staff_name || '—'}</td>
+                  <td className="px-3 py-3 text-gray-600">{appt.staff_name || '-'}</td>
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
                     <p className="font-medium text-gray-900">{formatDate(appt.start_datetime)}</p>
                     <p className="text-xs text-gray-500">{formatTime(appt.start_datetime)}</p>
@@ -266,7 +312,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                   <td className="px-3 py-3">
                     <div>
                       <p className="font-medium text-gray-900">₹{appt.total_price}</p>
-                      <p className="text-xs text-gray-500">{appt.payment_type || '—'}</p>
+                      <p className="text-xs text-gray-500">{appt.payment_type || '-'}</p>
                     </div>
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -349,7 +395,10 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
 const Appointments: React.FC = () => {
   const { orgId } = useParams<{ orgId: string }>();
   const storedOrgId = useAppSelector((state) => state.auth.orgId);
-  const salonId = orgId ?? storedOrgId ?? '';
+  const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
+  const role = useAppSelector((state) => state.auth.user?.role);
+  const isSuperAdmin = role === 'super_admin';
+  const salonId = (orgId ?? (isSuperAdmin ? selectedSalonId : storedOrgId) ?? '').trim();
 
   const [activeTab, setActiveTab] = useState<Tab>('entry');
 
@@ -367,7 +416,12 @@ const Appointments: React.FC = () => {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [clientForm, setClientForm] = useState({ name: '', phone: '', email: '' });
   const [serviceRows, setServiceRows] = useState<ServiceRow[]>([createRow()]);
-  const [paymentType, setPaymentType] = useState('CASH');
+  const [productRows, setProductRows] = useState<ProductRow[]>([]);
+  const [invalidServiceRowIds, setInvalidServiceRowIds] = useState<string[]>([]);
+  const [invalidProductRowIds, setInvalidProductRowIds] = useState<string[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentStatus, setPaymentStatus] = useState('PAID');
+  const [paidAmount, setPaidAmount] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [startDateTime, setStartDateTime] = useState(defaultStart);
   const [notes, setNotes] = useState('');
@@ -376,10 +430,17 @@ const Appointments: React.FC = () => {
     { salon_id: salonId },
     { skip: !salonId }
   );
-  const { data: servicesData } = useGetAppointmentServicesQuery();
-  const { data: staffData } = useGetAppointmentStaffQuery();
+  const { data: servicesData, isLoading: isLoadingSalonServices } = useGetAppointmentSalonServicesQuery(
+    { salon_id: salonId },
+    { skip: !salonId }
+  );
+  const { data: productsData, isLoading: isLoadingSalonProducts } = useGetAppointmentSalonProductsQuery(
+    { salon_id: salonId },
+    { skip: !salonId }
+  );
+  const { data: staffData } = useGetAppointmentStaffQuery(undefined, { skip: !salonId });
   const { data: historyData, isFetching: isHistoryLoading } = useGetAppointmentClientHistoryQuery(
-    selectedClient?.id ?? '',
+    { id: selectedClient?.id ?? '', salon_id: salonId || undefined },
     { skip: !selectedClient }
   );
   const [searchClients, { data: clientsData, isFetching: isSearchingClients }] =
@@ -388,20 +449,27 @@ const Appointments: React.FC = () => {
   const [createAppointment, { isLoading: isSubmitting }] = useCreateFrontDeskAppointmentMutation();
 
   const services = servicesData?.data ?? [];
+  const products = productsData?.data ?? [];
   const staff = staffData?.data ?? [];
   const clients = clientsData?.data ?? [];
-  const appointments = todayData?.data ?? [];
+  const appointments = useMemo(() => todayData?.data ?? [], [todayData?.data]);
   const history = historyData?.data ?? [];
 
   const serviceOptions = services.map((service) => ({
-    value: service.id,
-    label: `${service.name} - ₹${service.price}`,
+    value: service.salon_service_id,
+    label: service.service_name,
+  }));
+  const productOptions = products.map((product: AppointmentProductOption) => ({
+    value: product.salon_product_id,
+    label: product.product_name,
   }));
   const staffOptions = staff.map((member) => ({ value: member.id, label: member.name }));
 
   const calculatedTotal = useMemo(
-    () => serviceRows.reduce((sum, row) => sum + Number(row.price || 0), 0),
-    [serviceRows]
+    () =>
+      serviceRows.reduce((sum, row) => sum + Number(row.price || 0), 0) +
+      productRows.reduce((sum, row) => sum + Number(row.price || 0), 0),
+    [productRows, serviceRows]
   );
 
   const visibleAppointments = useMemo(() => {
@@ -416,6 +484,16 @@ const Appointments: React.FC = () => {
       return matchesSearch && matchesStatus && matchesSource;
     });
   }, [appointments, queueSearch, sourceFilter, statusFilter]);
+
+  if (isSuperAdmin && !salonId) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4 md:p-6 xl:p-8">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+          Select a salon from the header to manage appointments.
+        </div>
+      </div>
+    );
+  }
 
   const handleClientSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -452,13 +530,38 @@ const Appointments: React.FC = () => {
   };
 
   const updateServiceRow = (rowId: string, field: keyof ServiceRow, value: string) => {
+    setInvalidServiceRowIds((ids) => ids.filter((id) => id !== rowId));
     setServiceRows((rows) =>
       rows.map((row) => {
         if (row.id !== rowId) return row;
-        if (field === 'service_id') {
-          const selectedService = services.find((service) => service.id === value);
+        if (field === 'salon_service_id') {
+          const selectedService = services.find((service) => service.salon_service_id === value);
           const price = selectedService ? String(selectedService.price) : row.price;
-          return { ...row, service_id: value, price };
+          return {
+            ...row,
+            salon_service_id: value,
+            service_id: selectedService?.service_id ?? '',
+            price,
+          };
+        }
+        return { ...row, [field]: value };
+      })
+    );
+  };
+  const updateProductRow = (rowId: string, field: keyof ProductRow, value: string) => {
+    setInvalidProductRowIds((ids) => ids.filter((id) => id !== rowId));
+    setProductRows((rows) =>
+      rows.map((row) => {
+        if (row.id !== rowId) return row;
+        if (field === 'salon_product_id') {
+          const selectedProduct = products.find((product) => product.salon_product_id === value);
+          const price = selectedProduct ? String(selectedProduct.price) : row.price;
+          return {
+            ...row,
+            salon_product_id: value,
+            product_id: selectedProduct?.product_id ?? '',
+            price,
+          };
         }
         return { ...row, [field]: value };
       })
@@ -467,16 +570,33 @@ const Appointments: React.FC = () => {
 
   const removeServiceRow = (rowId: string) => {
     setServiceRows((rows) => (rows.length === 1 ? rows : rows.filter((row) => row.id !== rowId)));
+    setInvalidServiceRowIds((ids) => ids.filter((id) => id !== rowId));
   };
+  const removeProductRow = (rowId: string) => {
+    setProductRows((rows) => rows.filter((row) => row.id !== rowId));
+    setInvalidProductRowIds((ids) => ids.filter((id) => id !== rowId));
+  };
+
+  const effectiveTotal = Number(totalAmount || calculatedTotal);
+  const remainingAmount =
+    paymentStatus === 'PARTIALLY_PAID' && paidAmount
+      ? Math.max(0, effectiveTotal - Number(paidAmount))
+      : 0;
 
   const resetEntryForm = () => {
     setSelectedClient(null);
     setServiceRows([createRow()]);
+    setProductRows([]);
     setTotalAmount('');
+    setPaidAmount('');
+    setPaymentStatus('PAID');
+    setPaymentMethod('CASH');
     setNotes('');
     setClientSearch('');
     setQuickAddOpen(false);
     setClientForm({ name: '', phone: '', email: '' });
+    setInvalidServiceRowIds([]);
+    setInvalidProductRowIds([]);
   };
 
   const handleSubmit = async () => {
@@ -488,9 +608,34 @@ const Appointments: React.FC = () => {
       showToast('warning', 'Select or add a client first');
       return;
     }
-    if (serviceRows.some((row) => !row.service_id || !row.staff_id || Number(row.price) < 0)) {
-      showToast('warning', 'Complete all service rows before submitting');
+    const invalidServiceIds = serviceRows
+      .filter((row) => !isServiceRowComplete(row))
+      .map((row) => row.id);
+    const productRowsToSubmit = productRows.filter((row) => !isProductRowBlank(row));
+    const invalidProductIds = productRowsToSubmit
+      .filter((row) => !isProductRowComplete(row))
+      .map((row) => row.id);
+
+    setInvalidServiceRowIds(invalidServiceIds);
+    setInvalidProductRowIds(invalidProductIds);
+
+    if (invalidServiceIds.length || invalidProductIds.length) {
+      showToast('warning', 'Complete the highlighted service or product rows before submitting');
       return;
+    }
+
+    const finalTotal = Number(totalAmount || calculatedTotal);
+
+    if (paymentStatus === 'PARTIALLY_PAID') {
+      const pa = Number(paidAmount);
+      if (!paidAmount || pa <= 0) {
+        showToast('warning', 'Enter the paid amount for partially paid status');
+        return;
+      }
+      if (pa >= finalTotal) {
+        showToast('warning', 'Paid amount must be less than total for partially paid status');
+        return;
+      }
     }
 
     try {
@@ -499,12 +644,21 @@ const Appointments: React.FC = () => {
         customer_id: selectedClient.id,
         start_datetime: new Date(startDateTime).toISOString(),
         services: serviceRows.map((row) => ({
-          service_id: row.service_id,
+          service_id: row.service_id || undefined,
+          salon_service_id: row.salon_service_id,
           staff_id: row.staff_id,
           price: Number(row.price || 0),
         })),
-        payment_type: paymentType,
-        total_amount: Number(totalAmount || calculatedTotal),
+        products: productRowsToSubmit.map((row) => ({
+          product_id: row.product_id || undefined,
+          salon_product_id: row.salon_product_id,
+          staff_id: row.staff_id,
+          price: Number(row.price || 0),
+        })),
+        payment_type: paymentMethod,
+        payment_status: paymentStatus,
+        paid_amount: paymentStatus === 'PARTIALLY_PAID' ? Number(paidAmount) : undefined,
+        total_amount: finalTotal,
         booking_source: 'WALK_IN',
         notes: notes.trim() || undefined,
       }).unwrap();
@@ -531,7 +685,7 @@ const Appointments: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Tab switcher — top-right */}
+          {/* Tab switcher - top-right */}
           <div className="flex items-center rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
             <button
               type="button"
@@ -695,40 +849,132 @@ const Appointments: React.FC = () => {
                 </Button>
               </div>
               <div className="space-y-3">
-                {serviceRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3 md:grid-cols-[1fr_1fr_120px_40px]"
-                  >
-                    <Select
-                      value={row.service_id}
-                      onChange={(event) => updateServiceRow(row.id, 'service_id', event.target.value)}
-                      options={serviceOptions}
-                      placeholder="Service"
-                    />
-                    <Select
-                      value={row.staff_id}
-                      onChange={(event) => updateServiceRow(row.id, 'staff_id', event.target.value)}
-                      options={staffOptions}
-                      placeholder="Staff"
-                    />
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="Price"
-                      value={row.price}
-                      onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="!px-2"
-                      onClick={() => removeServiceRow(row.id)}
+                {serviceRows.map((row) => {
+                  const isInvalid = invalidServiceRowIds.includes(row.id);
+
+                  return (
+                    <div
+                      key={row.id}
+                      className={cn(
+                        'grid gap-3 rounded-xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
+                        isInvalid
+                          ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
+                          : 'border-gray-100 bg-gray-50'
+                      )}
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                      <CommonDropdown
+                        value={row.salon_service_id}
+                        onChange={(value) => updateServiceRow(row.id, 'salon_service_id', String(value))}
+                        options={serviceOptions}
+                        placeholder="Search service"
+                        searchable
+                        loading={isLoadingSalonServices}
+                      />
+                      <Select
+                        value={row.staff_id}
+                        onChange={(event) => updateServiceRow(row.id, 'staff_id', event.target.value)}
+                        options={staffOptions}
+                        placeholder="Staff"
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="Price"
+                        value={row.price}
+                        onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="!px-2"
+                        onClick={() => removeServiceRow(row.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      {isInvalid && (
+                        <p className="text-xs font-medium text-red-600 md:col-span-4">
+                          Select a service, assign staff, and enter a valid price.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-900">Products</h2>
+                  <p className="text-sm text-gray-500">Add multiple product rows with assigned staff.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={() => setProductRows((rows) => [...rows, createProductRow()])}
+                >
+                  Add row
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {productRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                    No products added yet.
+                  </p>
+                ) : (
+                  productRows.map((row) => {
+                    const isInvalid = invalidProductRowIds.includes(row.id);
+
+                    return (
+                      <div
+                        key={row.id}
+                        className={cn(
+                          'grid gap-3 rounded-xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
+                          isInvalid
+                            ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
+                            : 'border-gray-100 bg-gray-50'
+                        )}
+                      >
+                        <CommonDropdown
+                          value={row.salon_product_id}
+                          onChange={(value) => updateProductRow(row.id, 'salon_product_id', String(value))}
+                          options={productOptions}
+                          placeholder="Search product"
+                          searchable
+                          loading={isLoadingSalonProducts}
+                        />
+                        <Select
+                          value={row.staff_id}
+                          onChange={(event) => updateProductRow(row.id, 'staff_id', event.target.value)}
+                          options={staffOptions}
+                          placeholder="Staff"
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="Price"
+                          value={row.price}
+                          onChange={(event) => updateProductRow(row.id, 'price', event.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="!px-2"
+                          onClick={() => removeProductRow(row.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                        {isInvalid && (
+                          <p className="text-xs font-medium text-red-600 md:col-span-4">
+                            Complete this product row or remove it before submitting.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </section>
 
@@ -747,7 +993,9 @@ const Appointments: React.FC = () => {
                       <p className="font-medium text-gray-900">
                         {new Date(item.start_datetime).toLocaleDateString()}
                       </p>
-                      <p className="mt-1 text-gray-500">{item.services.map((s) => s.name).join(', ')}</p>
+                      <p className="mt-1 text-gray-500">
+                        {[...item.services.map((s) => s.name), ...item.products.map((p) => p.name)].join(', ')}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -778,12 +1026,24 @@ const Appointments: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Payment type</label>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Payment method</label>
                 <Select
-                  value={paymentType}
-                  onChange={(event) => setPaymentType(event.target.value)}
-                  options={paymentOptions}
-                  placeholder="Payment type"
+                  value={paymentMethod}
+                  onChange={(event) => setPaymentMethod(event.target.value)}
+                  options={paymentMethodOptions}
+                  placeholder="Payment method"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Payment status</label>
+                <Select
+                  value={paymentStatus}
+                  onChange={(event) => {
+                    setPaymentStatus(event.target.value);
+                    if (event.target.value !== 'PARTIALLY_PAID') setPaidAmount('');
+                  }}
+                  options={paymentStatusOptions}
+                  placeholder="Payment status"
                 />
               </div>
               <div>
@@ -796,6 +1056,58 @@ const Appointments: React.FC = () => {
                   onChange={(event) => setTotalAmount(event.target.value)}
                 />
                 <p className="mt-1 text-xs text-gray-500">Calculated: ₹{calculatedTotal}</p>
+              </div>
+              {paymentStatus === 'PARTIALLY_PAID' && (
+                <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-violet-700">
+                      Paid amount <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={effectiveTotal - 0.01}
+                      placeholder="Enter amount paid"
+                      value={paidAmount}
+                      onChange={(event) => {
+                        const val = event.target.value;
+                        if (Number(val) >= effectiveTotal) return;
+                        setPaidAmount(val);
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                    <span className="text-xs font-medium text-gray-600">Remaining amount</span>
+                    <span className="text-sm font-bold text-amber-700">
+                      ₹{remainingAmount.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="rounded-xl bg-gray-50 p-3 text-sm">
+                <p className="text-xs uppercase tracking-wide text-gray-500">Items</p>
+                <div className="mt-2 space-y-1 text-gray-600">
+                  {serviceRows.map((row) => {
+                    const item = services.find((service) => service.salon_service_id === row.salon_service_id);
+                    if (!item) return null;
+                    return (
+                      <div key={row.id} className="flex items-center justify-between gap-3">
+                        <span>{item.service_name}</span>
+                        <span>₹{row.price || item.price}</span>
+                      </div>
+                    );
+                  })}
+                  {productRows.map((row) => {
+                    const item = products.find((product) => product.salon_product_id === row.salon_product_id);
+                    if (!item) return null;
+                    return (
+                      <div key={row.id} className="flex items-center justify-between gap-3">
+                        <span>{item.product_name}</span>
+                        <span>₹{row.price || item.price}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               <textarea
                 className="min-h-24 w-full rounded-xl border border-gray-200 p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-gold)]"

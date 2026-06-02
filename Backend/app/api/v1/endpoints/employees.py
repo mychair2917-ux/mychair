@@ -1,4 +1,5 @@
 from typing import List, Optional
+import logging
 
 from fastapi import APIRouter, Depends, Query
 
@@ -8,6 +9,7 @@ from app.models.user import User
 from app.schemas.employee import (
     EmployeeListItem,
     EmployeeResetPassword,
+    SalonEmployeeGroup,
     EmployeeStatusUpdate,
     EmployeeUpdate,
 )
@@ -16,6 +18,7 @@ from app.utils.api_response import error_response, success_response
 
 router = APIRouter()
 employee_service = EmployeeService()
+logger = logging.getLogger(__name__)
 
 
 @router.get("")
@@ -24,19 +27,56 @@ async def list_employees(
     role: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None, description="ACTIVE or INACTIVE"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=100, ge=1, le=500),
     current_user: User = Depends(require_module(Module.EMPLOYEES)),
 ):
-    items = await employee_service.list_employees(
-        current_user,
-        tenant_id=tenant_id,
-        role=role,
-        search=search,
-        status=status,
-    )
+    try:
+        items = await employee_service.list_employees(
+            current_user,
+            tenant_id=tenant_id,
+            role=role,
+            search=search,
+            status=status,
+            page=page,
+            limit=limit,
+        )
+    except Exception:
+        logger.exception("Failed to fetch employees list; returning empty list")
+        items = []
     return success_response(
-        "Employees retrieved successfully",
-        data=[item.model_dump(mode="json") for item in items],
+        "Employees fetched successfully",
+        data=[item.model_dump(mode="json") for item in (items or []) if item],
     )
+
+
+@router.get("/by-salon")
+async def list_employees_by_salon(
+    tenant_id: Optional[str] = Query(default=None, description="Salon tenant id (super_admin)"),
+    search: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None, description="ACTIVE or INACTIVE"),
+    current_user: User = Depends(require_module(Module.EMPLOYEES)),
+):
+    """
+    Returns employees grouped by salon/branch.
+    Each group contains `managers` (salon_manager role) and `staff` (employee role).
+    """
+    try:
+        groups = await employee_service.list_employees_by_salon(
+            current_user,
+            tenant_id=tenant_id,
+            search=search,
+            status=status,
+        )
+    except Exception:
+        logger.exception("Failed to fetch employees by salon; returning empty list")
+        groups = []
+    return success_response(
+        "Employees by salon fetched successfully",
+        data=[g.model_dump(mode="json") for g in (groups or []) if g],
+    )
+
+
 
 
 @router.get("/{user_id}")

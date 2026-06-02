@@ -6,13 +6,35 @@ import {
 } from 'lucide-react';
 
 import { isEmployeeDashboard } from '../../config/rbac';
+import { ROUTE_PATHS } from '../../constants';
 import { getUserDisplayName } from '../../redux/slices/auth/authSlice';
 import { useAppSelector } from '../../redux/hooks';
+import { useNavigate } from 'react-router-dom';
+import { showToast } from '../../components/common/Toast/toastService';
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const user = useAppSelector((state) => state.auth.user);
+  const orgId = useAppSelector((state) => state.auth.orgId);
+  const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
   const isPersonalView = isEmployeeDashboard(user?.role);
   const displayName = getUserDisplayName(user) || 'there';
+
+  const handleAddAppointment = () => {
+    if (user?.role === 'super_admin') {
+      if (!selectedSalonId) {
+        showToast('warning', 'Select a salon from header before creating appointments');
+        return;
+      }
+      navigate(`/${ROUTE_PATHS.ADMIN_APPOINTMENTS}`);
+      return;
+    }
+    if (!orgId || orgId === 'system') {
+      showToast('warning', 'Salon context is missing. Please sign in again.');
+      return;
+    }
+    navigate(`/orgs/${orgId}/${ROUTE_PATHS.APPOINTMENTS}`);
+  };
 
   return (
     <div className="max-w-[1600px] mx-auto p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
@@ -34,9 +56,13 @@ const Dashboard: React.FC = () => {
               <Users className="h-4 w-4 text-[var(--color-brand-gold)]" />
               New Walk-in
             </button>
-            <button className="flex items-center gap-2 px-5 py-2.5 bg-[var(--color-brand-gold)] text-white hover:bg-[var(--color-brand-gold-dark)] rounded-xl text-sm font-semibold transition-all shadow-md">
+            <button
+              type="button"
+              onClick={handleAddAppointment}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[var(--color-brand-gold)] text-white hover:bg-[var(--color-brand-gold-dark)] rounded-xl text-sm font-semibold transition-all shadow-md"
+            >
               <Plus className="h-4 w-4" />
-              New Appointment
+              Add Appointment
             </button>
           </div>
         )}

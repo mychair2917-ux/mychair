@@ -11,6 +11,118 @@ class BillingService:
         self.invoice_repo = InvoiceRepository()
         self.payment_repo = PaymentRepository()
 
+    async def _generate_invoice_number(self, salon_id: str) -> str:
+        """Generates a unique invoice number per salon: INV-{SALON_SHORT}-{SEQ:04d}."""
+        count = await Invoice.find(
+            {"salon_id": salon_id, "is_deleted": False}
+        ).count()
+        salon_short = salon_id[-4:].upper()
+        return f"INV-{salon_short}-{str(count + 1).zfill(4)}"
+
+    async def create_invoice_from_appointment(
+        self,
+        appointment_id: str,
+        salon_id: str,
+        salon_name: str,
+        salon_phone: str,
+        salon_address: str,
+        customer_id: str,
+        customer_name: str,
+        customer_phone: str,
+        services: List[Dict[str, Any]],
+        products: List[Dict[str, Any]],
+        payment_status: str,
+        payment_method: str,
+        total_amount: float,
+        paid_amount: float,
+    ) -> Invoice:
+        """
+        Auto-creates a finalized invoice from an appointment submission.
+        Snapshots all appointment data permanently — no manual entry needed.
+        """
+        invoice_items: List[InvoiceItem] = []
+        subtotal = 0.0
+        tax_amount = 0.0
+
+        for svc in services:
+            price = float(svc.get("price", 0.0))
+            tax_rate = float(svc.get("tax_rate", 0.0))
+            line_tax = price * (tax_rate / 100.0)
+            subtotal += price
+            tax_amount += line_tax
+            invoice_items.append(
+                InvoiceItem(
+                    item_type="SERVICE",
+                    item_id=svc.get("service_id", ""),
+                    name=svc.get("name", "Service"),
+                    quantity=1,
+                    unit_price=price,
+                    tax_rate=tax_rate,
+                    discount=0.0,
+                    staff_id=svc.get("staff_id"),
+                    staff_name=svc.get("staff_name"),
+                )
+            )
+
+        for prod in products:
+            price = float(prod.get("price", 0.0))
+            tax_rate = float(prod.get("tax_rate", 0.0))
+            line_tax = price * (tax_rate / 100.0)
+            subtotal += price
+            tax_amount += line_tax
+            invoice_items.append(
+                InvoiceItem(
+                    item_type="PRODUCT",
+                    item_id=prod.get("product_id", ""),
+                    name=prod.get("name", "Product"),
+                    quantity=1,
+                    unit_price=price,
+                    tax_rate=tax_rate,
+                    discount=0.0,
+                    staff_id=prod.get("staff_id"),
+                    staff_name=prod.get("staff_name"),
+                )
+            )
+
+        computed_total = total_amount if total_amount > 0 else (subtotal + tax_amount)
+
+        if payment_status == "PAID":
+            effective_paid = computed_total
+            remaining = 0.0
+        elif payment_status == "PENDING":
+            effective_paid = 0.0
+            remaining = computed_total
+        else:  # PARTIALLY_PAID
+            effective_paid = min(paid_amount, computed_total)
+            remaining = computed_total - effective_paid
+
+        invoice_number = await self._generate_invoice_number(salon_id)
+
+        invoice = Invoice(
+            salon_id=salon_id,
+            salon_name=salon_name,
+            salon_phone=salon_phone,
+            salon_address=salon_address,
+            customer_id=customer_id,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            appointment_id=appointment_id,
+            invoice_number=invoice_number,
+            status="FINALIZED",
+            payment_status=payment_status,
+            payment_method=payment_method,
+            items=invoice_items,
+            subtotal=round(subtotal, 2),
+            tax_amount=round(tax_amount, 2),
+            discount_amount=0.0,
+            total_amount=round(computed_total, 2),
+            paid_amount=round(effective_paid, 2),
+            remaining_amount=round(remaining, 2),
+            finalized_at=now_utc(),
+        )
+        await invoice.insert()
+        return invoice
+
     async def create_draft_invoice(
         self,
         salon_id: str,

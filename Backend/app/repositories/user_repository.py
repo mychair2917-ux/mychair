@@ -32,6 +32,58 @@ class UserRepository(BaseRepository[User]):
         await user.insert()
         return user
 
+    async def list_employees(
+        self,
+        tenant_id: str,
+        roles: List[str],
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        page: int = 1,
+        limit: int = 100,
+    ) -> List[User]:
+        query: Dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "role": {"$in": roles},
+            "is_deleted": False,
+        }
+        if status:
+            query["status"] = status.strip().upper()
+        if search and search.strip():
+            term = search.strip()
+            query["$or"] = [
+                {"first_name": {"$regex": term, "$options": "i"}},
+                {"last_name": {"$regex": term, "$options": "i"}},
+                {"email": {"$regex": term, "$options": "i"}},
+                {"phone": {"$regex": term, "$options": "i"}},
+            ]
+        skip = max(0, (page - 1) * limit)
+        return await User.find(query).sort("-created_at").skip(skip).limit(limit).to_list()
+
+    async def list_employees_all_tenants(
+        self,
+        roles: List[str],
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        page: int = 1,
+        limit: int = 100,
+    ) -> List[User]:
+        query: Dict[str, Any] = {
+            "role": {"$in": roles},
+            "is_deleted": False,
+        }
+        if status:
+            query["status"] = status.strip().upper()
+        if search and search.strip():
+            term = search.strip()
+            query["$or"] = [
+                {"first_name": {"$regex": term, "$options": "i"}},
+                {"last_name": {"$regex": term, "$options": "i"}},
+                {"email": {"$regex": term, "$options": "i"}},
+                {"phone": {"$regex": term, "$options": "i"}},
+            ]
+        skip = max(0, (page - 1) * limit)
+        return await User.find(query).sort("-created_at").skip(skip).limit(limit).to_list()
+
     async def update_fields(
         self,
         user_id: str,

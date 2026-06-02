@@ -8,6 +8,8 @@ import '../slices/invitations/invitationsApi';
 import '../slices/salonOwner/salonOwnerApi';
 import '../slices/employees/employeesApi';
 import '../slices/appointments/appointmentsApi';
+import '../slices/salonProducts/salonProductsApi';
+import '../slices/salonServices/salonServicesApi';
 
 export const store = configureStore({
   reducer: {

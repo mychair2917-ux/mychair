@@ -1,9 +1,14 @@
 from fastapi import APIRouter, Depends, Query, status
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+from beanie import PydanticObjectId
 from app.api.dependencies.auth import PermissionChecker, get_current_user
+from app.core import tenant_context
 from app.core.exceptions import ResourceNotFoundException
 from app.models.customer import Customer
+from app.models.product import Product
+from app.models.salon_product import SalonProduct
+from app.models.salon_service import SalonService
 from app.models.service import Service
 from app.models.user import User
 from app.models.appointment import Appointment
@@ -23,6 +28,24 @@ from app.utils.api_response import success_response
 router = APIRouter()
 appointment_service = AppointmentService()
 appointment_repo = AppointmentRepository()
+
+
+def _resolve_salon_scope(current_user: User, salon_id: Optional[str]) -> str:
+    if current_user.role == "super_admin":
+        resolved = (salon_id or "").strip()
+        if not resolved:
+            raise ResourceNotFoundException("Salon is required")
+        return resolved
+    resolved = str(current_user.tenant_id or "").strip()
+    if not resolved:
+        raise ResourceNotFoundException("Salon is required")
+    return resolved
+
+
+def _effective_tenant_id(current_user: User) -> Optional[str]:
+    if current_user.role == "super_admin":
+        return tenant_context.get_tenant_id()
+    return str(current_user.tenant_id or "").strip() or None
 
 
 def _customer_response(customer: Customer) -> dict:
@@ -59,6 +82,7 @@ async def _appointment_response(appointment: Appointment) -> dict:
         "notes": appointment.notes,
         "booking_source": appointment.booking_source,
         "payment_type": appointment.payment_type,
+        "payment_status": appointment.payment_status,
         "paid_amount": appointment.paid_amount,
         "services": [
             {
@@ -71,6 +95,17 @@ async def _appointment_response(appointment: Appointment) -> dict:
                 "staff_name": service.staff_name,
             }
             for service in appointment.services
+        ],
+        "products": [
+            {
+                "product_id": product.product_id,
+                "name": product.name,
+                "price": product.price,
+                "tax_rate": product.tax_rate,
+                "staff_id": product.staff_id,
+                "staff_name": product.staff_name,
+            }
+            for product in appointment.products
         ],
     }
 
@@ -90,8 +125,9 @@ async def search_clients(
         ],
         "is_deleted": False,
     }
-    if current_user.tenant_id:
-        query["tenant_id"] = current_user.tenant_id
+    effective_tenant_id = _effective_tenant_id(current_user)
+    if effective_tenant_id:
+        query["tenant_id"] = effective_tenant_id
     customers = await Customer.find(query).limit(8).to_list()
     return success_response("Clients retrieved successfully", data=[_customer_response(c) for c in customers])
 
@@ -107,7 +143,7 @@ async def create_client(
         last_name=name_parts[1] if len(name_parts) > 1 else "",
         phone=payload.phone.strip(),
         email=payload.email.strip() if payload.email else None,
-        tenant_id=current_user.tenant_id,
+        tenant_id=_effective_tenant_id(current_user),
     )
     await customer.insert()
     return success_response("Client created successfully", data=_customer_response(customer), status_code=201)
@@ -116,15 +152,26 @@ async def create_client(
 @router.get("/clients/{customer_id}/history")
 async def get_client_history(
     customer_id: str,
+    salon_id: Optional[str] = Query(default=None),
     current_user: User = Depends(PermissionChecker("appointments.view")),
 ):
-    customer = await Customer.find_one(Customer.id == customer_id, Customer.is_deleted == False)
-    if not customer:
-        raise ResourceNotFoundException("Customer not found")
-    history = await appointment_repo.get_customer_history(customer_id, limit=20)
+    resolved_salon_id = None
+    if salon_id:
+        resolved_salon_id = _resolve_salon_scope(current_user, salon_id)
+
+    customer = await appointment_service.get_customer_for_history(
+        customer_id=customer_id,
+        current_user=current_user,
+        salon_id=resolved_salon_id,
+    )
+    history = await appointment_repo.get_customer_history_for_salon(
+        str(customer.id),
+        salon_id=resolved_salon_id,
+        limit=20,
+    )
     return success_response(
         "Client history retrieved successfully",
-        data=[await _appointment_response(item) for item in history],
+        data=[await appointment_service.build_history_response(item, customer=customer) for item in history],
     )
 
 
@@ -133,8 +180,9 @@ async def list_services(
     current_user: User = Depends(PermissionChecker("appointments.view")),
 ):
     query = {"is_deleted": False, "is_active": True}
-    if current_user.tenant_id:
-        query["tenant_id"] = current_user.tenant_id
+    effective_tenant_id = _effective_tenant_id(current_user)
+    if effective_tenant_id:
+        query["tenant_id"] = effective_tenant_id
     services = await Service.find(query).sort("name").to_list()
     return success_response(
         "Services retrieved successfully",
@@ -151,6 +199,98 @@ async def list_services(
     )
 
 
+@router.get("/salon-services")
+async def list_salon_services_for_appointments(
+    salon_id: Optional[str] = Query(default=None),
+    current_user: User = Depends(PermissionChecker("appointments.view")),
+):
+    resolved_salon_id = _resolve_salon_scope(current_user, salon_id)
+    salon_services = await SalonService.find(
+        SalonService.salon_id == resolved_salon_id,
+        SalonService.is_deleted == False,
+        SalonService.status == "ACTIVE",
+    ).sort("-created_at").to_list()
+
+    master_service_ids = []
+    for service in salon_services:
+        if not service.service_id:
+            continue
+        try:
+            master_service_ids.append(PydanticObjectId(service.service_id))
+        except Exception:
+            continue
+    master_services = []
+    if master_service_ids:
+        master_services = await Service.find(
+            {"_id": {"$in": master_service_ids}, "is_deleted": False}
+        ).to_list()
+    master_service_map = {str(item.id): item for item in master_services}
+
+    payload = []
+    for salon_service in salon_services:
+        service_name = (
+            master_service_map.get(salon_service.service_id).name
+            if salon_service.service_id and master_service_map.get(salon_service.service_id)
+            else salon_service.custom_service_name
+        ) or "-"
+        payload.append(
+            {
+                "salon_service_id": str(salon_service.id),
+                "service_name": service_name,
+                "price": salon_service.price,
+                "service_id": salon_service.service_id,
+            }
+        )
+
+    return success_response("Salon services retrieved successfully", data=payload)
+
+
+@router.get("/salon-products")
+async def list_salon_products_for_appointments(
+    salon_id: Optional[str] = Query(default=None),
+    current_user: User = Depends(PermissionChecker("appointments.view")),
+):
+    resolved_salon_id = _resolve_salon_scope(current_user, salon_id)
+    salon_products = await SalonProduct.find(
+        SalonProduct.salon_id == resolved_salon_id,
+        SalonProduct.is_deleted == False,
+        SalonProduct.status == "ACTIVE",
+    ).sort("-created_at").to_list()
+
+    master_product_ids = []
+    for product in salon_products:
+        if not product.product_id:
+            continue
+        try:
+            master_product_ids.append(PydanticObjectId(product.product_id))
+        except Exception:
+            continue
+    master_products = []
+    if master_product_ids:
+        master_products = await Product.find(
+            {"_id": {"$in": master_product_ids}, "is_deleted": False}
+        ).to_list()
+    master_product_map = {str(item.id): item for item in master_products}
+
+    payload = []
+    for salon_product in salon_products:
+        product_name = (
+            master_product_map.get(salon_product.product_id).name
+            if salon_product.product_id and master_product_map.get(salon_product.product_id)
+            else salon_product.custom_product_name
+        ) or "-"
+        payload.append(
+            {
+                "salon_product_id": str(salon_product.id),
+                "product_name": product_name,
+                "price": salon_product.price,
+                "product_id": salon_product.product_id,
+            }
+        )
+
+    return success_response("Salon products retrieved successfully", data=payload)
+
+
 @router.get("/staff")
 async def list_staff_users(
     current_user: User = Depends(PermissionChecker("appointments.view")),
@@ -160,8 +300,9 @@ async def list_staff_users(
         "is_active": True,
         "is_deleted": False,
     }
-    if current_user.tenant_id:
-        query["tenant_id"] = current_user.tenant_id
+    effective_tenant_id = _effective_tenant_id(current_user)
+    if effective_tenant_id:
+        query["tenant_id"] = effective_tenant_id
     staff = await User.find(query).sort("first_name").to_list()
     return success_response(
         "Staff retrieved successfully",
@@ -209,13 +350,16 @@ async def create_frontdesk_booking(
         customer_id=payload.customer_id,
         start_datetime=payload.start_datetime,
         services=[item.model_dump() for item in payload.services],
+        products=[item.model_dump() for item in payload.products],
         payment_type=payload.payment_type,
+        payment_status=payload.payment_status,
+        paid_amount=payload.paid_amount,
         total_amount=payload.total_amount,
         notes=payload.notes,
         booking_source=payload.booking_source,
     )
     await manager.broadcast_to_salon(
-        tenant_id=current_user.tenant_id,
+        tenant_id=_effective_tenant_id(current_user),
         salon_id=payload.salon_id,
         message={
             "event": "BOOKING_CREATED",
@@ -311,7 +455,7 @@ async def create_booking(
     
     # Broadcast change live to the physical salon location branch
     await manager.broadcast_to_salon(
-        tenant_id=current_user.tenant_id,
+        tenant_id=_effective_tenant_id(current_user),
         salon_id=payload.salon_id,
         message={
             "event": "BOOKING_CREATED",
@@ -348,7 +492,7 @@ async def update_booking_status(
     
     # Broadcast state change live
     await manager.broadcast_to_salon(
-        tenant_id=current_user.tenant_id,
+        tenant_id=_effective_tenant_id(current_user),
         salon_id=appt.salon_id,
         message={
             "event": "BOOKING_STATUS_CHANGED",

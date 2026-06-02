@@ -52,7 +52,7 @@ const Sidebar: React.FC = () => {
         {navItems.map((item) => {
           if (item.children?.length) {
             const childPaths = item.children.map((c) => c.path);
-            const groupActive = childPaths.some(isPathActive);
+            const groupActive = childPaths.some(isPathActive) || Boolean(item.path && isPathActive(item.path));
             const isOpen = expandedGroups[item.name] ?? groupActive;
 
             return (

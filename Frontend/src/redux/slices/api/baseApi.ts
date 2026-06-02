@@ -4,13 +4,27 @@ import { logout } from '../auth/authSlice';
 
 export const baseApi = createApi({
   reducerPath: 'api',
-  tagTypes: ['Invites', 'Employees', 'Appointments', 'AppointmentClients'],
+  tagTypes: [
+    'Invites',
+    'Employees',
+    'Appointments',
+    'AppointmentClients',
+    'MasterServices',
+    'SalonServices',
+    'MasterProducts',
+    'SalonProducts',
+    'Bills',
+  ],
   baseQuery: fetchBaseQuery({
-    baseUrl: import.meta.env.VITE_BASE_URL || '/api',
+    baseUrl: import.meta.env.VITE_BASE_URL || '/api/v1',
     prepareHeaders: (headers, { getState }) => {
-      const token = (getState() as RootState).auth.token;
+      const state = (getState() as RootState).auth;
+      const token = state.token;
       if (token) {
         headers.set('authorization', `Bearer ${token}`);
+      }
+      if (state.selectedSalonId) {
+        headers.set('X-Tenant-ID', state.selectedSalonId);
       }
       return headers;
     },

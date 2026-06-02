@@ -10,7 +10,10 @@ from app.models.user import User
 from app.models.employee import Employee
 from app.models.staff import Staff, StaffSchedule
 from app.models.customer import Customer
+from app.models.product import Product
 from app.models.service import Service
+from app.models.salon_product import SalonProduct
+from app.models.salon_service import SalonService
 from app.models.appointment import Appointment
 from app.models.billing import Invoice, Payment
 from app.models.inventory import InventoryItem, InventoryTransaction
@@ -51,7 +54,10 @@ async def init_db() -> None:
             Staff,
             StaffSchedule,
             Customer,
+            Product,
             Service,
+            SalonProduct,
+            SalonService,
             Appointment,
             Invoice,
             Payment,

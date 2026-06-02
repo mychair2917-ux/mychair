@@ -43,6 +43,20 @@ class InvitationService:
         return slug[:100] or "salon"
 
     @staticmethod
+    def _normalize_salon_name(name: str) -> str:
+        return " ".join((name or "").strip().split()).casefold()
+
+    async def _salon_name_exists(self, salon_name: str) -> bool:
+        normalized_input = self._normalize_salon_name(salon_name)
+        if not normalized_input:
+            return False
+        tenants = await Tenant.find({"is_deleted": False}).to_list()
+        for tenant in tenants:
+            if self._normalize_salon_name(tenant.name) == normalized_input:
+                return True
+        return False
+
+    @staticmethod
     def _generate_username(owner_full_name: str, email: str) -> str:
         from_name = re.sub(r"[^a-z0-9_]", "", owner_full_name.lower().replace(" ", "_"))
         if len(from_name) >= 3:
@@ -167,10 +181,15 @@ class InvitationService:
         All salon/owner profile data is stored on the User document.
         Returns (data, errors) — one will be None.
         """
+        salon_name = " ".join((salon_name or "").strip().split())
         salon_type = salon_type.strip().lower()
         subscription_plan = subscription_plan.strip().upper()
 
         field_errors: dict = {}
+        if not salon_name:
+            field_errors["salon_name"] = ["Salon name is required"]
+        elif await self._salon_name_exists(salon_name):
+            field_errors["salon_name"] = ["Salon name already exists"]
         if salon_type not in VALID_SALON_TYPE_VALUES:
             field_errors["salon_type"] = ["Please select a valid salon type"]
         if subscription_plan not in VALID_SUBSCRIPTION_PLAN_VALUES:

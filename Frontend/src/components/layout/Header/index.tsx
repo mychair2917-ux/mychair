@@ -1,37 +1,63 @@
 import React, { useState, useEffect } from 'react';
 import { showSalonBranchSelector } from '../../../config/rbac';
-import { useAppSelector } from '../../../redux/hooks';
-import { getUserDisplayName } from '../../../redux/slices/auth/authSlice';
+import { CommonDropdown } from '../../common';
+import { useAppDispatch, useAppSelector } from '../../../redux/hooks';
+import { getUserDisplayName, setSelectedSalonId } from '../../../redux/slices/auth/authSlice';
+import { baseApi } from '../../../redux/slices/api/baseApi';
+import { useGetSalonsListQuery } from '../../../redux/slices/salons/salonsApi';
 import {
   Search,
   Bell,
-  MapPin,
   Clock,
   Moon,
   CreditCard,
   CalendarPlus,
-  ChevronDown,
 } from 'lucide-react';
 
 const Header: React.FC = () => {
+  const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.auth.user);
+  const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
   const displayName = getUserDisplayName(user);
   const showBranchSelector = showSalonBranchSelector(user?.role);
   const [time, setTime] = useState(new Date());
+  const { data: salonsData, isLoading: isLoadingSalons } = useGetSalonsListQuery(undefined, {
+    skip: !showBranchSelector,
+  });
+  const salonOptions = (salonsData?.data ?? []).map((item) => ({
+    value: item.salon_id,
+    label: item.salon_name || '-',
+  }));
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!showBranchSelector || selectedSalonId || salonOptions.length === 0) {
+      return;
+    }
+    dispatch(setSelectedSalonId(String(salonOptions[0].value)));
+  }, [dispatch, salonOptions, selectedSalonId, showBranchSelector]);
+
   return (
     <header className="h-[72px] bg-white/80 backdrop-blur-md border-b border-[var(--color-border-soft)] flex items-center justify-between px-6 sticky top-0 z-40 transition-all duration-200">
       <div className="flex items-center gap-6 flex-1">
         {showBranchSelector && (
-          <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-3 py-1.5 rounded-lg border border-[var(--color-border-soft)] transition-colors">
-            <MapPin className="h-4 w-4 text-[var(--color-text-secondary)]" />
-            <span className="text-sm font-medium text-[var(--color-text-primary)]">Downtown Luxe Studio</span>
-            <ChevronDown className="h-3 w-3 text-[var(--color-text-secondary)]" />
+          <div className="w-72 min-w-60">
+            <CommonDropdown
+              options={salonOptions}
+              value={selectedSalonId ?? ''}
+              onChange={(value) => {
+                dispatch(setSelectedSalonId(value ? String(value) : null));
+                dispatch(baseApi.util.resetApiState());
+              }}
+              placeholder="Select salon"
+              searchable
+              loading={isLoadingSalons}
+              clearable={false}
+            />
           </div>
         )}
 

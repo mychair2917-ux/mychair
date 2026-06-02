@@ -144,9 +144,20 @@ function salonManagementChildren(
     children.push({ name: 'Employees', module: MODULES.EMPLOYEES, path: employeesPath });
   }
   if (canAccessModule(role, MODULES.SERVICES)) {
-    children.push({ name: 'Services', module: MODULES.SERVICES, path: servicesPath });
+    children.push({ name: 'Manage Salon', module: MODULES.SERVICES, path: servicesPath });
   }
   return children;
+}
+
+function financeChildren(basePath: string): SidebarNavChild[] {
+  return [
+    { name: 'Bills', module: MODULES.BILLING_FINANCE, path: `${basePath}/bills` },
+    { name: 'Payroll', module: MODULES.BILLING_FINANCE, path: `${basePath}/payroll` },
+    { name: 'Expenses', module: MODULES.BILLING_FINANCE, path: `${basePath}/expenses` },
+    { name: 'Purchasing', module: MODULES.BILLING_FINANCE, path: `${basePath}/purchasing` },
+    { name: 'Payments', module: MODULES.BILLING_FINANCE, path: `${basePath}/payments` },
+    { name: 'Reports', module: MODULES.BILLING_FINANCE, path: `${basePath}/reports` },
+  ];
 }
 
 export function isPlatformTenantId(tenantId: string | null | undefined): boolean {
@@ -226,6 +237,7 @@ export function getSidebarNavItems(
           module: MODULES.BILLING_FINANCE,
           path: `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
           icon: Wallet,
+          children: financeChildren(`/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`),
         },
         {
           name: 'Products & Inventory',
@@ -308,6 +320,7 @@ export function getSidebarNavItems(
             module: MODULES.BILLING_FINANCE,
             path: orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE),
             icon: Wallet,
+          children: financeChildren(orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE)),
           },
           {
             name: 'Products & Inventory',

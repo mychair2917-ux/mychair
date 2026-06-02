@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from app.models.appointment import Appointment
+from app.models.billing import Invoice, Payment
 from app.repositories.base import BaseRepository
 from app.core import tenant_context
 
@@ -57,8 +58,34 @@ class AppointmentRepository(BaseRepository[Appointment]):
         """
         Fetches the complete historical appointments list of a client.
         """
-        filters = {"customer_id": customer_id}
+        filters = {"customer_id": customer_id, "is_deleted": False}
         return await self.list(filters=filters, limit=limit, sort="-start_datetime")
+
+    async def get_customer_history_for_salon(
+        self,
+        customer_id: str,
+        salon_id: Optional[str],
+        limit: int = 50,
+    ) -> List[Appointment]:
+        """
+        Fetches the client's appointment history, optionally constrained to a specific salon.
+        """
+        filters: Dict[str, Any] = {
+            "customer_id": customer_id,
+            "is_deleted": False,
+        }
+        if salon_id:
+            filters["salon_id"] = salon_id
+        return await self.list(filters=filters, limit=limit, sort="-start_datetime")
+
+    async def get_appointment_invoice(self, appointment_id: str) -> Optional[Invoice]:
+        filters = {"appointment_id": appointment_id, "is_deleted": False}
+        invoices = await Invoice.find(self._build_tenant_query(filters)).sort("-created_at").limit(1).to_list()
+        return invoices[0] if invoices else None
+
+    async def get_invoice_payments(self, invoice_id: str) -> List[Payment]:
+        filters = {"invoice_id": invoice_id, "is_deleted": False}
+        return await Payment.find(self._build_tenant_query(filters)).sort("payment_date").to_list()
 
     async def list_paginated(
         self,

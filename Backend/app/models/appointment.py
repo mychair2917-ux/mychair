@@ -14,6 +14,16 @@ class ServiceSnapshot(BaseModel):
     staff_id: Optional[str] = None
     staff_name: Optional[str] = None
 
+
+class ProductSnapshot(BaseModel):
+    """Snapshots product parameters to freeze them against future edits."""
+    product_id: str
+    name: str
+    price: float
+    tax_rate: float
+    staff_id: Optional[str] = None
+    staff_name: Optional[str] = None
+
 class StatusHistory(BaseModel):
     """Tracks state progressions of an appointment."""
     status: str  # BOOKED, CONFIRMED, CHECKED_IN, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
@@ -37,6 +47,7 @@ class Appointment(BaseTenantDocument):
     
     # Snapshotted services list
     services: List[ServiceSnapshot] = Field(default_factory=list)
+    products: List[ProductSnapshot] = Field(default_factory=list)
     total_price: float = Field(default=0.0)
     
     # State management
@@ -46,7 +57,8 @@ class Appointment(BaseTenantDocument):
     # Additional Context
     booking_source: str = Field(default="RECEPTIONIST")  # RECEPTIONIST, CLIENT_APP, WEB_WIDGET
     notes: Optional[str] = Field(default=None)
-    payment_type: Optional[str] = Field(default=None)
+    payment_type: Optional[str] = Field(default=None)  # CASH, UPI, CARD (payment method)
+    payment_status: str = Field(default="PENDING")  # PAID, PENDING, PARTIALLY_PAID
     paid_amount: float = Field(default=0.0)
     
     # Cancellation details (if applicable)

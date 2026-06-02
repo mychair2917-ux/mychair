@@ -27,6 +27,19 @@ export const API_PATHS = {
     STATUS: (id: string) => `/employees/${id}/status`,
     RESET_PASSWORD: (id: string) => `/employees/${id}/reset-password`,
   },
+  SALON_SERVICES: {
+    MASTER_LIST: '/services',
+    LIST: '/salon-services',
+    DETAIL: (id: string) => `/salon-services/${id}`,
+  },
+  SALON_PRODUCTS: {
+    MASTER_LIST: '/products',
+    LIST: '/salon-products',
+    DETAIL: (id: string) => `/salon-products/${id}`,
+  },
+  SALONS: {
+    LIST: '/salons/list',
+  },
   APPOINTMENTS: {
     TODAY: '/appointments/frontdesk/today',
     CREATE_FRONTDESK: '/appointments/frontdesk',
@@ -34,6 +47,11 @@ export const API_PATHS = {
     CLIENTS: '/appointments/clients',
     CLIENT_HISTORY: (id: string) => `/appointments/clients/${id}/history`,
     SERVICES: '/appointments/services',
+    SALON_SERVICES: '/appointments/salon-services',
+    SALON_PRODUCTS: '/appointments/salon-products',
     STAFF: '/appointments/staff',
+  },
+  BILLING: {
+    BILLS: '/billing/bills',
   },
 };

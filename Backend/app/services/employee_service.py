@@ -1,9 +1,12 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
+import logging
 
 from app.auth.rbac import can_manage_user
 from app.auth.rbac_config import (
     EMPLOYEE_TABLE_ROLES,
     ROLE_SUPER_ADMIN,
+    ROLE_SALON_MANAGER,
+    ROLE_EMPLOYEE,
     employee_list_roles_visible,
     normalize_role,
 )
@@ -11,12 +14,13 @@ from app.core.exceptions import PermissionDeniedException
 from app.core.security import get_password_hash
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.employee import EmployeeListItem, EmployeeUpdate
+from app.schemas.employee import EmployeeListItem, EmployeeUpdate, SalonEmployeeGroup
 
 
 class EmployeeService:
     def __init__(self) -> None:
         self.repo = UserRepository()
+        self.logger = logging.getLogger(__name__)
 
     @staticmethod
     def _full_name(user: User) -> str:
@@ -29,10 +33,13 @@ class EmployeeService:
         return EmployeeListItem(
             id=str(user.id),
             full_name=EmployeeService._full_name(user),
+            first_name=user.first_name,
+            last_name=user.last_name,
             role=user.role,
             email=user.email,
             phone=user.phone,
             branch_name=user.branch_name,
+            salon_id=user.tenant_id,
             status=user.status,
             is_active=user.is_active,
             created_at=user.created_at,
@@ -53,6 +60,8 @@ class EmployeeService:
         role: Optional[str] = None,
         search: Optional[str] = None,
         status: Optional[str] = None,
+        page: int = 1,
+        limit: int = 100,
     ) -> List[EmployeeListItem]:
         visible_roles = employee_list_roles_visible(actor.role)
         if not visible_roles:
@@ -76,14 +85,78 @@ class EmployeeService:
                 roles=roles,
                 search=search,
                 status=status,
+                page=page,
+                limit=limit,
             )
         else:
             users = await self.repo.list_employees_all_tenants(
                 roles=roles,
                 search=search,
                 status=status,
+                page=page,
+                limit=limit,
             )
-        return [self._to_list_item(u) for u in users]
+        safe_users = [u for u in (users or []) if u]
+        if len(safe_users) != len(users or []):
+            self.logger.warning("Filtered null employee records from repository result")
+        return [self._to_list_item(u) for u in safe_users]
+
+    async def list_employees_by_salon(
+        self,
+        actor: User,
+        tenant_id: Optional[str] = None,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[SalonEmployeeGroup]:
+        """Return employees grouped by salon/branch — managers and staff separately."""
+        visible_roles = employee_list_roles_visible(actor.role)
+        if not visible_roles:
+            raise PermissionDeniedException(
+                detail="Your role is not permitted to view employees"
+            )
+
+        resolved_tenant = self._resolve_tenant_id(actor, tenant_id)
+        roles = [ROLE_SALON_MANAGER, ROLE_EMPLOYEE]
+        # Restrict to visible roles only
+        roles = [r for r in roles if r in visible_roles]
+
+        if resolved_tenant:
+            users = await self.repo.list_employees(
+                tenant_id=resolved_tenant,
+                roles=roles,
+                search=search,
+                status=status,
+                page=1,
+                limit=1000,
+            )
+        else:
+            users = await self.repo.list_employees_all_tenants(
+                roles=roles,
+                search=search,
+                status=status,
+                page=1,
+                limit=1000,
+            )
+
+        # Group by (tenant_id, branch_name)
+        groups: Dict[str, SalonEmployeeGroup] = {}
+        for u in (users or []):
+            if not u:
+                continue
+            key = f"{u.tenant_id or 'unknown'}::{u.branch_name or ''}"
+            if key not in groups:
+                groups[key] = SalonEmployeeGroup(
+                    salon_id=u.tenant_id or "unknown",
+                    salon_name=None,
+                    branch_name=u.branch_name,
+                )
+            item = self._to_list_item(u)
+            if u.role == ROLE_SALON_MANAGER:
+                groups[key].managers.append(item)
+            else:
+                groups[key].staff.append(item)
+
+        return list(groups.values())
 
     async def _get_employee_in_scope(self, actor: User, user_id: str) -> User:
         visible_roles = employee_list_roles_visible(actor.role)

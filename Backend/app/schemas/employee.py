@@ -7,13 +7,24 @@ from pydantic import BaseModel, EmailStr, Field
 class EmployeeListItem(BaseModel):
     id: str
     full_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     role: str
     email: EmailStr
     phone: Optional[str] = None
     branch_name: Optional[str] = None
+    salon_id: Optional[str] = None
     status: str
     is_active: bool
     created_at: datetime
+
+
+class SalonEmployeeGroup(BaseModel):
+    salon_id: str
+    salon_name: Optional[str] = None
+    branch_name: Optional[str] = None
+    managers: List[EmployeeListItem] = []
+    staff: List[EmployeeListItem] = []
 
 
 class EmployeeUpdate(BaseModel):
@@ -32,3 +43,4 @@ class EmployeeStatusUpdate(BaseModel):
 class EmployeeResetPassword(BaseModel):
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
+

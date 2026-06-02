@@ -1,6 +1,6 @@
 import React, { lazy } from 'react';
 import { RouteObject } from 'react-router';
-import { Store, Users, Shield, CreditCard, Wallet, Boxes, UserCheck, LineChart, Bell } from 'lucide-react';
+import { Users, Shield, CreditCard, Boxes, UserCheck, LineChart, Bell } from 'lucide-react';
 
 import App from '../App';
 import { MODULES } from '../config/rbac';
@@ -24,6 +24,9 @@ const Services = lazy(() =>
 );
 const Appointments = lazy(() =>
   import('../pages').then((module) => ({ default: module.Appointments }))
+);
+const BillingFinance = lazy(() =>
+  import('../pages').then((module) => ({ default: module.BillingFinance }))
 );
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
@@ -132,12 +135,11 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTE_PATHS.ADMIN_BILLING_FINANCE,
-        element: adminPlaceholder(
-          MODULES.BILLING_FINANCE,
-          'Billing & Finance',
-          'View platform-wide invoices, revenue analytics, and financial reports.',
-          Wallet
-        ),
+        element: protectAdmin(MODULES.BILLING_FINANCE, <BillingFinance />),
+      },
+      {
+        path: `${ROUTE_PATHS.ADMIN_BILLING_FINANCE}/:financeSection`,
+        element: protectAdmin(MODULES.BILLING_FINANCE, <BillingFinance />),
       },
       {
         path: ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY,
@@ -233,12 +235,11 @@ export const routes: RouteObject[] = [
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.BILLING_FINANCE}`,
-        element: orgPlaceholder(
-          MODULES.BILLING_FINANCE,
-          'Billing & Finance',
-          'View invoices, POS transactions, and financial analytics.',
-          Wallet
-        ),
+        element: protectOrg(MODULES.BILLING_FINANCE, <BillingFinance />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.BILLING_FINANCE}/:financeSection`,
+        element: protectOrg(MODULES.BILLING_FINANCE, <BillingFinance />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.PRODUCTS_INVENTORY}`,

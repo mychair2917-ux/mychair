@@ -4,7 +4,11 @@ import { baseApi } from '../api/baseApi';
 import { ApiResponse } from '../api/Types';
 import {
   AppointmentClient,
+  AppointmentClientHistoryParams,
   AppointmentListItem,
+  AppointmentProductOption,
+  AppointmentSalonProductsParams,
+  AppointmentSalonServicesParams,
   AppointmentListParams,
   AppointmentServiceOption,
   AppointmentStaffOption,
@@ -44,17 +48,32 @@ export const appointmentsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['AppointmentClients'],
     }),
-    getAppointmentClientHistory: builder.query<ApiResponse<AppointmentListItem[]>, string>({
-      query: (id) => ({
+    getAppointmentClientHistory: builder.query<ApiResponse<AppointmentListItem[]>, AppointmentClientHistoryParams>({
+      query: ({ id, salon_id }) => ({
         url: API_PATHS.APPOINTMENTS.CLIENT_HISTORY(id),
         method: HTTP_METHODS.GET,
+        params: salon_id ? { salon_id } : undefined,
       }),
-      providesTags: (_result, _error, id) => [{ type: 'Appointments', id }],
+      providesTags: (_result, _error, { id }) => [{ type: 'Appointments', id }],
     }),
-    getAppointmentServices: builder.query<ApiResponse<AppointmentServiceOption[]>, void>({
-      query: () => ({
-        url: API_PATHS.APPOINTMENTS.SERVICES,
+    getAppointmentSalonServices: builder.query<
+      ApiResponse<AppointmentServiceOption[]>,
+      AppointmentSalonServicesParams
+    >({
+      query: (params) => ({
+        url: API_PATHS.APPOINTMENTS.SALON_SERVICES,
         method: HTTP_METHODS.GET,
+        params,
+      }),
+    }),
+    getAppointmentSalonProducts: builder.query<
+      ApiResponse<AppointmentProductOption[]>,
+      AppointmentSalonProductsParams
+    >({
+      query: (params) => ({
+        url: API_PATHS.APPOINTMENTS.SALON_PRODUCTS,
+        method: HTTP_METHODS.GET,
+        params,
       }),
     }),
     getAppointmentStaff: builder.query<ApiResponse<AppointmentStaffOption[]>, void>({
@@ -103,7 +122,8 @@ export const {
   useLazySearchAppointmentClientsQuery,
   useCreateAppointmentClientMutation,
   useGetAppointmentClientHistoryQuery,
-  useGetAppointmentServicesQuery,
+  useGetAppointmentSalonServicesQuery,
+  useGetAppointmentSalonProductsQuery,
   useGetAppointmentStaffQuery,
   useCreateFrontDeskAppointmentMutation,
   useListAppointmentsQuery,

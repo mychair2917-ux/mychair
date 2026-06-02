@@ -38,7 +38,9 @@ const Employees: React.FC = () => {
   const { orgId } = useParams<{ orgId: string }>();
   const user = useAppSelector((state) => state.auth.user);
   const storedOrgId = useAppSelector((state) => state.auth.orgId);
-  const employeeTenantId = resolveEmployeeListTenantId(user?.role, orgId, storedOrgId);
+  const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
+  const effectiveStoredOrgId = isSuperAdmin(user?.role) ? selectedSalonId ?? storedOrgId : storedOrgId;
+  const employeeTenantId = resolveEmployeeListTenantId(user?.role, orgId, effectiveStoredOrgId);
 
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -202,8 +204,8 @@ const Employees: React.FC = () => {
                     {EMPLOYEE_ROLE_LABELS[employee.role] ?? employee.role}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{employee.email}</td>
-                  <td className="px-4 py-3 text-gray-600">{employee.phone || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{employee.branch_name || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{employee.phone || '-'}</td>
+                  <td className="px-4 py-3 text-gray-600">{employee.branch_name || '-'}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[employee.status] ?? 'bg-gray-100 text-gray-600'}`}
