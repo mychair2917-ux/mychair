@@ -10,6 +10,11 @@ import '../slices/employees/employeesApi';
 import '../slices/appointments/appointmentsApi';
 import '../slices/salonProducts/salonProductsApi';
 import '../slices/salonServices/salonServicesApi';
+import '../slices/billing/billingApi';
+import '../slices/payroll/payrollApi';
+import '../slices/myEarnings/myEarningsApi';
+import '../slices/customerAnalytics/customerAnalyticsApi';
+import '../slices/profile/profileApi';
 
 export const store = configureStore({
   reducer: {

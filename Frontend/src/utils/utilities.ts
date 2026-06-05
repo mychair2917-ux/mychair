@@ -301,6 +301,57 @@ export const formatDate = (dateString: string) => {
 };
 
 /**
+  Formats a date into the application-wide standard display format: DD/MM/YYYY.
+
+  This is the canonical date formatter for the whole application. Every user-facing
+  date (forms, tables, payroll, salary history, slips/exports) must render through
+  this helper so the UI stays consistent.
+
+  Parameters:
+  @param {string | Date | null | undefined} dateInput - ISO string or Date object.
+  @param {string} fallback - Returned when the input is empty/invalid. Defaults to '---'.
+
+  Returns:
+  @returns {string} - The date as DD/MM/YYYY, or the fallback for invalid inputs.
+
+  Exception Handling:
+  Returns the fallback for null/undefined/invalid dates.
+*/
+export const formatDateDMY = (
+  dateInput?: string | Date | null,
+  fallback: string = '---'
+): string => {
+  if (!dateInput) return fallback;
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(date.getTime())) return fallback;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+/**
+  Converts a Date or ISO string into a value usable by `<input type="date">` (YYYY-MM-DD).
+  Native date inputs always use the ISO value internally while displaying per the user
+  locale; pairing this with `formatDateDMY` for display keeps the app on DD/MM/YYYY.
+
+  Parameters:
+  @param {string | Date | null | undefined} dateInput - ISO string or Date object.
+
+  Returns:
+  @returns {string} - The date as YYYY-MM-DD, or '' for invalid inputs.
+*/
+export const toDateInputValue = (dateInput?: string | Date | null): string => {
+  if (!dateInput) return '';
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
  * Formats a start and end date into 'MM/DD/YY' format (US locale).
  *
  * @param {string | Date} startDate - The start date.

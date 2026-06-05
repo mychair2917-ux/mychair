@@ -28,7 +28,22 @@ export interface InviteFormValues {
   salon_phone_number: string;
   address: string;
   gst_number: string;
+  // Salary configuration (manager & staff)
+  salary: string;
+  salary_type: string;
+  joining_date: string;
+  incentive_base: boolean;
+  service_incentive_percent: string;
+  product_incentive_percent: string;
 }
+
+const todayIso = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const defaultInviteFormValues: InviteFormValues = {
   role: '',
@@ -47,6 +62,12 @@ export const defaultInviteFormValues: InviteFormValues = {
   salon_phone_number: '',
   address: '',
   gst_number: '',
+  salary: '',
+  salary_type: 'monthly',
+  joining_date: todayIso(),
+  incentive_base: false,
+  service_incentive_percent: '',
+  product_incentive_percent: '',
 };
 
 /**
@@ -96,7 +117,17 @@ export function buildInviteValidationSchema(
     salon_phone_number: optionalPhone,
     address: Yup.string().trim().max(500),
     gst_number: Yup.string().trim().max(20),
+    // Salary fields — validated only for manager/staff roles below
+    salary: Yup.string(),
+    salary_type: Yup.string(),
+    joining_date: Yup.string(),
+    incentive_base: Yup.boolean(),
+    service_incentive_percent: Yup.string(),
+    product_incentive_percent: Yup.string(),
   };
+
+  const isTeamRole =
+    selectedRole === INVITE_ROLES.MANAGER || selectedRole === INVITE_ROLES.STAFF;
 
   if (selectedRole === INVITE_ROLES.SALON_OWNER) {
     base.salon_name = Yup.string()
@@ -108,6 +139,40 @@ export function buildInviteValidationSchema(
     base.subscription_plan = Yup.string()
       .required('Subscription plan is required')
       .notOneOf([''], 'Select subscription plan');
+  }
+
+  if (isTeamRole) {
+    const percentSchema = (label: string) =>
+      Yup.string()
+        .required(`${label} is required`)
+        .test('is-percent', 'Enter a percentage between 0 and 100', (value) => {
+          if (value === undefined || value === '') return false;
+          const num = Number(value);
+          return Number.isFinite(num) && num >= 0 && num <= 100;
+        });
+
+    base.salary = Yup.string()
+      .required('Salary is required')
+      .test('is-positive-number', 'Enter a valid salary amount', (value) => {
+        if (value === undefined || value === '') return false;
+        const num = Number(value);
+        return Number.isFinite(num) && num >= 0;
+      });
+    base.salary_type = Yup.string()
+      .required('Salary type is required')
+      .notOneOf([''], 'Select salary type');
+    base.joining_date = Yup.string().required('Joining date is required');
+    base.incentive_base = Yup.boolean();
+    base.service_incentive_percent = Yup.string().when('incentive_base', {
+      is: true,
+      then: () => percentSchema('Service incentive %'),
+      otherwise: (schema) => schema,
+    });
+    base.product_incentive_percent = Yup.string().when('incentive_base', {
+      is: true,
+      then: () => percentSchema('Product incentive %'),
+      otherwise: (schema) => schema,
+    });
   }
 
   return Yup.object(base);

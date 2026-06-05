@@ -26,7 +26,7 @@ function App() {
         (isOrgRoute || isSalonOwnerInviteRoute || location.pathname === `/${ROUTE_PATHS.SALON_OWNER_DASHBOARD}`));
 
   return (
-    <div className="flex min-h-screen bg-[var(--color-surface-bg)] text-[var(--color-text-primary)] font-['Outfit']">
+    <div className="flex min-h-screen bg-[var(--color-surface-bg)] text-[var(--color-text-primary)]">
       <ScrollToTop />
       {showLayout && <Sidebar />}
 

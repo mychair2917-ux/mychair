@@ -51,6 +51,10 @@ ROLE_FEATURE_PERMISSIONS: Dict[str, Set[str]] = {
         "attendance.manage",
         "analytics.view",
         "crm.manage",
+        "customer_analytics.view",
+        "customer_analytics.create",
+        "customer_analytics.edit",
+        "customer_analytics.delete",
     },
     "salon_admin": {
         "appointments.create",
@@ -67,6 +71,10 @@ ROLE_FEATURE_PERMISSIONS: Dict[str, Set[str]] = {
         "attendance.manage",
         "analytics.view",
         "crm.manage",
+        "customer_analytics.view",
+        "customer_analytics.create",
+        "customer_analytics.edit",
+        "customer_analytics.delete",
     },
     "salon_manager": {
         "appointments.create",

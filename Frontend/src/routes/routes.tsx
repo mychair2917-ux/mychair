@@ -25,8 +25,14 @@ const Services = lazy(() =>
 const Appointments = lazy(() =>
   import('../pages').then((module) => ({ default: module.Appointments }))
 );
+const MyEarnings = lazy(() =>
+  import('../pages').then((module) => ({ default: module.MyEarnings }))
+);
 const BillingFinance = lazy(() =>
   import('../pages').then((module) => ({ default: module.BillingFinance }))
+);
+const CustomerAnalytics = lazy(() =>
+  import('../pages').then((module) => ({ default: module.CustomerAnalytics }))
 );
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
@@ -63,6 +69,14 @@ export const routes: RouteObject[] = [
         element: protectAdmin(MODULES.DASHBOARD, <Dashboard />),
       },
       {
+        path: ROUTE_PATHS.ADMIN_PROFILE,
+        element: protectAdmin(MODULES.PROFILE, <Profile />),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_SETTINGS,
+        element: protectAdmin(MODULES.SETTINGS, <Settings />),
+      },
+      {
         path: ROUTE_PATHS.ADMIN_INVITE,
         element: (
           <ProtectedRoute module={MODULES.INVITE} superAdminOnly>
@@ -73,6 +87,10 @@ export const routes: RouteObject[] = [
       {
         path: ROUTE_PATHS.ADMIN_APPOINTMENTS,
         element: protectAdmin(MODULES.APPOINTMENTS, <Appointments />),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_MY_EARNINGS,
+        element: protectAdmin(MODULES.MY_EARNINGS, <MyEarnings />),
       },
       {
         path: ROUTE_PATHS.INVITE,
@@ -161,12 +179,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS,
-        element: adminPlaceholder(
-          MODULES.CUSTOMER_ANALYTICS,
-          'Customer Analytics',
-          'Analyze customer retention, spending patterns, and engagement across the platform.',
-          LineChart
-        ),
+        element: protectAdmin(MODULES.CUSTOMER_ANALYTICS, <CustomerAnalytics />),
       },
       {
         path: ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION,
@@ -205,6 +218,10 @@ export const routes: RouteObject[] = [
       {
         path: `orgs/:orgId/${ROUTE_PATHS.APPOINTMENTS}`,
         element: protectOrg(MODULES.APPOINTMENTS, <Appointments />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.MY_EARNINGS}`,
+        element: protectOrg(MODULES.MY_EARNINGS, <MyEarnings />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.USER_MANAGEMENT}`,
@@ -261,12 +278,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`,
-        element: orgPlaceholder(
-          MODULES.CUSTOMER_ANALYTICS,
-          'Customer Analytics',
-          'Understand client retention, spending patterns, and behavior.',
-          LineChart
-        ),
+        element: protectOrg(MODULES.CUSTOMER_ANALYTICS, <CustomerAnalytics />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`,

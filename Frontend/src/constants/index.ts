@@ -30,6 +30,7 @@ export const ROUTE_PATHS = {
 
   // Protected routes
   DASHBOARD: 'dashboard',
+  MY_EARNINGS: 'my-earnings',
   PROFILE: 'profile',
   SETTINGS: 'settings',
 
@@ -49,8 +50,11 @@ export const ROUTE_PATHS = {
 
   // Super Admin routes (no org scope)
   ADMIN_DASHBOARD: 'admin/dashboard',
+  ADMIN_PROFILE: 'admin/profile',
+  ADMIN_SETTINGS: 'admin/settings',
   ADMIN_INVITE: 'admin/invite',
   ADMIN_APPOINTMENTS: 'admin/appointments',
+  ADMIN_MY_EARNINGS: 'admin/my-earnings',
   SALON_INVITE: 'salon-owner/invite',
   ORG_INVITE: 'invite-users',
   ADMIN_SALON_MANAGEMENT: 'admin/salon-management',

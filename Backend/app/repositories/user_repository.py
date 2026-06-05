@@ -23,6 +23,33 @@ class UserRepository(BaseRepository[User]):
     async def get_by_email_global(self, email: EmailStr | str) -> Optional[User]:
         return await User.find_one({"email": email, "is_deleted": False})
 
+    async def get_by_email_excluding_user(
+        self,
+        email: EmailStr | str,
+        user_id: str,
+        tenant_id: Optional[str] = None,
+    ) -> Optional[User]:
+        query: Dict[str, Any] = {
+            "email": email,
+            "is_deleted": False,
+            "_id": {"$ne": self._to_object_id(user_id)},
+        }
+        if tenant_id:
+            query["tenant_id"] = tenant_id
+        return await User.find_one(query)
+
+    async def get_by_email_global_excluding_user(
+        self,
+        email: EmailStr | str,
+        user_id: str,
+    ) -> Optional[User]:
+        query: Dict[str, Any] = {
+            "email": email,
+            "is_deleted": False,
+            "_id": {"$ne": self._to_object_id(user_id)},
+        }
+        return await User.find_one(query)
+
     async def list_by_tenant(self, tenant_id: str) -> List[User]:
         return await User.find(
             {"tenant_id": tenant_id, "is_deleted": False}
@@ -108,3 +135,9 @@ class UserRepository(BaseRepository[User]):
         user.deleted_at = now_utc()
         await user.save()
         return user
+
+    @staticmethod
+    def _to_object_id(user_id: str):
+        from beanie import PydanticObjectId
+
+        return PydanticObjectId(user_id)

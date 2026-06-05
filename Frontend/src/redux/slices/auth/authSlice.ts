@@ -1,13 +1,34 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+import { clearAuthStorage, readStoredUser } from './authSession';
+
 export interface AuthUser {
+  id?: string;
   email: string;
   role: string;
   username?: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  alternate_phone?: string;
+  avatar?: string | null;
+  employee_id?: string;
+  employee_code?: string;
+  branch_name?: string;
+  branch_id?: string;
+  salon_name?: string;
+  department?: string;
+  designation?: string;
+  shift?: string;
+  status?: string;
+  joining_date?: string | null;
+  last_login?: string | null;
 }
 
 export function getUserDisplayName(user: AuthUser | null | undefined): string {
   if (!user) return '';
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+  if (fullName) return fullName;
   if (user.username?.trim()) return user.username.trim();
   if (user.email) return user.email.split('@')[0];
   return '';
@@ -24,7 +45,7 @@ export interface AuthState {
 const initialState: AuthState = {
   token: localStorage.getItem('token') || null,
   refreshToken: localStorage.getItem('refresh_token') || null,
-  user: JSON.parse(localStorage.getItem('user') || 'null'),
+  user: readStoredUser(),
   orgId: localStorage.getItem('orgId') || null,
   selectedSalonId: localStorage.getItem('selectedSalonId') || null,
 };
@@ -63,16 +84,21 @@ const authSlice = createSlice({
         localStorage.removeItem('selectedSalonId');
       }
     },
+    updateAuthUser: (state, action: PayloadAction<Partial<AuthUser>>) => {
+      if (!state.user) return;
+      state.user = { ...state.user, ...action.payload };
+      localStorage.setItem('user', JSON.stringify(state.user));
+    },
     logout: (state) => {
       state.user = null;
       state.token = null;
       state.refreshToken = null;
       state.orgId = null;
       state.selectedSalonId = null;
-      localStorage.clear();
+      clearAuthStorage();
     },
   },
 });
 
-export const { setCredentials, setSelectedSalonId, logout } = authSlice.actions;
+export const { setCredentials, setSelectedSalonId, updateAuthUser, logout } = authSlice.actions;
 export default authSlice.reducer;

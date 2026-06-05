@@ -31,6 +31,7 @@ import {
 } from '../../../redux/slices/salonServices/salonServicesApi';
 import { SalonServiceItem } from '../../../redux/slices/salonServices/Types';
 import { getApiErrorMessage } from '../../../utils/apiErrors';
+import { formatCurrency } from '../../../utils/currency';
 
 type ManageSalonTab = 'services' | 'products' | 'assets';
 
@@ -710,9 +711,9 @@ const Services: React.FC = () => {
               {
                 key: 'price',
                 header: 'Price',
-                accessor: (row) => `Rs. ${row.price}`,
+                accessor: (row) => formatCurrency(row.price),
                 sortable: true,
-                render: (row) => `Rs. ${row.price ?? '-'}`,
+                render: (row) => formatCurrency(row.price),
               },
               {
                 key: 'created_at',
@@ -868,9 +869,9 @@ const Services: React.FC = () => {
               {
                 key: 'price',
                 header: 'Price',
-                accessor: (row) => `Rs. ${row.price}`,
+                accessor: (row) => formatCurrency(row.price),
                 sortable: true,
-                render: (row) => `Rs. ${row.price ?? '-'}`,
+                render: (row) => formatCurrency(row.price),
               },
               {
                 key: 'created_at',

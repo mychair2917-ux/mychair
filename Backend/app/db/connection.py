@@ -24,6 +24,10 @@ from app.models.audit import AuditLog
 from app.models.analytics import DailyRevenueStats, StaffPerformanceStats, ServicePopularityStats
 from app.models.invitation_token import InvitationToken
 from app.models.invite import Invite
+from app.models.payroll import Payroll
+from app.models.bill import Bill
+from app.models.reward_settings import RewardSettings, RewardSegment
+from app.models.customer_reward_transaction import CustomerRewardTransaction
 
 logger = logging.getLogger("db")
 
@@ -72,6 +76,11 @@ async def init_db() -> None:
             ServicePopularityStats,
             InvitationToken,
             Invite,
+            Payroll,
+            Bill,
+            RewardSettings,
+            RewardSegment,
+            CustomerRewardTransaction,
         ]
     
         await init_beanie(

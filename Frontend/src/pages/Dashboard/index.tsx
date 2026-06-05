@@ -11,6 +11,7 @@ import { getUserDisplayName } from '../../redux/slices/auth/authSlice';
 import { useAppSelector } from '../../redux/hooks';
 import { useNavigate } from 'react-router-dom';
 import { showToast } from '../../components/common/Toast/toastService';
+import { formatCurrency } from '../../utils/currency';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -41,7 +42,7 @@ const Dashboard: React.FC = () => {
       {/* Welcome Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-[var(--color-text-primary)] font-['Outfit']">
+          <h1 className="text-3xl font-bold text-[var(--color-text-primary)]">
             Good Morning, {displayName}
           </h1>
           <p className="text-[var(--color-text-secondary)] mt-1">
@@ -73,13 +74,13 @@ const Dashboard: React.FC = () => {
         {(isPersonalView
           ? [
               { label: 'My Appointments Today', value: '6', trend: '2 upcoming', icon: CalendarIcon, color: 'text-blue-600', bg: 'bg-blue-50' },
-              { label: 'My Revenue Today', value: '$420', trend: '+5%', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              { label: 'My Revenue Today', value: formatCurrency(420), trend: '+5%', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
               { label: 'My Clients Served', value: '4', trend: 'On track', icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
               { label: 'My Services Done', value: '5', trend: '1 in progress', icon: Scissors, color: 'text-[var(--color-brand-gold)]', bg: 'bg-[var(--color-brand-gold-light)]/20' },
             ]
           : [
               { label: "Today's Appointments", value: '42', trend: '+12%', icon: CalendarIcon, color: 'text-blue-600', bg: 'bg-blue-50' },
-              { label: "Revenue (Today)", value: '$3,240', trend: '+8.5%', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              { label: "Revenue (Today)", value: formatCurrency(3240), trend: '+8.5%', icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
               { label: 'Walk-ins', value: '18', trend: '+24%', icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
               { label: 'Services Completed', value: '28', trend: 'On track', icon: Scissors, color: 'text-[var(--color-brand-gold)]', bg: 'bg-[var(--color-brand-gold-light)]/20' },
             ]
@@ -97,7 +98,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div>
               <p className="text-[var(--color-text-secondary)] text-sm font-medium">{stat.label}</p>
-              <h3 className="text-3xl font-bold text-[var(--color-text-primary)] mt-1 font-['Outfit']">{stat.value}</h3>
+              <h3 className="mt-1 text-3xl font-bold text-[var(--color-text-primary)]">{stat.value}</h3>
             </div>
           </div>
         ))}
@@ -184,9 +185,9 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="space-y-4">
                 {[
-                  { name: 'Sarah M.', role: 'Senior Stylist', rev: '$840', avatar: 'SM' },
-                  { name: 'Jessica T.', role: 'Esthetician', rev: '$520', avatar: 'JT' },
-                  { name: 'David K.', role: 'Barber', rev: '$310', avatar: 'DK' },
+                  { name: 'Sarah M.', role: 'Senior Stylist', rev: formatCurrency(840), avatar: 'SM' },
+                  { name: 'Jessica T.', role: 'Esthetician', rev: formatCurrency(520), avatar: 'JT' },
+                  { name: 'David K.', role: 'Barber', rev: formatCurrency(310), avatar: 'DK' },
                 ].map((staff, i) => (
                   <div key={i} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">

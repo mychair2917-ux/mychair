@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { ROLES, ROUTE_PATHS } from '../../constants';
 import { setCredentials } from '../../redux/slices/auth/authSlice';
@@ -11,12 +11,15 @@ interface LoginProps {
 
 const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const [login, { isLoading }] = useLoginMutation();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const logoutState = location.state as { loggedOut?: boolean; logoutFailed?: boolean } | null;
+  const showLoggedOutMessage = isLoggedOut || Boolean(logoutState?.loggedOut);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,9 +32,26 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
       dispatch(
         setCredentials({
           user: {
-            email,
+            id: response.id,
+            email: response.email || email,
             role: response.role,
-            username: email.split('@')[0],
+            username: response.username || (response.email || email).split('@')[0],
+            first_name: response.first_name,
+            last_name: response.last_name,
+            phone: response.phone,
+            alternate_phone: response.alternate_phone,
+            avatar: response.avatar,
+            employee_id: response.employee_id,
+            employee_code: response.employee_code,
+            branch_name: response.branch_name,
+            branch_id: response.branch_id,
+            salon_name: response.salon_name,
+            department: response.department,
+            designation: response.designation,
+            shift: response.shift,
+            status: response.status,
+            joining_date: response.joining_date,
+            last_login: response.last_login,
           },
           token: response.access_token,
           refreshToken: response.refresh_token,
@@ -66,9 +86,15 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
           their phone number via team login.
         </p>
         
-        {isLoggedOut && (
-          <div className="mb-4 p-3 bg-blue-50 text-blue-700 rounded text-sm text-center">
-            You have been logged out.
+        {showLoggedOutMessage && (
+          <div
+            className={`mb-4 rounded p-3 text-center text-sm ${
+              logoutState?.logoutFailed ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+            }`}
+          >
+            {logoutState?.logoutFailed
+              ? 'You have been logged out locally. Server session may already be expired.'
+              : 'You have been logged out.'}
           </div>
         )}
 

@@ -24,6 +24,14 @@ import {
   usesDirectPasswordProvisioning,
 } from '../../utils/invitePermissions';
 import { applyApiFieldErrors, getApiErrorMessage } from '../../utils/apiErrors';
+import { formatDateDMY } from '../../utils/utilities';
+import { cn } from '../../utils/cn';
+
+const SALARY_TYPE_OPTIONS = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+];
 
 interface InviteFormModalProps {
   open: boolean;
@@ -70,6 +78,17 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
       }
       if (values.address?.trim()) payload.address = values.address.trim();
       if (values.gst_number?.trim()) payload.gst_number = values.gst_number.trim();
+    }
+
+    if (isStaffInviteRole(values.role)) {
+      payload.salary = Number(values.salary);
+      payload.salary_type = values.salary_type;
+      payload.joining_date = values.joining_date;
+      payload.incentive_base = values.incentive_base;
+      if (values.incentive_base) {
+        payload.service_incentive_percent = Number(values.service_incentive_percent);
+        payload.product_incentive_percent = Number(values.product_incentive_percent);
+      }
     }
     return payload;
   };
@@ -144,7 +163,15 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
         }}
         onSubmit={handleSubmit}
       >
-        {({ values, errors, touched, handleChange, handleBlur, isSubmitting: formSubmitting }) => {
+        {({
+          values,
+          errors,
+          touched,
+          handleChange,
+          handleBlur,
+          setFieldValue,
+          isSubmitting: formSubmitting,
+        }) => {
           const needsTenant = requiresTenantSelection(inviterRole, values.role);
           const showSalonSetup = isSalonOwnerInviteRole(values.role);
           const showTeamFields = isStaffInviteRole(values.role);
@@ -455,6 +482,151 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                           />
                         </FormField>
                       )}
+
+                      {/* Salary configuration */}
+                      <div className="md:col-span-2 mt-1 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/60 p-4">
+                        <p className="mb-3 text-sm font-semibold text-[var(--color-text-primary)]">
+                          Salary & Incentives
+                        </p>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <FormField
+                            label="Salary"
+                            name="salary"
+                            required
+                            error={errors.salary}
+                            touched={touched.salary}
+                          >
+                            <Input
+                              id="salary"
+                              name="salary"
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={values.salary}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              placeholder="e.g. 30000"
+                            />
+                          </FormField>
+                          <FormField
+                            label="Salary Type"
+                            name="salary_type"
+                            required
+                            error={errors.salary_type}
+                            touched={touched.salary_type}
+                          >
+                            <Select
+                              id="salary_type"
+                              name="salary_type"
+                              value={values.salary_type}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              options={SALARY_TYPE_OPTIONS}
+                              placeholder="Select salary type"
+                            />
+                          </FormField>
+                          <FormField
+                            label="Joining Date"
+                            name="joining_date"
+                            required
+                            error={errors.joining_date}
+                            touched={touched.joining_date}
+                          >
+                            <Input
+                              id="joining_date"
+                              name="joining_date"
+                              type="date"
+                              value={values.joining_date}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                            />
+                            {values.joining_date && (
+                              <span className="mt-1 block text-xs text-gray-500">
+                                {formatDateDMY(values.joining_date)}
+                              </span>
+                            )}
+                          </FormField>
+                          <FormField
+                            label="Incentive Based"
+                            name="incentive_base"
+                            required
+                            error={errors.incentive_base as string | undefined}
+                            touched={touched.incentive_base}
+                          >
+                            <label className="flex h-10 items-center gap-3">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={values.incentive_base}
+                                onClick={() =>
+                                  setFieldValue('incentive_base', !values.incentive_base)
+                                }
+                                className={cn(
+                                  'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                                  values.incentive_base
+                                    ? 'bg-[var(--color-brand-gold)]'
+                                    : 'bg-gray-300'
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                                    values.incentive_base ? 'translate-x-6' : 'translate-x-1'
+                                  )}
+                                />
+                              </button>
+                              <span className="text-sm text-[var(--color-text-secondary)]">
+                                {values.incentive_base ? 'Yes' : 'No'}
+                              </span>
+                            </label>
+                          </FormField>
+
+                          {values.incentive_base && (
+                            <>
+                              <FormField
+                                label="Service Incentive %"
+                                name="service_incentive_percent"
+                                required
+                                error={errors.service_incentive_percent}
+                                touched={touched.service_incentive_percent}
+                              >
+                                <Input
+                                  id="service_incentive_percent"
+                                  name="service_incentive_percent"
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step="0.01"
+                                  value={values.service_incentive_percent}
+                                  onChange={handleChange}
+                                  onBlur={handleBlur}
+                                  placeholder="e.g. 10"
+                                />
+                              </FormField>
+                              <FormField
+                                label="Product Incentive %"
+                                name="product_incentive_percent"
+                                required
+                                error={errors.product_incentive_percent}
+                                touched={touched.product_incentive_percent}
+                              >
+                                <Input
+                                  id="product_incentive_percent"
+                                  name="product_incentive_percent"
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step="0.01"
+                                  value={values.product_incentive_percent}
+                                  onChange={handleChange}
+                                  onBlur={handleBlur}
+                                  placeholder="e.g. 5"
+                                />
+                              </FormField>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </>
                   )}
                 </div>

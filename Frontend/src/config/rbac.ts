@@ -3,6 +3,7 @@ import {
   Boxes,
   CalendarDays,
   CreditCard,
+  HandCoins,
   LayoutDashboard,
   LineChart,
   MailPlus,
@@ -21,6 +22,7 @@ export const MODULES = {
   DASHBOARD: 'dashboard',
   INVITE: 'invite',
   APPOINTMENTS: 'appointments',
+  MY_EARNINGS: 'my_earnings',
   SALON_MANAGEMENT: 'salon_management',
   EMPLOYEES: 'employees',
   SERVICES: 'services',
@@ -56,6 +58,7 @@ const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
     MODULES.DASHBOARD,
     MODULES.INVITE,
     MODULES.APPOINTMENTS,
+    MODULES.MY_EARNINGS,
     MODULES.SALON_MANAGEMENT,
     MODULES.SERVICES,
     MODULES.PRODUCTS_INVENTORY,
@@ -64,6 +67,7 @@ const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
   [ROLES.EMPLOYEE]: [
     MODULES.DASHBOARD,
     MODULES.APPOINTMENTS,
+    MODULES.MY_EARNINGS,
     MODULES.SALON_MANAGEMENT,
     MODULES.SERVICES,
     MODULES.PROFILE,
@@ -193,6 +197,13 @@ export function getSidebarNavItems(
           icon: LayoutDashboard,
         },
         {
+          name: 'Profile',
+          module: MODULES.PROFILE,
+          path: `/${ROUTE_PATHS.ADMIN_PROFILE}`,
+          icon: Users,
+        },
+    
+        {
           name: 'Invite',
           module: MODULES.INVITE,
           path: `/${ROUTE_PATHS.ADMIN_INVITE}`,
@@ -205,6 +216,12 @@ export function getSidebarNavItems(
           icon: CalendarDays,
         },
         {
+          name: 'My Earnings',
+          module: MODULES.MY_EARNINGS,
+          path: `/${ROUTE_PATHS.ADMIN_MY_EARNINGS}`,
+          icon: HandCoins,
+        },
+        {
           name: 'Salon Management',
           module: MODULES.SALON_MANAGEMENT,
           icon: Store,
@@ -214,12 +231,7 @@ export function getSidebarNavItems(
             `/${ROUTE_PATHS.ADMIN_SALON_SERVICES}`
           ),
         },
-        {
-          name: 'User Management',
-          module: MODULES.USER_MANAGEMENT,
-          path: `/${ROUTE_PATHS.ADMIN_USER_MANAGEMENT}`,
-          icon: Users,
-        },
+      
         {
           name: 'Role & Permissions',
           module: MODULES.ROLES_PERMISSIONS,
@@ -273,6 +285,12 @@ export function getSidebarNavItems(
             icon: LayoutDashboard,
           },
           {
+            name: 'Profile',
+            module: MODULES.PROFILE,
+            path: orgPath(orgId, ROUTE_PATHS.PROFILE),
+            icon: Users,
+          },
+          {
             name: 'Invite',
             module: MODULES.INVITE,
             path:
@@ -286,6 +304,12 @@ export function getSidebarNavItems(
             module: MODULES.APPOINTMENTS,
             path: orgPath(orgId, ROUTE_PATHS.APPOINTMENTS),
             icon: CalendarDays,
+          },
+          {
+            name: 'My Earnings',
+            module: MODULES.MY_EARNINGS,
+            path: orgPath(orgId, ROUTE_PATHS.MY_EARNINGS),
+            icon: HandCoins,
           },
           {
             name: 'Salon Management',
@@ -368,6 +392,7 @@ export function getSidebarNavItems(
 export const ORG_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.DASHBOARD]: MODULES.DASHBOARD,
   [ROUTE_PATHS.APPOINTMENTS]: MODULES.APPOINTMENTS,
+  [ROUTE_PATHS.MY_EARNINGS]: MODULES.MY_EARNINGS,
   [ROUTE_PATHS.PROFILE]: MODULES.PROFILE,
   [ROUTE_PATHS.SETTINGS]: MODULES.SETTINGS,
   [ROUTE_PATHS.SALON_MANAGEMENT]: MODULES.SALON_MANAGEMENT,
@@ -386,8 +411,11 @@ export const ORG_ROUTE_MODULE: Record<string, ModuleKey> = {
 
 export const ADMIN_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.ADMIN_DASHBOARD]: MODULES.DASHBOARD,
+  [ROUTE_PATHS.ADMIN_PROFILE]: MODULES.PROFILE,
+  [ROUTE_PATHS.ADMIN_SETTINGS]: MODULES.SETTINGS,
   [ROUTE_PATHS.ADMIN_INVITE]: MODULES.INVITE,
   [ROUTE_PATHS.ADMIN_APPOINTMENTS]: MODULES.APPOINTMENTS,
+  [ROUTE_PATHS.ADMIN_MY_EARNINGS]: MODULES.MY_EARNINGS,
   [ROUTE_PATHS.INVITE]: MODULES.INVITE,
   [ROUTE_PATHS.ADMIN_SALON_MANAGEMENT]: MODULES.SALON_MANAGEMENT,
   [ROUTE_PATHS.ADMIN_SALON_EMPLOYEES]: MODULES.EMPLOYEES,

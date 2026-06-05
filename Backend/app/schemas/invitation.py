@@ -15,6 +15,7 @@ from app.constants.invitation_options import (
     VALID_SALON_TYPE_VALUES,
     VALID_SUBSCRIPTION_PLAN_VALUES,
 )
+from app.constants.payroll_options import VALID_SALARY_TYPE_VALUES
 
 PHONE_PATTERN = re.compile(r"^\+?[0-9]{7,15}$")
 INVITE_ROLES = {ROLE_SALON_OWNER, ROLE_SALON_MANAGER, ROLE_EMPLOYEE}
@@ -43,6 +44,24 @@ class CreateInviteRequest(BaseModel):
     address: str = Field(default="", max_length=500)
     gst_number: str = Field(default="", max_length=20)
     slug: Optional[str] = Field(default=None, min_length=2, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+    # Payroll / salary configuration (manager & staff)
+    salary: Optional[float] = Field(default=None, ge=0.0)
+    salary_type: Optional[str] = Field(default=None)
+    joining_date: Optional[datetime] = Field(default=None)
+    incentive_base: Optional[bool] = Field(default=False)
+    service_incentive_percent: Optional[float] = Field(default=None, ge=0.0)
+    product_incentive_percent: Optional[float] = Field(default=None, ge=0.0)
+
+    @field_validator("salary_type")
+    @classmethod
+    def validate_salary_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or not str(value).strip():
+            return None
+        normalized = str(value).strip().lower()
+        if normalized not in VALID_SALARY_TYPE_VALUES:
+            raise ValueError("Please select a valid salary type")
+        return normalized
 
     @field_validator("role")
     @classmethod
@@ -97,6 +116,29 @@ class CreateInviteRequest(BaseModel):
             if missing:
                 raise ValueError(f"Salon owner invitations require: {', '.join(missing)}")
             return self
+
+        # Manager / staff roles require salary configuration
+        salary_missing = []
+        if self.salary is None:
+            salary_missing.append("salary")
+        if not self.salary_type:
+            salary_missing.append("salary_type")
+        if self.joining_date is None:
+            salary_missing.append("joining_date")
+        if salary_missing:
+            raise ValueError(
+                f"Employee salary setup requires: {', '.join(salary_missing)}"
+            )
+        if self.incentive_base:
+            incentive_missing = []
+            if self.service_incentive_percent is None:
+                incentive_missing.append("service_incentive_percent")
+            if self.product_incentive_percent is None:
+                incentive_missing.append("product_incentive_percent")
+            if incentive_missing:
+                raise ValueError(
+                    f"Incentive-based employees require: {', '.join(incentive_missing)}"
+                )
 
         if self.password and self.confirm_password and self.password != self.confirm_password:
             raise ValueError("Passwords do not match")

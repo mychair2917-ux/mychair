@@ -29,6 +29,19 @@ class User(BaseTenantDocument):
     # Optional display names (not required for auth)
     first_name: Optional[str] = Field(default=None, max_length=50)
     last_name: Optional[str] = Field(default=None, max_length=50)
+    alternate_phone: Optional[str] = Field(default=None, max_length=20)
+    gender: Optional[str] = Field(default=None, max_length=20)
+    dob: Optional[datetime] = Field(default=None)
+    avatar: Optional[str] = Field(default=None, max_length=500)
+    city: Optional[str] = Field(default=None, max_length=100)
+    state: Optional[str] = Field(default=None, max_length=100)
+    country: Optional[str] = Field(default=None, max_length=100)
+    pincode: Optional[str] = Field(default=None, max_length=20)
+    department: Optional[str] = Field(default=None, max_length=100)
+    designation: Optional[str] = Field(default=None, max_length=100)
+    shift: Optional[str] = Field(default=None, max_length=100)
+    branch_id: Optional[str] = Field(default=None, index=True)
+    employee_code: Optional[str] = Field(default=None, max_length=50, index=True)
 
     # Salon owner invitation / profile (role=salon_owner)
     username: Optional[str] = Field(default=None, max_length=100)
@@ -39,10 +52,24 @@ class User(BaseTenantDocument):
     subscription_plan: Optional[str] = Field(default=None, max_length=50)
     address: Optional[str] = Field(default=None, max_length=500)
 
+    # Payroll / salary configuration (managers & staff)
+    salary: float = Field(default=0.0, ge=0.0)
+    salary_type: str = Field(
+        default="monthly",
+        description="One of: monthly, daily, weekly",
+    )
+    joining_date: Optional[datetime] = Field(default=None)
+    incentive_base: bool = Field(default=False)
+    service_incentive_percent: float = Field(default=0.0, ge=0.0)
+    product_incentive_percent: float = Field(default=0.0, ge=0.0)
+
     class Settings:
         name = "users"
         indexes = [
             [("tenant_id", 1), ("email", 1)],
             [("tenant_id", 1), ("phone", 1)],
+            [("tenant_id", 1), ("employee_id", 1)],
+            [("tenant_id", 1), ("employee_code", 1)],
+            [("tenant_id", 1), ("branch_id", 1)],
             "is_deleted",
         ]

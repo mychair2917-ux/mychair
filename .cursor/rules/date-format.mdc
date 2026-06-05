@@ -1,0 +1,34 @@
+---
+description: Application-wide date format standard (DD/MM/YYYY)
+alwaysApply: true
+---
+
+# Date Format Rule
+
+The entire MyChair application MUST display dates in **DD/MM/YYYY** format.
+
+Applies everywhere user-facing:
+
+- forms & date pickers
+- tables
+- payroll, monthly salary, salary history
+- employee module (joining date)
+- exports / salary slips / invoices
+
+## Frontend
+
+- Use `formatDateDMY(dateInput)` from `src/utils/utilities.ts` for ALL date display.
+  Do not hand-roll `toLocaleDateString`, `MM/DD/YYYY`, `DD MMM YYYY`, etc. for new code.
+- For `<input type="date">`, store/transport the value as ISO (`YYYY-MM-DD`) using
+  `toDateInputValue(...)`, but always display the human-readable value via `formatDateDMY`.
+- Never introduce `MM/DD/YYYY` (US) date strings in UI.
+
+## Backend / API
+
+- Dates are stored and returned as UTC ISO 8601 (the frontend formats to DD/MM/YYYY).
+- Month/year driven data (e.g. payroll) is transported as integers (`month`, `year`).
+
+## Rationale
+
+Salon owners are non-technical and span regions where DD/MM/YYYY is expected.
+A single shared formatter prevents inconsistent date rendering across modules.

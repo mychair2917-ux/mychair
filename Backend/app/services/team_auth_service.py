@@ -56,4 +56,8 @@ class TeamAuthService:
             "tenant_id": tenant_id,
             "phone": user.phone or "",
             "email": user.email,
+            "id": user_id,
+            "username": user.username or "",
+            "first_name": user.first_name or "",
+            "last_name": user.last_name or "",
         }, None

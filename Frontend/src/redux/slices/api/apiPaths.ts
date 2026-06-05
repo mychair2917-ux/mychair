@@ -21,6 +21,13 @@ export const API_PATHS = {
   SALON_OWNER: {
     PROFILE: '/salon-owner/profile',
   },
+  PROFILE: {
+    GET: '/profile',
+    UPDATE: '/profile',
+    CHANGE_PASSWORD: '/profile/change-password',
+    AVATAR_UPLOAD: '/profile/avatar',
+    AVATAR_REMOVE: '/profile/avatar/remove',
+  },
   EMPLOYEES: {
     LIST: '/employees',
     DETAIL: (id: string) => `/employees/${id}`,
@@ -53,5 +60,35 @@ export const API_PATHS = {
   },
   BILLING: {
     BILLS: '/billing/bills',
+    BILL_DETAIL: (id: string) => `/billing/bills/${id}`,
+  },
+  PAYROLL: {
+    SALARY_TYPES: '/payroll/salary-types',
+    SALARY_STRUCTURE: '/payroll/salary-structure',
+    SALARY_STRUCTURE_DETAIL: (id: string) => `/payroll/salary-structure/${id}`,
+    GENERATE: '/payroll/generate',
+    LIST: '/payroll',
+    HISTORY: '/payroll/history',
+    HISTORY_BY_EMPLOYEE: (id: string) => `/payroll/history/${id}`,
+    PAY: (id: string) => `/payroll/${id}/pay`,
+    SLIP: (id: string) => `/payroll/${id}/slip`,
+    DETAIL: (id: string) => `/payroll/${id}`,
+  },
+  MY_EARNINGS: {
+    SUMMARY: '/my-earnings/summary',
+    DAILY: '/my-earnings/daily',
+    WALLET: '/my-earnings/wallet',
+    SALARY_HISTORY: '/my-earnings/salary-history',
+    SALARY_SLIP: (id: string) => `/my-earnings/salary-history/${id}/slip`,
+    BREAKDOWN: '/my-earnings/breakdown',
+    ACTIVITY: '/my-earnings/activity',
+  },
+  CUSTOMER_ANALYTICS: {
+    OVERVIEW: '/customer-analytics/overview',
+    CUSTOMERS: '/customers',
+    CUSTOMER_DETAIL: (id: string) => `/customers/${id}`,
+    REWARD_SETTINGS: '/reward-settings',
+    REWARD_SEGMENTS: '/reward-settings/segments',
+    REWARD_SEGMENT_DETAIL: (id: string) => `/reward-settings/segments/${id}`,
   },
 };

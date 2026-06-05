@@ -4,9 +4,7 @@ import {
   AlertCircle,
   Banknote,
   BarChart3,
-  Bell,
   Building2,
-  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -21,27 +19,29 @@ import {
   Plus,
   Printer,
   ReceiptText,
-  RefreshCcw,
   Search,
   Send,
-  ShieldCheck,
   Sparkles,
   UploadCloud,
   Users,
   Wallet,
   X,
-  XCircle,
 } from 'lucide-react';
 
 import { Button, Input, Select } from '../components/common';
+import { showToast } from '../components/common/Toast/toastService';
+import PayrollSection from '../components/payroll/PayrollSection';
 import { useAppSelector } from '../redux/hooks';
-import { useListBillsQuery } from '../redux/slices/billing/billingApi';
+import { useLazyGetBillDetailQuery, useListBillsQuery } from '../redux/slices/billing/billingApi';
 import { BillListItem } from '../redux/slices/billing/Types';
 import { cn } from '../utils/cn';
+import { formatCurrency } from '../utils/currency';
 import { downloadInvoicePDF } from '../utils/invoicePdf';
+import { formatDateDMY, toDateInputValue } from '../utils/utilities';
 
 type SectionKey = 'bills' | 'payroll' | 'expenses' | 'purchasing' | 'payments' | 'reports';
 type StatusTone = 'paid' | 'pending' | 'refunded' | 'processing' | 'partial' | 'approved' | 'danger' | 'neutral';
+type DatePreset = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'custom';
 
 interface TabItem {
   label: string;
@@ -62,16 +62,6 @@ interface Column<T> {
   align?: 'left' | 'right' | 'center';
   render?: (row: T) => React.ReactNode;
   className?: string;
-}
-
-interface PayrollEmployee {
-  employee: string;
-  role: string;
-  salary: string;
-  commission: string;
-  bonus: string;
-  payout: string;
-  status: StatusTone;
 }
 
 interface ExpenseRow {
@@ -125,8 +115,7 @@ const tabsBySection: Record<SectionKey, TabItem[]> = {
   ],
   payroll: [
     { label: 'Salary Structure', value: 'structure' },
-    { label: 'Incentives', value: 'incentives' },
-    { label: 'Payroll Processing', value: 'processing' },
+    { label: 'Monthly Salary', value: 'monthly' },
     { label: 'Salary History', value: 'history' },
   ],
   expenses: [
@@ -154,36 +143,6 @@ const tabsBySection: Record<SectionKey, TabItem[]> = {
     { label: 'Profit Reports', value: 'profit' },
   ],
 };
-
-const payrollRows: PayrollEmployee[] = [
-  {
-    employee: 'Neha Sharma',
-    role: 'Senior Stylist',
-    salary: '₹42,000',
-    commission: '12%',
-    bonus: '₹5,500',
-    payout: '₹51,200',
-    status: 'processing',
-  },
-  {
-    employee: 'Rahul Verma',
-    role: 'Barber',
-    salary: '₹32,000',
-    commission: '8%',
-    bonus: '₹2,400',
-    payout: '₹36,900',
-    status: 'paid',
-  },
-  {
-    employee: 'Anika Rao',
-    role: 'Receptionist',
-    salary: '₹28,000',
-    commission: '3%',
-    bonus: '₹1,200',
-    payout: '₹29,800',
-    status: 'pending',
-  },
-];
 
 const expenses: ExpenseRow[] = [
   {
@@ -325,9 +284,6 @@ const PageHeader: React.FC<{
             { value: 'month', label: 'This month' },
           ]}
         />
-        <button className="hidden h-11 w-11 items-center justify-center rounded-2xl border border-[var(--color-border-strong)] bg-white text-gray-500 transition hover:text-[var(--color-brand-gold-dark)] lg:flex">
-          <Bell className="h-4 w-4" />
-        </button>
         <Button className="h-11 rounded-2xl" icon={<Plus className="h-4 w-4" />} onClick={onOpenDrawer}>
           Create Bill
         </Button>
@@ -609,18 +565,6 @@ const SideDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ open, on
   );
 };
 
-const ConfirmationModal: React.FC = () => (
-  <div className="rounded-[1.5rem] border border-red-100 bg-red-50 p-4 text-red-700">
-    <div className="flex gap-3">
-      <AlertCircle className="mt-0.5 h-5 w-5" />
-      <div>
-        <p className="text-sm font-bold">Refund approval required</p>
-        <p className="mt-1 text-xs">Refunds over ₹5,000 are routed to manager approval.</p>
-      </div>
-    </div>
-  </div>
-);
-
 const FormInput: React.FC<{ label: string; placeholder: string; type?: string }> = ({ label, placeholder, type }) => (
   <label className="block">
     <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">{label}</span>
@@ -654,12 +598,62 @@ const BillsSkeletonRow: React.FC = () => (
   </tr>
 );
 
+const getDatePresetRange = (preset: DatePreset): { startDate?: string; endDate?: string } => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (preset === 'today') {
+    const iso = toDateInputValue(today);
+    return { startDate: iso, endDate: iso };
+  }
+
+  if (preset === 'yesterday') {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const iso = toDateInputValue(yesterday);
+    return { startDate: iso, endDate: iso };
+  }
+
+  if (preset === 'this_week') {
+    const weekStart = new Date(today);
+    const day = weekStart.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    weekStart.setDate(weekStart.getDate() + diff);
+    return { startDate: toDateInputValue(weekStart), endDate: toDateInputValue(today) };
+  }
+
+  if (preset === 'this_month') {
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { startDate: toDateInputValue(monthStart), endDate: toDateInputValue(today) };
+  }
+
+  if (preset === 'last_month') {
+    const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    return {
+      startDate: toDateInputValue(firstDayLastMonth),
+      endDate: toDateInputValue(lastDayLastMonth),
+    };
+  }
+
+  return {};
+};
+
 const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonId, activeTab }) => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [datePreset, setDatePreset] = useState<DatePreset>('this_month');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [billStatus, setBillStatus] = useState('');
+  const [staffName, setStaffName] = useState('');
+  const [branchId, setBranchId] = useState(salonId);
+  const [printingBillId, setPrintingBillId] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const LIMIT = 20;
+  const [fetchBillDetail] = useLazyGetBillDetailQuery();
 
   const paymentStatusFilter =
     activeTab === 'paid' ? 'PAID'
@@ -667,15 +661,29 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
     : activeTab === 'partially_paid' ? 'PARTIALLY_PAID'
     : undefined;
 
+  const selectedDateRange =
+    datePreset === 'custom'
+      ? {
+          startDate: customStartDate || undefined,
+          endDate: customEndDate || undefined,
+        }
+      : getDatePresetRange(datePreset);
+
   const { data, isLoading, isFetching, isError } = useListBillsQuery(
     {
-      salon_id: salonId,
+      salon_id: branchId || salonId,
+      branch_id: branchId || undefined,
       page,
       limit: LIMIT,
       payment_status: paymentStatusFilter,
+      bill_status: billStatus || undefined,
+      payment_method: paymentMethod || undefined,
+      staff_name: staffName || undefined,
+      startDate: selectedDateRange.startDate,
+      endDate: selectedDateRange.endDate,
       search: debouncedSearch || undefined,
     },
-    { skip: !salonId }
+    { skip: !(branchId || salonId) }
   );
 
   const items: BillListItem[] = data?.data?.items ?? [];
@@ -698,6 +706,31 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
     }, 400);
   };
 
+  const handlePresetChange = (preset: DatePreset) => {
+    setDatePreset(preset);
+    setPage(1);
+  };
+
+  const handlePrint = async (billId: string) => {
+    setPrintingBillId(billId);
+    try {
+      const res = await fetchBillDetail(billId).unwrap();
+      if (res?.data) {
+        downloadInvoicePDF(res.data);
+      } else {
+        showToast('error', 'No printable data found for this bill');
+      }
+    } catch {
+      showToast('error', 'Failed to fetch bill details for printing');
+    } finally {
+      setPrintingBillId(null);
+    }
+  };
+
+  React.useEffect(() => {
+    setBranchId(salonId);
+  }, [salonId]);
+
   return (
     <SectionStack>
       {/* Summary cards */}
@@ -712,21 +745,21 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
           },
           {
             label: 'Total Amount',
-            value: `₹${(totalRevenue / 100000).toFixed(2)}L`,
+            value: formatCurrency(totalRevenue),
             helper: 'Current page',
             tone: 'bg-emerald-50 text-emerald-700',
             icon: IndianRupee,
           },
           {
             label: 'Collected',
-            value: `₹${totalPaid.toLocaleString('en-IN')}`,
+            value: formatCurrency(totalPaid),
             helper: 'Paid amount',
             tone: 'bg-teal-50 text-teal-700',
             icon: CheckCircle2,
           },
           {
             label: 'Pending',
-            value: `₹${totalPending.toLocaleString('en-IN')}`,
+            value: formatCurrency(totalPending),
             helper: 'Remaining balance',
             tone: 'bg-amber-50 text-amber-700',
             icon: AlertCircle,
@@ -734,20 +767,120 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
         ]}
       />
 
-      {/* Search bar */}
-      <div className="flex flex-col gap-3 rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-3 shadow-soft xl:flex-row xl:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+      {/* Filters */}
+      <div className="space-y-3 rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-3 shadow-soft">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: 'today', label: 'Today' },
+            { key: 'yesterday', label: 'Yesterday' },
+            { key: 'this_week', label: 'This Week' },
+            { key: 'this_month', label: 'This Month' },
+            { key: 'last_month', label: 'Last Month' },
+            { key: 'custom', label: 'Custom Range' },
+          ].map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              onClick={() => handlePresetChange(preset.key as DatePreset)}
+              className={cn(
+                'rounded-xl px-3 py-2 text-xs font-semibold transition',
+                datePreset === preset.key
+                  ? 'bg-[var(--color-brand-gold)] text-white'
+                  : 'bg-[var(--color-surface-bg)] text-gray-600 hover:text-[var(--color-text-primary)]'
+              )}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-2 xl:grid-cols-6">
+          <div className="relative xl:col-span-2">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              className="!h-10 rounded-xl border-[var(--color-border-strong)] !pl-10"
+              placeholder="Search invoice, customer, phone..."
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+            />
+          </div>
+          <Select
+            className="!h-10 rounded-xl border-[var(--color-border-strong)]"
+            value={paymentMethod}
+            onChange={(e) => {
+              setPaymentMethod(e.target.value);
+              setPage(1);
+            }}
+            options={[
+              { value: '', label: 'Payment Mode' },
+              { value: 'CASH', label: 'Cash' },
+              { value: 'UPI', label: 'UPI' },
+              { value: 'CARD', label: 'Card' },
+              { value: 'SPLIT', label: 'Split' },
+            ]}
+          />
+          <Select
+            className="!h-10 rounded-xl border-[var(--color-border-strong)]"
+            value={billStatus}
+            onChange={(e) => {
+              setBillStatus(e.target.value);
+              setPage(1);
+            }}
+            options={[
+              { value: '', label: 'Bill Status' },
+              { value: 'FINALIZED', label: 'Finalized' },
+              { value: 'DRAFT', label: 'Draft' },
+              { value: 'VOIDED', label: 'Voided' },
+            ]}
+          />
           <Input
-            className="!h-10 rounded-xl border-[var(--color-border-strong)] !pl-10"
-            placeholder="Search invoice, client name, phone..."
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            className="!h-10 rounded-xl border-[var(--color-border-strong)]"
+            placeholder="Staff name"
+            value={staffName}
+            onChange={(e) => {
+              setStaffName(e.target.value);
+              setPage(1);
+            }}
+          />
+          <Input
+            className="!h-10 rounded-xl border-[var(--color-border-strong)]"
+            placeholder="Branch ID"
+            value={branchId}
+            onChange={(e) => {
+              setBranchId(e.target.value);
+              setPage(1);
+            }}
           />
         </div>
-        {isFetching && !isLoading && (
-          <span className="text-xs text-gray-400">Refreshing...</span>
+        {datePreset === 'custom' && (
+          <div className="grid gap-2 sm:grid-cols-2 xl:max-w-[420px]">
+            <Input
+              type="date"
+              className="!h-10 rounded-xl border-[var(--color-border-strong)]"
+              value={customStartDate}
+              onChange={(e) => {
+                setCustomStartDate(e.target.value);
+                setPage(1);
+              }}
+            />
+            <Input
+              type="date"
+              className="!h-10 rounded-xl border-[var(--color-border-strong)]"
+              value={customEndDate}
+              onChange={(e) => {
+                setCustomEndDate(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
         )}
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>
+            Range:{' '}
+            {selectedDateRange.startDate ? formatDateDMY(selectedDateRange.startDate) : 'Any'} -{' '}
+            {selectedDateRange.endDate ? formatDateDMY(selectedDateRange.endDate) : 'Any'}
+          </span>
+          {isFetching && !isLoading && <span>Refreshing...</span>}
+        </div>
       </div>
 
       {/* Bills table */}
@@ -833,34 +966,29 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
                         />
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
-                        ₹{bill.total_amount.toLocaleString('en-IN')}
+                        {formatCurrency(bill.total_amount)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right font-semibold text-emerald-700">
-                        ₹{bill.paid_amount.toLocaleString('en-IN')}
+                        {formatCurrency(bill.paid_amount)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right font-semibold text-amber-700">
                         {bill.remaining_amount > 0
-                          ? `₹${bill.remaining_amount.toLocaleString('en-IN')}`
+                          ? formatCurrency(bill.remaining_amount)
                           : '-'}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-xs text-gray-500">
-                        {bill.created_at
-                          ? new Date(bill.created_at).toLocaleDateString('en-IN', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric',
-                            })
-                          : '-'}
+                        {formatDateDMY(bill.created_at)}
                       </td>
                       <td className="sticky right-0 bg-white px-4 py-4">
                         <button
                           type="button"
-                          onClick={() => downloadInvoicePDF(bill)}
+                          onClick={() => handlePrint(bill.id)}
                           title="Download PDF invoice"
+                          disabled={printingBillId === bill.id}
                           className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--color-border-strong)] bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-[var(--color-brand-gold)] hover:text-[var(--color-brand-gold-dark)]"
                         >
                           <Printer className="h-3.5 w-3.5" />
-                          Print
+                          {printingBillId === bill.id ? 'Printing...' : 'Print'}
                         </button>
                       </td>
                     </tr>
@@ -926,69 +1054,6 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
           </div>
         )}
       </div>
-    </SectionStack>
-  );
-};
-
-const PayrollSection: React.FC<{ activeTab: string }> = ({ activeTab }) => {
-  const columns: Column<PayrollEmployee>[] = [
-    { key: 'employee', header: 'Employee', render: (row) => <CustomerCell name={row.employee} subtitle={row.role} /> },
-    { key: 'salary', header: 'Monthly Salary', align: 'right', render: (row) => <b className="text-gray-900">{row.salary}</b> },
-    { key: 'role', header: 'Role' },
-    { key: 'commission', header: 'Service Commission %' },
-    { key: 'bonus', header: 'Target Bonus' },
-    { key: 'payout', header: 'Final Payout', align: 'right', render: (row) => <b className="text-gray-900">{row.payout}</b> },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-  ];
-
-  if (activeTab === 'processing') {
-    return (
-      <SectionStack>
-        <SummaryCards
-          items={[
-            { label: 'Total Salary', value: '₹8.42L', helper: '42 employees', tone: 'bg-blue-50 text-blue-700', icon: Users },
-            { label: 'Deductions', value: '₹38.2K', helper: 'Late marks + advances', tone: 'bg-red-50 text-red-700', icon: XCircle },
-            { label: 'Incentives', value: '₹1.16L', helper: 'Service + product commission', tone: 'bg-emerald-50 text-emerald-700', icon: Sparkles },
-            { label: 'Final Payout', value: '₹9.20L', helper: 'Ready to process', tone: 'bg-violet-50 text-violet-700', icon: ShieldCheck },
-          ]}
-        />
-        <div className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-lg font-bold text-[var(--color-text-primary)]">June payroll batch</h3>
-              <p className="text-sm text-[var(--color-text-secondary)]">Review deductions and incentives before payout.</p>
-            </div>
-            <Button className="rounded-2xl" icon={<CheckCircle2 className="h-4 w-4" />}>
-              Process Payroll
-            </Button>
-          </div>
-        </div>
-        <DataTable columns={columns} data={payrollRows} actions={['View', 'Edit Salary', 'Payslip']} />
-      </SectionStack>
-    );
-  }
-
-  return (
-    <SectionStack>
-      <SearchFilterBar compact />
-      <DataTable
-        columns={columns}
-        data={payrollRows}
-        actions={activeTab === 'history' ? ['Payslip', 'Download'] : ['View', 'Edit Salary']}
-      />
-      {activeTab === 'incentives' && (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {['Service commission %', 'Product commission %', 'Target bonus'].map((title, index) => (
-            <div key={title} className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
-              <p className="text-sm font-semibold text-gray-500">{title}</p>
-              <p className="mt-2 text-3xl font-bold text-[var(--color-text-primary)]">
-                {index === 0 ? '12%' : index === 1 ? '6%' : '₹1.1L'}
-              </p>
-              <p className="mt-2 text-xs text-gray-500">Calculated from closed paid invoices.</p>
-            </div>
-          ))}
-        </div>
-      )}
     </SectionStack>
   );
 };
@@ -1113,10 +1178,10 @@ const PaymentsSection: React.FC = () => {
   return (
     <SectionStack>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <AmountCard label="Cash" value="₹2.84L" icon={Banknote} tone="bg-emerald-50 text-emerald-700" />
-        <AmountCard label="UPI" value="₹5.42L" icon={Wallet} tone="bg-blue-50 text-blue-700" />
-        <AmountCard label="Card" value="₹3.18L" icon={CreditCard} tone="bg-violet-50 text-violet-700" />
-        <AmountCard label="Wallet" value="₹74.8K" icon={IndianRupee} tone="bg-amber-50 text-amber-700" />
+        <AmountCard label="Cash" value={formatCurrency(284000)} icon={Banknote} tone="bg-emerald-50 text-emerald-700" />
+        <AmountCard label="UPI" value={formatCurrency(542000)} icon={Wallet} tone="bg-blue-50 text-blue-700" />
+        <AmountCard label="Card" value={formatCurrency(318000)} icon={CreditCard} tone="bg-violet-50 text-violet-700" />
+        <AmountCard label="Wallet" value={formatCurrency(74800)} icon={IndianRupee} tone="bg-amber-50 text-amber-700" />
       </div>
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <DataTable columns={columns} data={payments} actions={['Payment Detail', 'Collect Payment', 'Print']} />
@@ -1141,10 +1206,10 @@ const ReportsSection: React.FC<{ activeTab: string }> = ({ activeTab }) => (
   <SectionStack>
     <SummaryCards
       items={[
-        { label: 'Revenue', value: '₹18.42L', helper: 'Sales reports', tone: 'bg-emerald-50 text-emerald-700', icon: IndianRupee },
-        { label: 'Expenses', value: '₹6.18L', helper: 'Expense reports', tone: 'bg-red-50 text-red-700', icon: FileText },
-        { label: 'Payroll', value: '₹9.20L', helper: 'Salary + incentives', tone: 'bg-blue-50 text-blue-700', icon: Users },
-        { label: 'Net Profit', value: '₹3.04L', helper: 'Profit reports', tone: 'bg-violet-50 text-violet-700', icon: BarChart3 },
+        { label: 'Revenue', value: formatCurrency(1842000), helper: 'Sales reports', tone: 'bg-emerald-50 text-emerald-700', icon: IndianRupee },
+        { label: 'Expenses', value: formatCurrency(618000), helper: 'Expense reports', tone: 'bg-red-50 text-red-700', icon: FileText },
+        { label: 'Payroll', value: formatCurrency(920000), helper: 'Salary + incentives', tone: 'bg-blue-50 text-blue-700', icon: Users },
+        { label: 'Net Profit', value: formatCurrency(304000), helper: 'Profit reports', tone: 'bg-violet-50 text-violet-700', icon: BarChart3 },
       ]}
     />
     <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
@@ -1241,7 +1306,7 @@ const BillingFinance: React.FC = () => {
       case 'bills':
         return <BillsSection salonId={salonId} activeTab={activeTab} />;
       case 'payroll':
-        return <PayrollSection activeTab={activeTab} />;
+        return <PayrollSection activeTab={activeTab} salonId={salonId} />;
       case 'expenses':
         return <ExpensesSection activeTab={activeTab} />;
       case 'purchasing':
@@ -1271,14 +1336,6 @@ const BillingFinance: React.FC = () => {
               value={activeTab}
               onChange={(value) => setActiveTabs((prev) => ({ ...prev, [activeSection]: value }))}
             />
-            <div className="flex gap-2">
-              <Button variant="secondary" className="rounded-2xl" icon={<CalendarDays className="h-4 w-4" />}>
-                Date Range
-              </Button>
-              <Button variant="ghost" className="rounded-2xl" icon={<Printer className="h-4 w-4" />}>
-                Print
-              </Button>
-            </div>
           </div>
           {content}
         </main>

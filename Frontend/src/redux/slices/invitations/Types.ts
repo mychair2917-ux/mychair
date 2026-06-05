@@ -30,6 +30,13 @@ export interface CreateInviteRequest {
   salon_phone_number?: string;
   address?: string;
   gst_number?: string;
+  // Salary configuration (manager & staff)
+  salary?: number;
+  salary_type?: string;
+  joining_date?: string;
+  incentive_base?: boolean;
+  service_incentive_percent?: number;
+  product_incentive_percent?: number;
 }
 
 /** @deprecated Use CreateInviteRequest */

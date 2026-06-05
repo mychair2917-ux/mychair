@@ -13,6 +13,7 @@ from app.models.customer import Customer
 from app.models.user import User
 from app.repositories.appointment import AppointmentRepository
 from app.services.billing import BillingService
+from app.services.bill import BillService
 from app.core.exceptions import BookingConflictException, ResourceNotFoundException
 from app.core import tenant_context
 from app.utils.timezone import make_aware
@@ -21,6 +22,7 @@ class AppointmentService:
     def __init__(self) -> None:
         self.appointment_repo = AppointmentRepository()
         self.billing_service = BillingService()
+        self.bill_service = BillService()
 
     async def get_customer_for_history(
         self,
@@ -490,16 +492,49 @@ class AppointmentService:
         appointment.add_status("BOOKED", changed_by=tenant_context.get_user_id())
         await appointment.save()
 
-        # Auto-generate invoice from appointment submission
+        # Fetch salon details once — used by both Invoice and Bill creation below.
+        # Defined outside try blocks so variables are always in scope.
         try:
             salon = await Salon.find_one({"_id": PydanticObjectId(salon_id), "is_deleted": False})
-            salon_name = salon.name if salon else "Salon"
-            salon_phone = salon.phone if salon else ""
-            salon_addr = salon.address if salon else {}
-            salon_address_str = ", ".join(
-                str(v) for v in salon_addr.values() if v
-            ) if isinstance(salon_addr, dict) else ""
+        except Exception:
+            salon = None
+        salon_name = salon.name if salon else "Salon"
+        salon_phone = getattr(salon, "phone", "") or ""
+        salon_addr = getattr(salon, "address", {}) or {}
+        salon_address_str = (
+            ", ".join(str(v) for v in salon_addr.values() if v)
+            if isinstance(salon_addr, dict)
+            else ""
+        )
 
+        # Shared line-item payloads reused by both Invoice and Bill
+        service_payload = [
+            {
+                "service_id": s.service_id,
+                "name": s.name,
+                "price": s.price,
+                "tax_rate": s.tax_rate,
+                "staff_id": s.staff_id,
+                "staff_name": s.staff_name,
+            }
+            for s in service_snapshots
+        ]
+        product_payload = [
+            {
+                "product_id": p.product_id,
+                "name": p.name,
+                "price": p.price,
+                "tax_rate": p.tax_rate,
+                "staff_id": p.staff_id,
+                "staff_name": p.staff_name,
+            }
+            for p in product_snapshots
+        ]
+        customer_name_str = customer.full_name.strip() if customer.full_name else ""
+        customer_phone_str = customer.phone or ""
+
+        # Auto-generate Invoice (financial ledger record)
+        try:
             await self.billing_service.create_invoice_from_appointment(
                 appointment_id=str(appointment.id),
                 salon_id=salon_id,
@@ -507,30 +542,10 @@ class AppointmentService:
                 salon_phone=salon_phone,
                 salon_address=salon_address_str,
                 customer_id=customer_id,
-                customer_name=customer.full_name.strip() if customer.full_name else "",
-                customer_phone=customer.phone or "",
-                services=[
-                    {
-                        "service_id": s.service_id,
-                        "name": s.name,
-                        "price": s.price,
-                        "tax_rate": s.tax_rate,
-                        "staff_id": s.staff_id,
-                        "staff_name": s.staff_name,
-                    }
-                    for s in service_snapshots
-                ],
-                products=[
-                    {
-                        "product_id": p.product_id,
-                        "name": p.name,
-                        "price": p.price,
-                        "tax_rate": p.tax_rate,
-                        "staff_id": p.staff_id,
-                        "staff_name": p.staff_name,
-                    }
-                    for p in product_snapshots
-                ],
+                customer_name=customer_name_str,
+                customer_phone=customer_phone_str,
+                services=service_payload,
+                products=product_payload,
                 payment_status=payment_status,
                 payment_method=payment_type,
                 total_amount=total_amount,
@@ -538,6 +553,45 @@ class AppointmentService:
             )
         except Exception:
             # Invoice creation failure must not block appointment creation
+            pass
+
+        # Auto-generate Bill (customer-facing bill stored in bills collection)
+        created_invoice_id: Optional[str] = None
+        try:
+            bill = await self.bill_service.create_bill_from_appointment(
+                appointment_id=str(appointment.id),
+                salon_id=salon_id,
+                salon_name=salon_name,
+                salon_phone=salon_phone,
+                salon_address=salon_address_str,
+                customer_id=customer_id,
+                customer_name=customer_name_str,
+                customer_phone=customer_phone_str,
+                services=service_payload,
+                products=product_payload,
+                payment_status=payment_status,
+                payment_method=payment_type,
+                total_amount=total_amount,
+                paid_amount=effective_paid,
+            )
+            if bill:
+                created_invoice_id = str(bill.id)
+        except Exception:
+            # Bill creation failure must not block appointment creation
+            pass
+
+        # Award reward points — isolated so any failure never blocks booking
+        try:
+            effective_tenant_id = str(customer.tenant_id or "").strip() or salon_id
+            from app.services.reward import RewardService
+            reward_svc = RewardService()
+            await reward_svc.award_points_for_invoice(
+                customer_id=customer_id,
+                invoice_id=created_invoice_id or "",
+                bill_amount=float(total_amount or 0),
+                tenant_id=effective_tenant_id,
+            )
+        except Exception:
             pass
 
         return appointment

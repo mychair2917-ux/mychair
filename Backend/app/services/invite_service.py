@@ -77,6 +77,25 @@ class InviteService:
         return parts[0], parts[1]
 
     @staticmethod
+    def _salary_fields(payload: CreateInviteRequest) -> Dict[str, Any]:
+        """Build salary/incentive config fields persisted on the employee User."""
+        from app.constants.payroll_options import DEFAULT_SALARY_TYPE
+
+        incentive_base = bool(payload.incentive_base)
+        return {
+            "salary": payload.salary or 0.0,
+            "salary_type": payload.salary_type or DEFAULT_SALARY_TYPE,
+            "joining_date": payload.joining_date,
+            "incentive_base": incentive_base,
+            "service_incentive_percent": (
+                payload.service_incentive_percent or 0.0 if incentive_base else 0.0
+            ),
+            "product_incentive_percent": (
+                payload.product_incentive_percent or 0.0 if incentive_base else 0.0
+            ),
+        }
+
+    @staticmethod
     def _invitable_roles_for(actor_role: str) -> List[dict]:
         from app.auth.invitation_rbac import INVITABLE_ROLES
 
@@ -225,6 +244,7 @@ class InviteService:
             tenant_id=tenant_id,
             branch_name=payload.branch_name or None,
             created_by=str(actor.id),
+            **self._salary_fields(payload),
         )
         await user.insert()
 
@@ -313,6 +333,7 @@ class InviteService:
             tenant_id=tenant_id,
             branch_name=payload.branch_name or None,
             created_by=str(actor.id),
+            **self._salary_fields(payload),
         )
         await user.insert()
 

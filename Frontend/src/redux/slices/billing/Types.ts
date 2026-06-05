@@ -41,9 +41,16 @@ export interface BillListItem {
 
 export interface BillListParams {
   salon_id: string;
+  branch_id?: string;
   page?: number;
   limit?: number;
   payment_status?: string;
+  bill_status?: string;
+  payment_method?: string;
+  staff_id?: string;
+  staff_name?: string;
+  startDate?: string;
+  endDate?: string;
   search?: string;
 }
 
@@ -53,4 +60,51 @@ export interface PaginatedBillData {
   page: number;
   limit: number;
   pages: number;
+}
+
+export interface BillTaxBreakdown {
+  rate: string;
+  amount: number;
+}
+
+export interface BillPaymentDetail {
+  id: string;
+  amount: number;
+  method: string;
+  status: string;
+  transaction_reference?: string | null;
+  payment_date?: string | null;
+}
+
+export interface BillLineDetail {
+  item_id: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  discount: number;
+  tax_rate: number;
+  tax_amount: number;
+  line_total: number;
+  staff_id?: string | null;
+  staff_name?: string | null;
+}
+
+export interface BillEntityDetail {
+  id: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null | Record<string, unknown>;
+  gst_number?: string | null;
+  logo_url?: string | null;
+  notes?: string | null;
+}
+
+export interface BillDetail extends BillListItem {
+  customer: BillEntityDetail;
+  salon: BillEntityDetail;
+  services: BillLineDetail[];
+  products: BillLineDetail[];
+  tax_breakdown: BillTaxBreakdown[];
+  payments: BillPaymentDetail[];
 }
