@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.models.invitation_token import InvitationToken
 from app.models.subscription import Subscription
+from app.models.salon import Salon
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.email_service import send_invitation_email
@@ -175,6 +176,10 @@ class InvitationService:
         address: str = "",
         slug: Optional[str] = None,
         username: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        attendance_radius: int = 100,
+        shift_start: str = "09:00",
     ) -> Tuple[Optional[dict], Optional[dict]]:
         """
         Create tenant, salon owner user, token and send invitation email.
@@ -194,6 +199,8 @@ class InvitationService:
             field_errors["salon_type"] = ["Please select a valid salon type"]
         if subscription_plan not in VALID_SUBSCRIPTION_PLAN_VALUES:
             field_errors["subscription_plan"] = ["Please select a valid subscription plan"]
+        if latitude is None or longitude is None:
+            field_errors["location"] = ["Salon location is required for attendance"]
         if field_errors:
             return None, field_errors
 
@@ -233,9 +240,24 @@ class InvitationService:
             subscription_plan=subscription_plan,
             subscription_tier=subscription_plan,
             subscription_status="ACTIVE",
+            latitude=latitude,
+            longitude=longitude,
+            attendance_radius=attendance_radius,
+            shift_start=shift_start or "09:00",
         )
         await tenant.insert()
         tenant_id = str(tenant.id)
+
+        branch_label = branch_name.strip() if branch_name else salon_name
+        salon_branch = Salon(
+            tenant_id=tenant_id,
+            name=branch_label,
+            address={"text": address} if address else {},
+            latitude=latitude,
+            longitude=longitude,
+            attendance_radius=attendance_radius,
+        )
+        await salon_branch.insert()
 
         owner = User(
             email=email,

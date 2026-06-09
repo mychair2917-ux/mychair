@@ -108,6 +108,8 @@ class AppointmentService:
             "products": [
                 {
                     "product_id": product.product_id,
+                    "salon_product_id": product.salon_product_id,
+                    "brand_id": product.brand_id,
                     "name": product.name,
                     "price": product.price,
                     "tax_rate": product.tax_rate,
@@ -392,8 +394,10 @@ class AppointmentService:
             salon_product_id = item.get("salon_product_id")
             snapshot_price = item.get("price", 0)
             custom_product_name: Optional[str] = None
+            brand_id: Optional[str] = None
+            brand_name: Optional[str] = None
 
-            if not product_id and salon_product_id:
+            if salon_product_id:
                 try:
                     salon_product_obj_id = PydanticObjectId(salon_product_id)
                 except Exception as exc:
@@ -415,6 +419,8 @@ class AppointmentService:
                     custom_product_name = (
                         (salon_product.custom_product_name or "").strip() or "Custom Product"
                     )
+                brand_id = salon_product.brand_id
+                brand_name = salon_product.custom_brand_name
                 snapshot_price = item.get("price", salon_product.price)
 
             product = None
@@ -448,12 +454,26 @@ class AppointmentService:
                     raise ResourceNotFoundException(f"Staff ID '{item['staff_id']}' not found")
 
             product_name = product.name if product else custom_product_name or "Custom Product"
+            if brand_id and not brand_name:
+                from app.models.brand import Brand
+
+                try:
+                    brand = await Brand.find_one(
+                        Brand.id == PydanticObjectId(brand_id),
+                        Brand.is_deleted == False,
+                    )
+                    brand_name = brand.name if brand else None
+                except Exception:
+                    brand_name = None
+            display_product_name = f"{product_name} ({brand_name})" if brand_name else product_name
             snapshot_product_id = str(product.id) if product else (salon_product_id or product_id or "")
             tax_rate = product.tax_rate if product else 0.0
             product_snapshots.append(
                 ProductSnapshot(
                     product_id=snapshot_product_id,
-                    name=product_name,
+                    salon_product_id=salon_product_id,
+                    brand_id=brand_id,
+                    name=display_product_name,
                     price=float(snapshot_price),
                     tax_rate=tax_rate,
                     staff_id=item["staff_id"],
@@ -522,6 +542,8 @@ class AppointmentService:
         product_payload = [
             {
                 "product_id": p.product_id,
+                "salon_product_id": p.salon_product_id,
+                "brand_id": p.brand_id,
                 "name": p.name,
                 "price": p.price,
                 "tax_rate": p.tax_rate,

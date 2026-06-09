@@ -93,6 +93,7 @@ class InviteService:
             "product_incentive_percent": (
                 payload.product_incentive_percent or 0.0 if incentive_base else 0.0
             ),
+            "weekly_off": payload.weekly_off or [],
         }
 
     @staticmethod
@@ -192,81 +193,9 @@ class InviteService:
                 actor, payload, tenant_id, tenant.name
             )
 
-        if not payload.email:
-            return None, {"email": ["Email is required for this invitation"]}
-
-        existing_user = await User.find_one(
-            User.email == payload.email,
-            User.tenant_id == tenant_id,
-            User.is_deleted == False,
-        )
-        if existing_user:
-            return None, {"email": ["This email is already registered in this salon"]}
-
-        pending = await self._pending_invite_for_email(str(payload.email))
-        if pending:
-            return None, {"email": ["A pending invitation already exists for this email"]}
-
-        if payload.reporting_manager_id:
-            manager = await User.get(payload.reporting_manager_id)
-            if (
-                not manager
-                or manager.tenant_id != tenant_id
-                or manager.role != ROLE_SALON_MANAGER
-            ):
-                return None, {"reporting_manager_id": ["Invalid reporting manager"]}
-
-        first_name, last_name = self._split_full_name(payload.full_name)
-        token_value = self._generate_token()
-        invitation_link = f"{settings.FRONTEND_URL}/create-password?token={token_value}"
-
-        email_sent, email_error = await send_team_invitation_email(
-            to_email=str(payload.email),
-            invitee_name=payload.full_name,
-            role_label=ROLE_LABELS.get(payload.role, payload.role),
-            salon_name=tenant.name,
-            invitation_link=invitation_link,
-        )
-        if not email_sent:
-            return None, {
-                "email": [email_error or "Failed to send invitation email. Please try again."]
-            }
-
-        user = User(
-            email=str(payload.email),
-            phone=payload.phone or None,
-            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
-            first_name=first_name,
-            last_name=last_name,
-            role=payload.role,
-            is_active=False,
-            status="INACTIVE",
-            tenant_id=tenant_id,
-            branch_name=payload.branch_name or None,
-            created_by=str(actor.id),
-            **self._salary_fields(payload),
-        )
-        await user.insert()
-
-        expires_at = now_utc() + timedelta(hours=settings.INVITATION_TOKEN_EXPIRE_HOURS)
-        invite = Invite(
-            invited_by=str(actor.id),
-            invited_email=str(payload.email),
-            role=payload.role,
-            full_name=payload.full_name,
-            phone=payload.phone or None,
-            salon_id=tenant_id,
-            branch_id=payload.branch_id,
-            branch_name=payload.branch_name or None,
-            reporting_manager_id=payload.reporting_manager_id,
-            token=token_value,
-            expires_at=expires_at,
-            status="pending",
-            user_id=str(user.id),
-        )
-        await invite.insert()
-
-        return self._invite_response(invite, tenant.name), None
+        return None, {
+            "role": ["Manager and staff must be created with a password. Email invitations are only for salon owners."]
+        }
 
     async def _create_team_member_direct(
         self,
@@ -380,6 +309,10 @@ class InviteService:
             subscription_plan=payload.subscription_plan or "",
             slug=payload.slug,
             username=payload.username,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            attendance_radius=payload.attendance_radius,
+            shift_start=payload.shift_start or "09:00",
         )
         if errors:
             return None, errors
@@ -579,13 +512,7 @@ class InviteService:
                 invitation_link=invitation_link,
             )
         else:
-            email_sent, email_error = await send_team_invitation_email(
-                to_email=invite.invited_email,
-                invitee_name=invite.full_name,
-                role_label=ROLE_LABELS.get(invite.role, invite.role),
-                salon_name=salon_name,
-                invitation_link=invitation_link,
-            )
+            return None, "Only salon owner invitations can be resent by email"
 
         if not email_sent:
             return None, email_error or "Failed to resend invitation email"

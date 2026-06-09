@@ -63,6 +63,9 @@ class User(BaseTenantDocument):
     service_incentive_percent: float = Field(default=0.0, ge=0.0)
     product_incentive_percent: float = Field(default=0.0, ge=0.0)
 
+    # Weekly off days for attendance (e.g. ["sunday", "monday"])
+    weekly_off: List[str] = Field(default_factory=list)
+
     class Settings:
         name = "users"
         indexes = [

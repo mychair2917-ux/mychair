@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { Button, FormField, Input, Select } from '../common';
+import WeekOffSelector from '../common/WeekOffSelector';
 import Modal from '../common/Modal';
 import ModalBody from '../common/Modal/ModalBody';
 import ModalFooter from '../common/Modal/ModalFooter';
@@ -18,6 +19,7 @@ interface EmployeeEditModalProps {
     phone: string;
     role: string;
     branch_name: string;
+    weekly_off: string[];
   }) => Promise<void>;
 }
 
@@ -44,6 +46,7 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('employee');
   const [branchName, setBranchName] = useState('');
+  const [weeklyOff, setWeeklyOff] = useState<string[]>([]);
 
   useEffect(() => {
     if (employee) {
@@ -53,6 +56,7 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
       setPhone(employee.phone ?? '');
       setRole(employee.role);
       setBranchName(employee.branch_name ?? '');
+      setWeeklyOff(employee.weekly_off ?? []);
     }
   }, [employee]);
 
@@ -66,6 +70,7 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
       phone,
       role,
       branch_name: branchName,
+      weekly_off: weeklyOff,
     });
   };
 
@@ -89,6 +94,7 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
           <FormField label="Branch" name="branch_name">
             <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} />
           </FormField>
+          <WeekOffSelector value={weeklyOff} onChange={setWeeklyOff} />
         </ModalBody>
         <ModalFooter>
           <Button type="button" variant="secondary" onClick={onClose}>

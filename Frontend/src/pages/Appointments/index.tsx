@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Download,
   Plus,
   ReceiptText,
   Search,
@@ -13,7 +14,6 @@ import {
 import { useParams } from 'react-router-dom';
 
 import { Button, CommonDropdown, Input, Select } from '../../components/common';
-import { showToast } from '../../components/common/Toast/toastService';
 import { useAppSelector } from '../../redux/hooks';
 import {
   useCreateAppointmentClientMutation,
@@ -23,9 +23,11 @@ import {
   useGetAppointmentSalonServicesQuery,
   useGetAppointmentStaffQuery,
   useGetTodayAppointmentsQuery,
+  useLazyGetBillByAppointmentQuery,
   useLazySearchAppointmentClientsQuery,
   useListAppointmentsQuery,
 } from '../../redux/slices/appointments/appointmentsApi';
+import { useLazyGetBillDetailQuery } from '../../redux/slices/billing/billingApi';
 import {
   AppointmentClient,
   AppointmentListItem,
@@ -33,6 +35,9 @@ import {
 } from '../../redux/slices/appointments/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { cn } from '../../utils/cn';
+import { formatDateDMY } from '../../utils/utilities';
+import { downloadInvoicePDF } from '../../utils/invoicePdf';
+import { showToast } from '../../components/common/Toast/toastService';
 
 /* ─── types ─────────────────────────────────────────────── */
 type Tab = 'entry' | 'list';
@@ -73,6 +78,8 @@ const statusOptions = [
   { value: 'CHECKED_IN', label: 'Checked in' },
   { value: 'IN_PROGRESS', label: 'In progress' },
   { value: 'COMPLETED', label: 'Completed' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'NO_SHOW', label: 'No show' },
 ];
 
 const sourceOptions = [
@@ -128,24 +135,36 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  BOOKED: 'Booked',
+  CHECKED_IN: 'Checked In',
+  IN_PROGRESS: 'In Progress',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+  NO_SHOW: 'No Show',
+};
+
 /* ─── sub-components ────────────────────────────────────── */
 const AppointmentQueueCard: React.FC<{ appointment: AppointmentListItem }> = ({ appointment }) => (
   <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
     <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="font-semibold text-gray-900">{appointment.customer_name}</p>
-        <p className="text-sm text-gray-500">{appointment.customer_phone}</p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-semibold text-gray-900">{appointment.customer_name}</p>
+        <p className="text-sm text-gray-500">{appointment.customer_phone || '—'}</p>
       </div>
       <span
-        className={`rounded-full px-2 py-1 text-xs font-medium ${statusStyles[appointment.status] ?? 'bg-gray-100 text-gray-600'}`}
+        className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${statusStyles[appointment.status] ?? 'bg-gray-100 text-gray-600'}`}
       >
-        {appointment.status.toLowerCase().replace('_', ' ')}
+        {STATUS_LABELS[appointment.status] ?? appointment.status}
       </span>
     </div>
     <div className="mt-3 flex items-center justify-between text-sm">
       <span className="font-medium text-gray-900">{formatTime(appointment.start_datetime)}</span>
       <span className="text-gray-500">₹{appointment.total_price}</span>
     </div>
+    {appointment.staff_name && (
+      <p className="mt-1 text-xs text-gray-400">Staff: {appointment.staff_name}</p>
+    )}
     <p className="mt-2 line-clamp-2 text-xs text-gray-500">
       {[...appointment.services.map((s) => s.name), ...appointment.products.map((p) => p.name)].join(', ') ||
         'No services or products'}
@@ -172,7 +191,11 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
   const [sortBy] = useState('start_datetime');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [downloadingBillId, setDownloadingBillId] = useState<string | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [fetchBillByAppointment] = useLazyGetBillByAppointmentQuery();
+  const [fetchBillDetail] = useLazyGetBillDetailQuery();
 
   // Debounce search
   const handleSearchChange = (val: string) => {
@@ -299,7 +322,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                   </td>
                   <td className="px-3 py-3 text-gray-600">{appt.staff_name || '-'}</td>
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
-                    <p className="font-medium text-gray-900">{formatDate(appt.start_datetime)}</p>
+                    <p className="font-medium text-gray-900">{formatDateDMY(appt.start_datetime)}</p>
                     <p className="text-xs text-gray-500">{formatTime(appt.start_datetime)}</p>
                   </td>
                   <td className="px-3 py-3">
@@ -320,9 +343,43 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                       type="button"
                       variant="ghost"
                       className="!px-2 !py-1 text-xs"
-                      title="View bill (coming soon)"
+                      title={appt.payment_status === 'PENDING' ? 'No bill yet' : 'Download bill'}
+                      disabled={downloadingBillId === appt.id}
+                      onClick={async () => {
+                        if (appt.payment_status === 'PENDING') {
+                          showToast('warning', 'No bill available — payment is still pending.');
+                          return;
+                        }
+                        setDownloadingBillId(appt.id);
+                        try {
+                          const listRes = await fetchBillByAppointment({
+                            salon_id: salonId,
+                            appointment_id: appt.id,
+                          }).unwrap();
+                          if (!listRes.data) {
+                            showToast('warning', 'No bill found for this appointment.');
+                            return;
+                          }
+                          const detailRes = await fetchBillDetail(listRes.data.id).unwrap();
+                          if (detailRes.data) {
+                            downloadInvoicePDF(detailRes.data);
+                          } else {
+                            downloadInvoicePDF(listRes.data);
+                          }
+                        } catch {
+                          showToast('error', 'Failed to fetch bill. Please try again.');
+                        } finally {
+                          setDownloadingBillId(null);
+                        }
+                      }}
                     >
-                      <ReceiptText className="h-4 w-4 text-gray-400" />
+                      {downloadingBillId === appt.id ? (
+                        <span className="text-xs text-gray-400">…</span>
+                      ) : appt.payment_status === 'PENDING' ? (
+                        <ReceiptText className="h-4 w-4 text-gray-300" />
+                      ) : (
+                        <Download className="h-4 w-4 text-[var(--color-brand-gold)]" />
+                      )}
                     </Button>
                   </td>
                 </tr>
@@ -411,6 +468,7 @@ const Appointments: React.FC = () => {
   const [queueSearch, setQueueSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [showCompleted, setShowCompleted] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<AppointmentClient | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -427,8 +485,8 @@ const Appointments: React.FC = () => {
   const [notes, setNotes] = useState('');
 
   const { data: todayData, isLoading: isTodayLoading } = useGetTodayAppointmentsQuery(
-    { salon_id: salonId },
-    { skip: !salonId }
+    { salon_id: salonId, include_completed: showCompleted },
+    { skip: !salonId, pollingInterval: 60000 }
   );
   const { data: servicesData, isLoading: isLoadingSalonServices } = useGetAppointmentSalonServicesQuery(
     { salon_id: salonId },
@@ -714,7 +772,7 @@ const Appointments: React.FC = () => {
           </div>
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Today: {new Date().toLocaleDateString()}
+            Today: {formatDateDMY(new Date().toISOString())}
           </div>
         </div>
       </div>
@@ -725,9 +783,14 @@ const Appointments: React.FC = () => {
           {/* Today's queue */}
           <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
             <div className="border-b border-gray-100 p-4">
-              <div className="flex items-center gap-2">
-                <CalendarDays className="h-5 w-5 text-[var(--color-brand-gold)]" />
-                <h2 className="font-semibold text-gray-900">Today&apos;s queue</h2>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5 text-[var(--color-brand-gold)]" />
+                  <h2 className="font-semibold text-gray-900">Today&apos;s queue</h2>
+                </div>
+                <span className="rounded-full bg-[var(--color-brand-gold)] px-2 py-0.5 text-xs font-bold text-white">
+                  {visibleAppointments.length}
+                </span>
               </div>
               <div className="mt-4 space-y-3">
                 <Input
@@ -749,13 +812,27 @@ const Appointments: React.FC = () => {
                     placeholder="Status"
                   />
                 </div>
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-500">
+                  <input
+                    type="checkbox"
+                    checked={showCompleted}
+                    onChange={(e) => setShowCompleted(e.target.checked)}
+                    className="rounded"
+                  />
+                  Show completed &amp; cancelled
+                </label>
               </div>
             </div>
             <div className="space-y-3 p-4">
               {isTodayLoading ? (
                 <p className="py-8 text-center text-sm text-gray-400">Loading queue...</p>
               ) : visibleAppointments.length === 0 ? (
-                <p className="py-8 text-center text-sm text-gray-400">No appointments found for today.</p>
+                <div className="py-8 text-center">
+                  <CalendarDays className="mx-auto mb-2 h-8 w-8 text-gray-200" />
+                  <p className="text-sm text-gray-400">
+                    {showCompleted ? 'No appointments today.' : 'No active queue items. Check "Show completed" to see all.'}
+                  </p>
+                </div>
               ) : (
                 visibleAppointments.map((appointment) => (
                   <AppointmentQueueCard key={appointment.id} appointment={appointment} />
@@ -991,7 +1068,7 @@ const Appointments: React.FC = () => {
                   {history.slice(0, 4).map((item) => (
                     <div key={item.id} className="rounded-xl bg-gray-50 p-3 text-sm">
                       <p className="font-medium text-gray-900">
-                        {new Date(item.start_datetime).toLocaleDateString()}
+                        {formatDateDMY(item.start_datetime)}
                       </p>
                       <p className="mt-1 text-gray-500">
                         {[...item.services.map((s) => s.name), ...item.products.map((p) => p.name)].join(', ')}

@@ -26,6 +26,7 @@ const ProtectedRoute = ({
   const token = useAppSelector((state) => state.auth.token);
   const user = useAppSelector((state) => state.auth.user);
   const orgId = useAppSelector((state) => state.auth.orgId);
+  const permissions = useAppSelector((state) => state.auth.permissions);
   const { orgId: routeOrgId } = useParams<{ orgId: string }>();
 
   if (!token) {
@@ -38,9 +39,9 @@ const ProtectedRoute = ({
     return <Navigate to={`/${ROUTE_PATHS.NOT_FOUND}`} replace />;
   }
 
-  if (module && !canAccessModule(role, module)) {
+  if (module && !canAccessModule(role, module, permissions)) {
     const fallbackOrg = routeOrgId || orgId;
-    if (fallbackOrg && canAccessModule(role, MODULES.DASHBOARD)) {
+    if (fallbackOrg && canAccessModule(role, MODULES.DASHBOARD, permissions)) {
       return <Navigate to={`/orgs/${fallbackOrg}/${ROUTE_PATHS.DASHBOARD}`} replace />;
     }
     if (isSuperAdmin(role)) {
@@ -64,7 +65,7 @@ const ProtectedRoute = ({
 
   const tenantOrgId = routeOrgId;
   if (tenantOrgId && !canAccessTenant(role, orgId, tenantOrgId)) {
-    if (orgId && canAccessModule(role, MODULES.DASHBOARD)) {
+    if (orgId && canAccessModule(role, MODULES.DASHBOARD, permissions)) {
       return <Navigate to={`/orgs/${orgId}/${ROUTE_PATHS.DASHBOARD}`} replace />;
     }
     return <Navigate to={`/${ROUTE_PATHS.NOT_FOUND}`} replace />;

@@ -30,6 +30,7 @@ import {
 
 import { Button, Input, Select } from '../components/common';
 import { showToast } from '../components/common/Toast/toastService';
+import ExpensesSection from '../components/expenses/ExpensesSection';
 import PayrollSection from '../components/payroll/PayrollSection';
 import { useAppSelector } from '../redux/hooks';
 import { useLazyGetBillDetailQuery, useListBillsQuery } from '../redux/slices/billing/billingApi';
@@ -39,7 +40,7 @@ import { formatCurrency } from '../utils/currency';
 import { downloadInvoicePDF } from '../utils/invoicePdf';
 import { formatDateDMY, toDateInputValue } from '../utils/utilities';
 
-type SectionKey = 'bills' | 'payroll' | 'expenses' | 'purchasing' | 'payments' | 'reports';
+type SectionKey = 'bills' | 'payroll' | 'expenses';
 type StatusTone = 'paid' | 'pending' | 'refunded' | 'processing' | 'partial' | 'approved' | 'danger' | 'neutral';
 type DatePreset = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'custom';
 
@@ -62,16 +63,6 @@ interface Column<T> {
   align?: 'left' | 'right' | 'center';
   render?: (row: T) => React.ReactNode;
   className?: string;
-}
-
-interface ExpenseRow {
-  id: string;
-  category: string;
-  mode: string;
-  amount: string;
-  status: StatusTone;
-  receipt: string;
-  date: string;
 }
 
 interface PurchaseRow {
@@ -98,9 +89,7 @@ const sectionItems: Array<{ key: SectionKey; label: string; description: string;
   { key: 'bills', label: 'Bills', description: 'Invoices and refunds', icon: ReceiptText },
   { key: 'payroll', label: 'Payroll', description: 'Salary and incentives', icon: Users },
   { key: 'expenses', label: 'Expenses', description: 'Spend and approvals', icon: FileText },
-  { key: 'purchasing', label: 'Purchasing', description: 'Vendors and stock bills', icon: PackageCheck },
-  { key: 'payments', label: 'Payments', description: 'Collections and dues', icon: Wallet },
-  { key: 'reports', label: 'Reports', description: 'Revenue and profit', icon: BarChart3 },
+
 ];
 
 const isSectionKey = (value: string | undefined): value is SectionKey =>
@@ -121,58 +110,10 @@ const tabsBySection: Record<SectionKey, TabItem[]> = {
   expenses: [
     { label: 'All Expenses', value: 'all' },
     { label: 'Add Expense', value: 'add' },
-    { label: 'Categories', value: 'categories' },
-    { label: 'Expense Approvals', value: 'approvals' },
+    
   ],
-  purchasing: [
-    { label: 'Purchases', value: 'purchases' },
-    { label: 'Vendors', value: 'vendors' },
-    { label: 'Pending Payments', value: 'pending' },
-    { label: 'History', value: 'history' },
-  ],
-  payments: [
-    { label: 'Received Payments', value: 'received' },
-    { label: 'Pending Payments', value: 'pending' },
-    { label: 'Partial Payments', value: 'partial' },
-    { label: 'Payment History', value: 'history' },
-  ],
-  reports: [
-    { label: 'Sales Reports', value: 'sales' },
-    { label: 'Expense Reports', value: 'expenses' },
-    { label: 'Payroll Reports', value: 'payroll' },
-    { label: 'Profit Reports', value: 'profit' },
-  ],
-};
 
-const expenses: ExpenseRow[] = [
-  {
-    id: 'EXP-1024',
-    category: 'Salon Supplies',
-    mode: 'UPI',
-    amount: '₹8,200',
-    status: 'approved',
-    receipt: 'receipt-1024.pdf',
-    date: '02 Jun 2026',
-  },
-  {
-    id: 'EXP-1023',
-    category: 'Utilities',
-    mode: 'Card',
-    amount: '₹14,900',
-    status: 'pending',
-    receipt: 'bill-power.png',
-    date: '01 Jun 2026',
-  },
-  {
-    id: 'EXP-1022',
-    category: 'Marketing',
-    mode: 'Wallet',
-    amount: '₹5,500',
-    status: 'processing',
-    receipt: 'campaign.pdf',
-    date: '30 May 2026',
-  },
-];
+};
 
 const purchases: PurchaseRow[] = [
   {
@@ -1058,68 +999,6 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
   );
 };
 
-const ExpensesSection: React.FC<{ activeTab: string }> = ({ activeTab }) => {
-  const columns: Column<ExpenseRow>[] = [
-    { key: 'id', header: 'Expense ID', render: (row) => <span className="font-mono text-xs font-bold text-gray-900">{row.id}</span> },
-    { key: 'category', header: 'Category' },
-    { key: 'mode', header: 'Payment Mode' },
-    { key: 'amount', header: 'Amount', align: 'right', render: (row) => <b className="text-gray-900">{row.amount}</b> },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-    { key: 'receipt', header: 'Attachment', render: (row) => <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-brand-gold-dark)]"><Paperclip className="h-3.5 w-3.5" />{row.receipt}</span> },
-    { key: 'date', header: 'Date' },
-  ];
-
-  if (activeTab === 'add') {
-    return (
-      <SectionStack>
-        <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
-          <div className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
-            <h3 className="text-lg font-bold text-[var(--color-text-primary)]">Add expense</h3>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <FormInput label="Expense title" placeholder="e.g. Shampoo stock refill" />
-              <FormInput label="Amount" placeholder="₹0.00" />
-              <FormInput label="Category" placeholder="Select category" />
-              <FormInput label="Payment mode" placeholder="Cash / UPI / Card" />
-            </div>
-            <label className="mt-4 block">
-              <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">Notes</span>
-              <textarea className="min-h-28 w-full rounded-2xl border border-[var(--color-border-strong)] p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-gold)]" placeholder="Add vendor, approval, or operational notes" />
-            </label>
-          </div>
-          <UploadBox />
-        </div>
-      </SectionStack>
-    );
-  }
-
-  if (activeTab === 'categories') {
-    return (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {['Salon Supplies', 'Utilities', 'Marketing', 'Maintenance'].map((category, index) => (
-          <div key={category} className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
-            <div className="flex items-center justify-between">
-              <div className="rounded-2xl bg-[var(--color-brand-gold-light)]/20 p-3 text-[var(--color-brand-gold-dark)]">
-                <FileText className="h-5 w-5" />
-              </div>
-              <ActionDropdown actions={['Edit', 'Delete']} />
-            </div>
-            <h3 className="mt-4 font-bold text-[var(--color-text-primary)]">{category}</h3>
-            <p className="mt-1 text-sm text-gray-500">{12 + index * 4} expenses this month</p>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <SectionStack>
-      <SearchFilterBar />
-      {activeTab === 'approvals' && <EmptyState title="3 expenses awaiting approval" description="Approve or reject submitted receipts from salon managers and reception." />}
-      <DataTable columns={columns} data={expenses} actions={activeTab === 'approvals' ? ['Approve', 'Reject', 'View'] : ['View', 'Edit', 'Delete']} />
-    </SectionStack>
-  );
-};
-
 const PurchasingSection: React.FC<{ activeTab: string }> = ({ activeTab }) => {
   const columns: Column<PurchaseRow>[] = [
     { key: 'id', header: 'Purchase ID', render: (row) => <span className="font-mono text-xs font-bold text-gray-900">{row.id}</span> },
@@ -1291,9 +1170,6 @@ const BillingFinance: React.FC = () => {
     bills: 'all',
     payroll: 'structure',
     expenses: 'all',
-    purchasing: 'purchases',
-    payments: 'received',
-    reports: 'sales',
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -1308,13 +1184,9 @@ const BillingFinance: React.FC = () => {
       case 'payroll':
         return <PayrollSection activeTab={activeTab} salonId={salonId} />;
       case 'expenses':
-        return <ExpensesSection activeTab={activeTab} />;
-      case 'purchasing':
-        return <PurchasingSection activeTab={activeTab} />;
-      case 'payments':
-        return <PaymentsSection />;
-      case 'reports':
-        return <ReportsSection activeTab={activeTab} />;
+        return <ExpensesSection activeTab={activeTab} salonId={salonId} />;
+    
+     
       default:
         return null;
     }

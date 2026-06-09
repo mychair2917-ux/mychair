@@ -56,6 +56,7 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
           token: response.access_token,
           refreshToken: response.refresh_token,
           orgId: response.tenant_id,
+          permissions: response.permissions ?? undefined,
         })
       );
       

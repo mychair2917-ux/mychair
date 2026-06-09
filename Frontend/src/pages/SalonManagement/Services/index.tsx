@@ -17,6 +17,7 @@ import { useAppSelector } from '../../../redux/hooks';
 import {
   useCreateSalonProductMutation,
   useDeleteSalonProductMutation,
+  useGetBrandsQuery,
   useGetMasterProductsQuery,
   useGetSalonProductsQuery,
   useUpdateSalonProductMutation,
@@ -32,6 +33,7 @@ import {
 import { SalonServiceItem } from '../../../redux/slices/salonServices/Types';
 import { getApiErrorMessage } from '../../../utils/apiErrors';
 import { formatCurrency } from '../../../utils/currency';
+import { formatDateDMY } from '../../../utils/utilities';
 
 type ManageSalonTab = 'services' | 'products' | 'assets';
 
@@ -44,6 +46,8 @@ type ServiceDraft = {
 type ProductDraft = {
   productName: string;
   productId?: string;
+  brandName: string;
+  brandId?: string;
   price: string;
 };
 
@@ -58,6 +62,8 @@ const emptyDraft: ServiceDraft = {
 const emptyProductDraft: ProductDraft = {
   productName: '',
   productId: undefined,
+  brandName: '',
+  brandId: undefined,
   price: '',
 };
 
@@ -103,16 +109,21 @@ const Services: React.FC = () => {
   const [editProductDraft, setEditProductDraft] = useState<{
     productName: string;
     productId?: string;
+    brandName: string;
+    brandId?: string;
     price: string;
     status: string;
   }>({
     productName: '',
     productId: undefined,
+    brandName: '',
+    brandId: undefined,
     price: '',
     status: 'ACTIVE',
   });
   const [deletingProduct, setDeletingProduct] = useState<SalonProductItem | null>(null);
   const [search, setSearch] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
   const debouncedSearch = useDebouncedSearch(search, 300);
@@ -128,6 +139,11 @@ const Services: React.FC = () => {
   });
   const { data: masterProductsData, isLoading: isLoadingMasterProducts } =
     useGetMasterProductsQuery();
+  const shouldLoadBrands = Boolean(salonId) && activeTab === 'products';
+  const { data: brandsData, isLoading: isLoadingBrands } = useGetBrandsQuery(
+    salonId ? { salon_id: salonId } : undefined,
+    { skip: !shouldLoadBrands }
+  );
   const {
     data: salonProductsData,
     isLoading: isLoadingSalonProducts,
@@ -146,6 +162,7 @@ const Services: React.FC = () => {
   const masterServices = masterServicesData?.data ?? [];
   const salonServices = salonServicesData?.data ?? [];
   const masterProducts = masterProductsData?.data ?? [];
+  const brands = brandsData?.data ?? [];
   const salonProducts = salonProductsData?.data ?? [];
 
   const serviceOptions = useMemo(
@@ -163,6 +180,14 @@ const Services: React.FC = () => {
         label: product.name,
       })),
     [masterProducts]
+  );
+  const brandOptions = useMemo(
+    () =>
+      brands.map((brand) => ({
+        value: brand.id,
+        label: brand.name,
+      })),
+    [brands]
   );
 
   const filteredServices = useMemo(() => {
@@ -182,19 +207,25 @@ const Services: React.FC = () => {
   }, [debouncedSearch, salonServices]);
   const filteredProducts = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
-    if (!term) return salonProducts;
+    const brandTerm = brandFilter.trim().toLowerCase();
     return salonProducts.filter((product) => {
       const haystack = [
         product.product_name,
+        product.brand_name ?? '',
         product.custom_product_name ?? '',
+        product.custom_brand_name ?? '',
         product.status,
         product.price,
       ]
         .join(' ')
         .toLowerCase();
-      return haystack.includes(term);
+      const matchesSearch = !term || haystack.includes(term);
+      const productBrand = (product.brand_name || product.custom_brand_name || '').trim().toLowerCase();
+      const matchesBrand =
+        !brandTerm || productBrand === brandTerm || productBrand.includes(brandTerm);
+      return matchesSearch && matchesBrand;
     });
-  }, [debouncedSearch, salonProducts]);
+  }, [brandFilter, debouncedSearch, salonProducts]);
 
   const paginatedServices = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
@@ -215,9 +246,14 @@ const Services: React.FC = () => {
   }, [draft.serviceName, salonServices]);
   const duplicateProductExists = useMemo(() => {
     const normalized = productDraft.productName.trim().toLowerCase();
+    const normalizedBrand = productDraft.brandName.trim().toLowerCase();
     if (!normalized) return false;
-    return salonProducts.some((item) => item.product_name.trim().toLowerCase() === normalized);
-  }, [productDraft.productName, salonProducts]);
+    return salonProducts.some((item) => {
+      const productName = (item.base_product_name || item.product_name).trim().toLowerCase();
+      const brandName = (item.brand_name || '').trim().toLowerCase();
+      return productName === normalized && brandName === normalizedBrand;
+    });
+  }, [productDraft.brandName, productDraft.productName, salonProducts]);
 
   const updateDraftFromSelection = (value: string) => {
     const matched = serviceOptions.find((option) => option.value === value);
@@ -311,8 +347,25 @@ const Services: React.FC = () => {
       productId: undefined,
     }));
   };
+  const updateProductBrandDraftFromSelection = (value: string) => {
+    const matched = brandOptions.find((option) => option.value === value);
+    if (matched) {
+      setProductDraft((current) => ({
+        ...current,
+        brandName: matched.label,
+        brandId: matched.value,
+      }));
+      return;
+    }
+    setProductDraft((current) => ({
+      ...current,
+      brandName: value,
+      brandId: undefined,
+    }));
+  };
   const handleAddProduct = async () => {
     const productName = productDraft.productName.trim();
+    const brandName = productDraft.brandName.trim();
     const price = Number(productDraft.price);
 
     if (!productName) {
@@ -331,19 +384,23 @@ const Services: React.FC = () => {
     const matchedProduct = productOptions.find(
       (option) => option.label.trim().toLowerCase() === productName.toLowerCase()
     );
+    const matchedBrand = brandOptions.find(
+      (option) => option.label.trim().toLowerCase() === brandName.toLowerCase()
+    );
 
     try {
+      const body = {
+        ...(matchedProduct ? { product_id: matchedProduct.value } : { custom_product_name: productName }),
+        ...(brandName
+          ? matchedBrand
+            ? { brand_id: matchedBrand.value }
+            : { custom_brand_name: brandName }
+          : {}),
+        price,
+      };
       const response = await createSalonProduct({
         salon_id: salonId,
-        body: matchedProduct
-          ? {
-              product_id: matchedProduct.value,
-              price,
-            }
-          : {
-              custom_product_name: productName,
-              price,
-            },
+        body,
       }).unwrap();
       if (response.success) {
         showToast('success', response.message || 'Salon product added successfully');
@@ -356,8 +413,10 @@ const Services: React.FC = () => {
   const handleOpenProductEdit = (product: SalonProductItem) => {
     setEditingProduct(product);
     setEditProductDraft({
-      productName: product.product_name,
+      productName: product.base_product_name || product.product_name,
       productId: product.product_id ?? undefined,
+      brandName: product.brand_name ?? '',
+      brandId: product.brand_id ?? undefined,
       price: String(product.price),
       status: product.status,
     });
@@ -378,10 +437,27 @@ const Services: React.FC = () => {
       productId: undefined,
     }));
   };
+  const updateEditProductBrandFromSelection = (value: string) => {
+    const matched = brandOptions.find((option) => option.value === value);
+    if (matched) {
+      setEditProductDraft((current) => ({
+        ...current,
+        brandName: matched.label,
+        brandId: matched.value,
+      }));
+      return;
+    }
+    setEditProductDraft((current) => ({
+      ...current,
+      brandName: value,
+      brandId: undefined,
+    }));
+  };
   const handleUpdateProduct = async () => {
     if (!editingProduct) return;
 
     const productName = editProductDraft.productName.trim();
+    const brandName = editProductDraft.brandName.trim();
     const price = Number(editProductDraft.price);
 
     if (!productName) {
@@ -394,9 +470,15 @@ const Services: React.FC = () => {
     }
 
     const duplicate = salonProducts.some(
-      (item) =>
-        item.id !== editingProduct.id &&
-        item.product_name.trim().toLowerCase() === productName.toLowerCase()
+      (item) => {
+        if (item.id === editingProduct.id) return false;
+        const itemProductName = (item.base_product_name || item.product_name).trim().toLowerCase();
+        const itemBrandName = (item.brand_name || '').trim().toLowerCase();
+        return (
+          itemProductName === productName.toLowerCase() &&
+          itemBrandName === brandName.toLowerCase()
+        );
+      }
     );
     if (duplicate) {
       showToast('warning', 'This product already exists for the selected salon');
@@ -406,22 +488,25 @@ const Services: React.FC = () => {
     const matchedProduct = productOptions.find(
       (option) => option.label.trim().toLowerCase() === productName.toLowerCase()
     );
+    const matchedBrand = brandOptions.find(
+      (option) => option.label.trim().toLowerCase() === brandName.toLowerCase()
+    );
 
     try {
+      const body = {
+        ...(matchedProduct ? { product_id: matchedProduct.value } : { custom_product_name: productName }),
+        ...(brandName
+          ? matchedBrand
+            ? { brand_id: matchedBrand.value }
+            : { custom_brand_name: brandName }
+          : {}),
+        price,
+        status: editProductDraft.status,
+      };
       const response = await updateSalonProduct({
         id: editingProduct.id,
         salon_id: salonId,
-        body: matchedProduct
-          ? {
-              product_id: matchedProduct.value,
-              price,
-              status: editProductDraft.status,
-            }
-          : {
-              custom_product_name: productName,
-              price,
-              status: editProductDraft.status,
-            },
+        body,
       }).unwrap();
       if (response.success) {
         showToast('success', response.message || 'Salon product updated successfully');
@@ -720,8 +805,7 @@ const Services: React.FC = () => {
                 header: 'Created Date',
                 accessor: 'created_at',
                 sortable: true,
-                render: (row) =>
-                  row.created_at ? new Date(row.created_at).toLocaleDateString() : '-',
+                render: (row) => formatDateDMY(row.created_at, '-'),
               },
               {
                 key: 'status',
@@ -771,7 +855,7 @@ const Services: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_140px]">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_140px]">
               <FormField label="Product" name="productName" required>
                 <div className="space-y-2">
                   <CommonDropdown
@@ -807,6 +891,41 @@ const Services: React.FC = () => {
                 </div>
               </FormField>
 
+              <FormField label="Brand" name="brandName">
+                <div className="space-y-2">
+                  <CommonDropdown
+                    options={brandOptions}
+                    value={productDraft.brandId}
+                    onChange={(value) => updateProductBrandDraftFromSelection(String(value))}
+                    placeholder="Search and select a brand"
+                    searchable
+                    loading={isLoadingBrands}
+                  />
+                  <Input
+                    id="brandName"
+                    placeholder="Or type a new brand"
+                    value={productDraft.brandName}
+                    onChange={(event) =>
+                      setProductDraft((current) => ({
+                        ...current,
+                        brandName: event.target.value,
+                        brandId: undefined,
+                      }))
+                    }
+                  />
+                  {productDraft.brandName.trim() &&
+                    !brandOptions.some(
+                      (option) =>
+                        option.label.trim().toLowerCase() ===
+                        productDraft.brandName.trim().toLowerCase()
+                    ) && (
+                      <p className="text-xs text-[var(--color-brand-gold-dark)]">
+                        Create new brand: "{productDraft.brandName.trim()}"
+                      </p>
+                    )}
+                </div>
+              </FormField>
+
               <FormField label="Price" name="price" required>
                 <Input
                   id="productPrice"
@@ -837,6 +956,16 @@ const Services: React.FC = () => {
                 </Button>
               </div>
             </div>
+            {productDraft.productName.trim() && (
+              <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
+                Preview:{' '}
+                <span className="font-semibold text-[var(--color-text-primary)]">
+                  {productDraft.productName.trim()}
+                  {productDraft.brandName.trim() ? ` (${productDraft.brandName.trim()})` : ''} -{' '}
+                  {formatCurrency(Number(productDraft.price || 0))}
+                </span>
+              </p>
+            )}
           </div>
 
           <CommonTable
@@ -847,7 +976,7 @@ const Services: React.FC = () => {
             subtitle="Selected products for this salon with pricing and status."
             enableGlobalSearch={false}
             filters={
-              <div className="w-full sm:w-80">
+              <div className="grid w-full gap-3 sm:grid-cols-2">
                 <Input
                   placeholder="Search products..."
                   value={search}
@@ -855,6 +984,20 @@ const Services: React.FC = () => {
                     setSearch(event.target.value);
                     setCurrentPage(1);
                   }}
+                />
+                <CommonDropdown
+                  options={brandOptions}
+                  value={
+                    brandOptions.find((option) => option.label === brandFilter)?.value ?? brandFilter
+                  }
+                  onChange={(value) => {
+                    const matched = brandOptions.find((option) => option.value === String(value));
+                    setBrandFilter(matched?.label ?? String(value));
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Filter by brand"
+                  searchable
+                  loading={isLoadingBrands}
                 />
               </div>
             }
@@ -878,8 +1021,7 @@ const Services: React.FC = () => {
                 header: 'Created Date',
                 accessor: 'created_at',
                 sortable: true,
-                render: (row) =>
-                  row.created_at ? new Date(row.created_at).toLocaleDateString() : '-',
+                render: (row) => formatDateDMY(row.created_at, '-'),
               },
               {
                 key: 'status',
@@ -1045,6 +1187,31 @@ const Services: React.FC = () => {
             </div>
           </FormField>
 
+          <FormField label="Brand" name="editBrandName">
+            <div className="space-y-2">
+              <CommonDropdown
+                options={brandOptions}
+                value={editProductDraft.brandId}
+                onChange={(value) => updateEditProductBrandFromSelection(String(value))}
+                placeholder="Search and select a brand"
+                searchable
+                loading={isLoadingBrands}
+              />
+              <Input
+                id="editBrandName"
+                placeholder="Or type a new brand"
+                value={editProductDraft.brandName}
+                onChange={(event) =>
+                  setEditProductDraft((current) => ({
+                    ...current,
+                    brandName: event.target.value,
+                    brandId: undefined,
+                  }))
+                }
+              />
+            </div>
+          </FormField>
+
           <div className="grid gap-4 md:grid-cols-2">
             <FormField label="Price" name="editProductPrice" required>
               <Input
@@ -1076,6 +1243,18 @@ const Services: React.FC = () => {
               />
             </FormField>
           </div>
+          {editProductDraft.productName.trim() && (
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Preview:{' '}
+              <span className="font-semibold text-[var(--color-text-primary)]">
+                {editProductDraft.productName.trim()}
+                {editProductDraft.brandName.trim()
+                  ? ` (${editProductDraft.brandName.trim()})`
+                  : ''}{' '}
+                - {formatCurrency(Number(editProductDraft.price || 0))}
+              </span>
+            </p>
+          )}
         </div>
       </CommonModal>
 

@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 from app.core.security import create_access_token, create_refresh_token, verify_password
 from app.models.user import User
+from app.services.permission_service import PermissionService
 from app.utils.timezone import now_utc
 
 EMAIL_LOGIN_ROLES = frozenset(
@@ -69,6 +70,8 @@ class AuthLoginService:
             role=user.role,
         )
 
+        permissions = await PermissionService().get_merged_permissions(user)
+
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
@@ -92,4 +95,5 @@ class AuthLoginService:
             "status": user.status,
             "joining_date": user.joining_date.isoformat() if user.joining_date else None,
             "last_login": user.last_login.isoformat() if user.last_login else None,
+            "permissions": permissions,
         }, None

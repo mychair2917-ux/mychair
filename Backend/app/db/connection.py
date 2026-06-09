@@ -1,5 +1,6 @@
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from beanie import init_beanie
 from app.core.config import settings
 
@@ -10,14 +11,16 @@ from app.models.user import User
 from app.models.employee import Employee
 from app.models.staff import Staff, StaffSchedule
 from app.models.customer import Customer
+from app.models.brand import Brand
 from app.models.product import Product
 from app.models.service import Service
 from app.models.salon_product import SalonProduct
 from app.models.salon_service import SalonService
 from app.models.appointment import Appointment
 from app.models.billing import Invoice, Payment
-from app.models.inventory import InventoryItem, InventoryTransaction
+from app.models.inventory import InventoryItem, InventoryTransaction, ProductInventory
 from app.models.attendance import Attendance
+from app.models.attendance_log import AttendanceLog
 from app.models.subscription import Subscription
 from app.models.notification import Notification
 from app.models.audit import AuditLog
@@ -28,6 +31,8 @@ from app.models.payroll import Payroll
 from app.models.bill import Bill
 from app.models.reward_settings import RewardSettings, RewardSegment
 from app.models.customer_reward_transaction import CustomerRewardTransaction
+from app.models.expense import Expense
+from app.models.user_permission import PermissionRecord
 
 logger = logging.getLogger("db")
 
@@ -58,6 +63,7 @@ async def init_db() -> None:
             Staff,
             StaffSchedule,
             Customer,
+            Brand,
             Product,
             Service,
             SalonProduct,
@@ -66,8 +72,10 @@ async def init_db() -> None:
             Invoice,
             Payment,
             InventoryItem,
+            ProductInventory,
             InventoryTransaction,
             Attendance,
+            AttendanceLog,
             Subscription,
             Notification,
             AuditLog,
@@ -81,6 +89,8 @@ async def init_db() -> None:
             RewardSettings,
             RewardSegment,
             CustomerRewardTransaction,
+            Expense,
+            PermissionRecord,
         ]
     
         await init_beanie(

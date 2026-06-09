@@ -45,6 +45,12 @@ class CreateInviteRequest(BaseModel):
     gst_number: str = Field(default="", max_length=20)
     slug: Optional[str] = Field(default=None, min_length=2, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
+    # Attendance location (salon owner onboarding)
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    attendance_radius: int = Field(default=100, ge=10, le=5000)
+    shift_start: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+
     # Payroll / salary configuration (manager & staff)
     salary: Optional[float] = Field(default=None, ge=0.0)
     salary_type: Optional[str] = Field(default=None)
@@ -52,6 +58,15 @@ class CreateInviteRequest(BaseModel):
     incentive_base: Optional[bool] = Field(default=False)
     service_incentive_percent: Optional[float] = Field(default=None, ge=0.0)
     product_incentive_percent: Optional[float] = Field(default=None, ge=0.0)
+
+    weekly_off: List[str] = Field(default_factory=list)
+
+    @field_validator("weekly_off")
+    @classmethod
+    def validate_weekly_off(cls, value: List[str]) -> List[str]:
+        from app.utils.week_off import normalize_week_days
+
+        return normalize_week_days(value or [])
 
     @field_validator("salary_type")
     @classmethod
@@ -113,6 +128,8 @@ class CreateInviteRequest(BaseModel):
                 missing.append("salon_type")
             if not self.subscription_plan:
                 missing.append("subscription_plan")
+            if self.latitude is None or self.longitude is None:
+                missing.append("location")
             if missing:
                 raise ValueError(f"Salon owner invitations require: {', '.join(missing)}")
             return self

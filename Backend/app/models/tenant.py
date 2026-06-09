@@ -19,6 +19,12 @@ class Tenant(Document):
     timezone: str = Field(default="UTC")
     currency: str = Field(default="USD")
 
+    # Default attendance location (used when no branch Salon document exists)
+    latitude: Optional[float] = Field(default=None)
+    longitude: Optional[float] = Field(default=None)
+    attendance_radius: int = Field(default=100, ge=10, le=5000)
+    shift_start: str = Field(default="09:00", description="Default shift start HH:MM")
+
     # Legacy alias kept for existing clients
     subscription_tier: str = Field(default="FREE")
 

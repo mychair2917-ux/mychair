@@ -1,6 +1,6 @@
 import React, { lazy } from 'react';
 import { RouteObject } from 'react-router';
-import { Users, Shield, CreditCard, Boxes, UserCheck, LineChart, Bell } from 'lucide-react';
+import { Users, CreditCard, UserCheck, Bell } from 'lucide-react';
 
 import App from '../App';
 import { MODULES } from '../config/rbac';
@@ -33,6 +33,15 @@ const BillingFinance = lazy(() =>
 );
 const CustomerAnalytics = lazy(() =>
   import('../pages').then((module) => ({ default: module.CustomerAnalytics }))
+);
+const Attendance = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Attendance }))
+);
+const ProductsInventory = lazy(() =>
+  import('../pages').then((module) => ({ default: module.ProductsInventory }))
+);
+const RolesPermissions = lazy(() =>
+  import('../pages').then((module) => ({ default: module.RolesPermissions }))
 );
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
@@ -135,12 +144,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS,
-        element: adminPlaceholder(
-          MODULES.ROLES_PERMISSIONS,
-          'Role & Permissions',
-          'Configure platform-wide access levels, roles, and permission policies.',
-          Shield
-        ),
+        element: protectAdmin(MODULES.ROLES_PERMISSIONS, <RolesPermissions />),
       },
       {
         path: ROUTE_PATHS.ADMIN_SUBSCRIPTION_MANAGEMENT,
@@ -161,12 +165,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY,
-        element: adminPlaceholder(
-          MODULES.PRODUCTS_INVENTORY,
-          'Products & Inventory',
-          'Monitor product catalogs, inventory levels, and supplier management.',
-          Boxes
-        ),
+        element: protectAdmin(MODULES.PRODUCTS_INVENTORY, <ProductsInventory />),
       },
       {
         path: ROUTE_PATHS.ADMIN_STAFF_MONITORING,
@@ -176,6 +175,10 @@ export const routes: RouteObject[] = [
           'Track staff performance, attendance, and HR metrics across all salons.',
           UserCheck
         ),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_ATTENDANCE,
+        element: protectAdmin(MODULES.ATTENDANCE, <Attendance />),
       },
       {
         path: ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS,
@@ -234,12 +237,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.ROLES_PERMISSIONS}`,
-        element: orgPlaceholder(
-          MODULES.ROLES_PERMISSIONS,
-          'Role & Permissions',
-          'Configure system access levels and staff permissions.',
-          Shield
-        ),
+        element: protectOrg(MODULES.ROLES_PERMISSIONS, <RolesPermissions />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`,
@@ -260,12 +258,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.PRODUCTS_INVENTORY}`,
-        element: orgPlaceholder(
-          MODULES.PRODUCTS_INVENTORY,
-          'Products & Inventory',
-          'Track retail products, professional stock, and suppliers.',
-          Boxes
-        ),
+        element: protectOrg(MODULES.PRODUCTS_INVENTORY, <ProductsInventory />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.STAFF_MONITORING}`,
@@ -275,6 +268,10 @@ export const routes: RouteObject[] = [
           'Monitor staff schedules, performance metrics, and shifts.',
           UserCheck
         ),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.ATTENDANCE}`,
+        element: protectOrg(MODULES.ATTENDANCE, <Attendance />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`,

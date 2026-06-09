@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-import { clearAuthStorage, readStoredUser } from './authSession';
+import type { PermissionMap } from '../../../config/rbac';
+import { clearAuthStorage, readStoredPermissions, readStoredUser } from './authSession';
 
 export interface AuthUser {
   id?: string;
@@ -40,6 +41,7 @@ export interface AuthState {
   user: AuthUser | null;
   orgId: string | null;
   selectedSalonId: string | null;
+  permissions: PermissionMap | null;
 }
 
 const initialState: AuthState = {
@@ -48,6 +50,7 @@ const initialState: AuthState = {
   user: readStoredUser(),
   orgId: localStorage.getItem('orgId') || null,
   selectedSalonId: localStorage.getItem('selectedSalonId') || null,
+  permissions: readStoredPermissions(),
 };
 
 const authSlice = createSlice({
@@ -56,12 +59,19 @@ const authSlice = createSlice({
   reducers: {
     setCredentials: (
       state,
-      action: PayloadAction<{ user: AuthUser; token: string; refreshToken: string; orgId: string }>
+      action: PayloadAction<{
+        user: AuthUser;
+        token: string;
+        refreshToken: string;
+        orgId: string;
+        permissions?: PermissionMap | null;
+      }>
     ) => {
       state.user = action.payload.user;
       state.token = action.payload.token;
       state.refreshToken = action.payload.refreshToken;
       state.orgId = action.payload.orgId;
+      state.permissions = action.payload.permissions ?? null;
       state.selectedSalonId = action.payload.orgId && action.payload.orgId !== 'system'
         ? action.payload.orgId
         : null;
@@ -70,11 +80,20 @@ const authSlice = createSlice({
       localStorage.setItem('refresh_token', action.payload.refreshToken);
       localStorage.setItem('user', JSON.stringify(action.payload.user));
       localStorage.setItem('orgId', action.payload.orgId);
+      if (state.permissions) {
+        localStorage.setItem('permissions', JSON.stringify(state.permissions));
+      } else {
+        localStorage.removeItem('permissions');
+      }
       if (state.selectedSalonId) {
         localStorage.setItem('selectedSalonId', state.selectedSalonId);
       } else {
         localStorage.removeItem('selectedSalonId');
       }
+    },
+    setPermissions: (state, action: PayloadAction<PermissionMap>) => {
+      state.permissions = action.payload;
+      localStorage.setItem('permissions', JSON.stringify(action.payload));
     },
     setSelectedSalonId: (state, action: PayloadAction<string | null>) => {
       state.selectedSalonId = action.payload;
@@ -95,10 +114,12 @@ const authSlice = createSlice({
       state.refreshToken = null;
       state.orgId = null;
       state.selectedSalonId = null;
+      state.permissions = null;
       clearAuthStorage();
     },
   },
 });
 
-export const { setCredentials, setSelectedSalonId, updateAuthUser, logout } = authSlice.actions;
+export const { setCredentials, setSelectedSalonId, setPermissions, updateAuthUser, logout } =
+  authSlice.actions;
 export default authSlice.reducer;

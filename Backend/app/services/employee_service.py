@@ -43,6 +43,7 @@ class EmployeeService:
             status=user.status,
             is_active=user.is_active,
             created_at=user.created_at,
+            weekly_off=user.weekly_off or [],
         )
 
     def _resolve_tenant_id(self, actor: User, tenant_id: Optional[str]) -> Optional[str]:
@@ -204,6 +205,8 @@ class EmployeeService:
         if payload.is_active is not None:
             update_data["is_active"] = payload.is_active
             update_data["status"] = "ACTIVE" if payload.is_active else "INACTIVE"
+        if payload.weekly_off is not None:
+            update_data["weekly_off"] = payload.weekly_off
 
         updated = await self.repo.update_fields(
             user_id, target.tenant_id, update_data

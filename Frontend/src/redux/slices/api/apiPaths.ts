@@ -44,6 +44,16 @@ export const API_PATHS = {
     LIST: '/salon-products',
     DETAIL: (id: string) => `/salon-products/${id}`,
   },
+  BRANDS: {
+    LIST: '/brands',
+  },
+  INVENTORY: {
+    OVERVIEW: '/inventory/overview',
+    STOCKS: '/inventory/stocks',
+    PURCHASE: '/inventory/purchase',
+    USE: '/inventory/use',
+    REPORTS: '/inventory/reports',
+  },
   SALONS: {
     LIST: '/salons/list',
   },
@@ -61,6 +71,13 @@ export const API_PATHS = {
   BILLING: {
     BILLS: '/billing/bills',
     BILL_DETAIL: (id: string) => `/billing/bills/${id}`,
+  },
+  EXPENSES: {
+    LIST: '/expenses',
+    CATEGORIES: '/expenses/categories',
+    PAYMENT_MODES: '/expenses/payment-modes',
+    DETAIL: (id: string) => `/expenses/${id}`,
+    RECEIPT: (id: string) => `/expenses/${id}/receipt`,
   },
   PAYROLL: {
     SALARY_TYPES: '/payroll/salary-types',
@@ -82,6 +99,17 @@ export const API_PATHS = {
     SALARY_SLIP: (id: string) => `/my-earnings/salary-history/${id}/slip`,
     BREAKDOWN: '/my-earnings/breakdown',
     ACTIVITY: '/my-earnings/activity',
+  },
+  ATTENDANCE: {
+    SUMMARY: '/attendance/summary',
+    TODAY_STATUS: '/attendance/today-status',
+    CHECK_IN: '/attendance/check-in',
+    CHECK_OUT: '/attendance/check-out',
+    MY: '/attendance/my',
+    BRANCH: '/attendance/branch',
+    ALL: '/attendance/all',
+    MANUAL_UPDATE: '/attendance/manual-update',
+    BRANCH_LOCATION: '/attendance/branch-location',
   },
   CUSTOMER_ANALYTICS: {
     OVERVIEW: '/customer-analytics/overview',

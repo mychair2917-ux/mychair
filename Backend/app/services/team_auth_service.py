@@ -5,6 +5,7 @@ from beanie.operators import In
 from app.auth.invitation_rbac import ROLE_EMPLOYEE, ROLE_SALON_MANAGER
 from app.core.security import create_access_token, create_refresh_token, verify_password
 from app.models.user import User
+from app.services.permission_service import PermissionService
 from app.utils.timezone import now_utc
 
 TEAM_ROLES = frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE})
@@ -49,6 +50,8 @@ class TeamAuthService:
             role=user.role,
         )
 
+        permissions = await PermissionService().get_merged_permissions(user)
+
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
@@ -60,4 +63,5 @@ class TeamAuthService:
             "username": user.username or "",
             "first_name": user.first_name or "",
             "last_name": user.last_name or "",
+            "permissions": permissions,
         }, None

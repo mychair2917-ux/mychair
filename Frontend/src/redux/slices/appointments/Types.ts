@@ -17,6 +17,8 @@ export interface AppointmentProductOption {
   product_name: string;
   price: number;
   product_id?: string | null;
+  brand_id?: string | null;
+  brand_name?: string | null;
 }
 
 export interface AppointmentStaffOption {
@@ -138,6 +140,12 @@ export interface SearchClientsParams {
 export interface TodayAppointmentsParams {
   salon_id: string;
   status_filter?: string;
+  include_completed?: boolean;
+}
+
+export interface BillByAppointmentParams {
+  salon_id: string;
+  appointment_id: string;
 }
 
 export interface AppointmentSalonServicesParams {

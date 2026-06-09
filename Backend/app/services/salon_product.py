@@ -14,12 +14,22 @@ from app.schemas.salon_product import (
     SalonProductListItem,
     SalonProductUpdate,
 )
+from app.services.brand import BrandService
 
 
 class SalonProductService:
+    def __init__(self) -> None:
+        self.brand_service = BrandService()
+
     @staticmethod
     def _normalize_name(value: str | None) -> str:
         return (value or "").strip().casefold()
+
+    @staticmethod
+    def _combined_name(product_name: str, brand_name: str | None) -> str:
+        cleaned_product = (product_name or "").strip() or "-"
+        cleaned_brand = (brand_name or "").strip()
+        return f"{cleaned_product} ({cleaned_brand})" if cleaned_brand else cleaned_product
 
     async def seed_master_products(self) -> None:
         existing = await Product.find(
@@ -122,22 +132,27 @@ class SalonProductService:
     async def _ensure_no_duplicate(
         self,
         salon_id: str,
-        payload: SalonProductCreate | SalonProductUpdate,
+        product_id: str | None,
+        custom_product_name: str | None,
+        brand_id: str | None,
+        custom_brand_name: str | None,
         exclude_id: str | None = None,
     ) -> None:
         query: dict = {
             "salon_id": salon_id,
             "is_deleted": False,
+            "brand_id": brand_id,
+            "custom_brand_name": custom_brand_name,
         }
-        if payload.product_id:
-            query["product_id"] = payload.product_id
+        if product_id:
+            query["product_id"] = product_id
         else:
-            query["custom_product_name"] = payload.custom_product_name
+            query["custom_product_name"] = custom_product_name
 
         existing = await SalonProduct.find_one(query)
         if existing and str(existing.id) != exclude_id:
             raise PermissionDeniedException(
-                detail="This product already exists for the selected salon"
+                detail="This product and brand combination already exists for the selected salon"
             )
 
     async def _get_or_create_product(
@@ -178,13 +193,27 @@ class SalonProductService:
         resolved_product_id, product_name = await self._get_or_create_product(
             actor, payload, resolved_salon_id
         )
+        resolved_brand_id, brand_name = await self.brand_service.resolve_brand(
+            actor,
+            payload.brand_id,
+            payload.custom_brand_name,
+            resolved_salon_id,
+        )
 
-        await self._ensure_no_duplicate(resolved_salon_id, payload)
+        await self._ensure_no_duplicate(
+            resolved_salon_id,
+            resolved_product_id,
+            payload.custom_product_name,
+            resolved_brand_id,
+            brand_name if not resolved_brand_id else None,
+        )
 
         item = SalonProduct(
             salon_id=resolved_salon_id,
             product_id=resolved_product_id,
+            brand_id=resolved_brand_id,
             custom_product_name=payload.custom_product_name,
+            custom_brand_name=brand_name if not resolved_brand_id else None,
             price=payload.price,
             status="ACTIVE",
             created_by=str(actor.id),
@@ -194,8 +223,12 @@ class SalonProductService:
             id=str(item.id),
             salon_id=item.salon_id,
             product_id=item.product_id,
+            brand_id=item.brand_id,
             custom_product_name=item.custom_product_name,
-            product_name=product_name,
+            custom_brand_name=item.custom_brand_name,
+            product_name=self._combined_name(product_name, brand_name),
+            base_product_name=product_name,
+            brand_name=brand_name,
             price=item.price,
             status=item.status,
             created_by=item.created_by,
@@ -222,20 +255,41 @@ class SalonProductService:
             ).to_list()
             master_product_map = {str(product.id): product for product in master_products}
 
+        brand_ids = [
+            PydanticObjectId(item.brand_id) for item in items if item.brand_id
+        ]
+        brand_map: dict[str, str] = {}
+        if brand_ids:
+            from app.models.brand import Brand
+
+            brands = await Brand.find(
+                {"_id": {"$in": brand_ids}, "is_deleted": False}
+            ).to_list()
+            brand_map = {str(brand.id): brand.name for brand in brands}
+
         result: list[SalonProductListItem] = []
         for item in items:
-            product_name = (
+            base_product_name = (
                 master_product_map.get(item.product_id).name
                 if item.product_id and master_product_map.get(item.product_id)
                 else item.custom_product_name
             ) or "-"
+            brand_name = (
+                brand_map.get(item.brand_id)
+                if item.brand_id and brand_map.get(item.brand_id)
+                else item.custom_brand_name
+            )
             result.append(
                 SalonProductListItem(
                     id=str(item.id),
                     salon_id=item.salon_id,
                     product_id=item.product_id,
+                    brand_id=item.brand_id,
                     custom_product_name=item.custom_product_name,
-                    product_name=product_name,
+                    custom_brand_name=item.custom_brand_name,
+                    product_name=self._combined_name(base_product_name, brand_name),
+                    base_product_name=base_product_name,
+                    brand_name=brand_name,
                     price=item.price,
                     status=item.status,
                     created_by=item.created_by,
@@ -261,21 +315,29 @@ class SalonProductService:
         if not item:
             raise ResourceNotFoundException("Salon product not found")
 
-        await self._ensure_no_duplicate(resolved_salon_id, payload, exclude_id=str(item.id))
+        resolved_product_id, product_name = await self._get_or_create_product(
+            actor, payload, resolved_salon_id
+        )
+        resolved_brand_id, brand_name = await self.brand_service.resolve_brand(
+            actor,
+            payload.brand_id,
+            payload.custom_brand_name,
+            resolved_salon_id,
+        )
 
-        product_name = payload.custom_product_name or "-"
-        if payload.product_id:
-            master_product = await self._get_master_product(actor, payload.product_id)
-            item.product_id = str(master_product.id)
-            item.custom_product_name = None
-            product_name = master_product.name
-        else:
-            resolved_product_id, product_name = await self._get_or_create_product(
-                actor, payload, resolved_salon_id
-            )
-            item.product_id = resolved_product_id
-            item.custom_product_name = payload.custom_product_name
+        await self._ensure_no_duplicate(
+            resolved_salon_id,
+            resolved_product_id,
+            payload.custom_product_name,
+            resolved_brand_id,
+            brand_name if not resolved_brand_id else None,
+            exclude_id=str(item.id),
+        )
 
+        item.product_id = resolved_product_id
+        item.brand_id = resolved_brand_id
+        item.custom_product_name = payload.custom_product_name
+        item.custom_brand_name = brand_name if not resolved_brand_id else None
         item.price = payload.price
         item.status = payload.status
         item.updated_by = str(actor.id)
@@ -285,8 +347,12 @@ class SalonProductService:
             id=str(item.id),
             salon_id=item.salon_id,
             product_id=item.product_id,
+            brand_id=item.brand_id,
             custom_product_name=item.custom_product_name,
-            product_name=product_name,
+            custom_brand_name=item.custom_brand_name,
+            product_name=self._combined_name(product_name, brand_name),
+            base_product_name=product_name,
+            brand_name=brand_name,
             price=item.price,
             status=item.status,
             created_by=item.created_by,

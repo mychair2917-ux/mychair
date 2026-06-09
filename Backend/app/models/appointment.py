@@ -18,6 +18,8 @@ class ServiceSnapshot(BaseModel):
 class ProductSnapshot(BaseModel):
     """Snapshots product parameters to freeze them against future edits."""
     product_id: str
+    salon_product_id: Optional[str] = None
+    brand_id: Optional[str] = None
     name: str
     price: float
     tax_rate: float

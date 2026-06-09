@@ -1,12 +1,28 @@
 import { isSuperAdmin } from '../../../config/rbac';
 import { ROUTE_PATHS, ROLES } from '../../../constants';
 
-export const AUTH_STORAGE_KEYS = ['token', 'refresh_token', 'user', 'orgId', 'selectedSalonId'] as const;
+export const AUTH_STORAGE_KEYS = [
+  'token',
+  'refresh_token',
+  'user',
+  'orgId',
+  'selectedSalonId',
+  'permissions',
+] as const;
 
 export const readStoredUser = () => {
   try {
     const rawUser = localStorage.getItem('user');
     return rawUser ? JSON.parse(rawUser) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const readStoredPermissions = (): Record<string, boolean> | null => {
+  try {
+    const raw = localStorage.getItem('permissions');
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }

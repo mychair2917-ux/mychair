@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Form, Formik, FormikHelpers } from 'formik';
 import * as Yup from 'yup';
 
@@ -26,6 +26,8 @@ import {
 import { applyApiFieldErrors, getApiErrorMessage } from '../../utils/apiErrors';
 import { formatDateDMY } from '../../utils/utilities';
 import { cn } from '../../utils/cn';
+import SalonLocationPicker, { type SalonLocation } from '../attendance/SalonLocationPicker';
+import WeekOffSelector from '../common/WeekOffSelector';
 
 const SALARY_TYPE_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
@@ -52,6 +54,8 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
   onSubmit,
   isSubmitting,
 }) => {
+  const [salonOwnerStep, setSalonOwnerStep] = useState(1);
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
   const roleOptions = formOptions?.invitable_roles ?? [];
   const initialRole = roleOptions[0]?.value ?? '';
 
@@ -73,6 +77,10 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
       payload.salon_name = values.salon_name.trim();
       payload.salon_type = values.salon_type;
       payload.subscription_plan = values.subscription_plan;
+      payload.latitude = values.latitude;
+      payload.longitude = values.longitude;
+      payload.attendance_radius = values.attendance_radius;
+      payload.shift_start = values.shift_start;
       if (values.salon_phone_number?.trim()) {
         payload.salon_phone_number = values.salon_phone_number.trim();
       }
@@ -88,6 +96,9 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
       if (values.incentive_base) {
         payload.service_incentive_percent = Number(values.service_incentive_percent);
         payload.product_incentive_percent = Number(values.product_incentive_percent);
+      }
+      if (values.weekly_off.length > 0) {
+        payload.weekly_off = values.weekly_off;
       }
     }
     return payload;
@@ -112,6 +123,8 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
               : 'Invitation sent successfully. The user will receive an email to set their password.')
         );
         resetForm();
+        setSalonOwnerStep(1);
+        setLocationConfirmed(false);
         onClose();
         return;
       } else {
@@ -130,7 +143,16 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="lg" isShowIcon>
+    <Modal
+      open={open}
+      onClose={() => {
+        setSalonOwnerStep(1);
+        setLocationConfirmed(false);
+        onClose();
+      }}
+      size="lg"
+      isShowIcon
+    >
       <ModalHeader>
         <h2 className="text-xl font-semibold">Invite User</h2>
         <p className="mt-0.5 text-sm text-gray-500">All users sign in with email and password.</p>
@@ -176,10 +198,23 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
           const showSalonSetup = isSalonOwnerInviteRole(values.role);
           const showTeamFields = isStaffInviteRole(values.role);
           const directPasswordSetup = usesDirectPasswordProvisioning(inviterRole, values.role);
+          const showSalonStepOne = showSalonSetup && salonOwnerStep === 1;
+          const showSalonStepTwo = showSalonSetup && salonOwnerStep === 2;
 
           return (
             <Form noValidate>
               <ModalBody className="!pt-0">
+                {showSalonSetup && (
+                  <div className="mb-4 flex items-center gap-3 rounded-2xl bg-[var(--color-surface-muted)] px-4 py-3 text-sm">
+                    <span className={cn('font-semibold', salonOwnerStep === 1 && 'text-[var(--color-brand-gold)]')}>
+                      Step 1: Salon Details
+                    </span>
+                    <span className="text-gray-400">→</span>
+                    <span className={cn('font-semibold', salonOwnerStep === 2 && 'text-[var(--color-brand-gold)]')}>
+                      Step 2: Confirm Pin on Map
+                    </span>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {/* Role selector */}
                   <FormField
@@ -224,8 +259,8 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                     </FormField>
                   )}
 
-                  {/* Salon owner specific fields */}
-                  {showSalonSetup && (
+                  {/* Salon owner step 1 */}
+                  {showSalonStepOne && (
                     <>
                       <FormField
                         label="Salon Name"
@@ -306,21 +341,6 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                         />
                       </FormField>
                       <FormField
-                        label="Address"
-                        name="address"
-                        error={errors.address}
-                        touched={touched.address}
-                        className="md:col-span-2"
-                      >
-                        <Input
-                          id="address"
-                          name="address"
-                          value={values.address}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                        />
-                      </FormField>
-                      <FormField
                         label="Branch Name"
                         name="branch_name"
                         error={errors.branch_name}
@@ -337,7 +357,64 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                     </>
                   )}
 
+                  {/* Salon owner step 2 — salon location picker */}
+                  {showSalonStepTwo && (
+                    <div className="md:col-span-2 space-y-5">
+                      <SalonLocationPicker
+                        embedded
+                        skipDoneStep
+                        initialLocation={
+                          locationConfirmed
+                            ? { latitude: values.latitude, longitude: values.longitude }
+                            : undefined
+                        }
+                        onConfirm={(loc: SalonLocation) => {
+                          const fullAddress = [loc.address, loc.city, loc.state, loc.pincode]
+                            .filter(Boolean)
+                            .join(', ');
+                          setFieldValue('address', fullAddress);
+                          setFieldValue('latitude', loc.latitude);
+                          setFieldValue('longitude', loc.longitude);
+                          setLocationConfirmed(true);
+                        }}
+                      />
+                      {locationConfirmed && (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <FormField label="Shift Start (HH:MM)" name="shift_start">
+                            <Input
+                              id="shift_start"
+                              name="shift_start"
+                              value={values.shift_start}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              placeholder="09:00"
+                            />
+                          </FormField>
+                          <FormField
+                            label="Attendance Radius (meters)"
+                            name="attendance_radius"
+                            error={errors.attendance_radius}
+                            touched={touched.attendance_radius}
+                          >
+                            <Input
+                              id="attendance_radius"
+                              type="number"
+                              min={10}
+                              max={5000}
+                              name="attendance_radius"
+                              value={values.attendance_radius}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                            />
+                          </FormField>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Common personal details — same for all roles */}
+                  {!showSalonStepTwo && (
+                    <>
                   <FormField
                     label="Full Name"
                     name="full_name"
@@ -390,9 +467,11 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       placeholder="Optional contact number"
                     />
                   </FormField>
+                    </>
+                  )}
 
-                  {/* Password fields — only when owner/admin/manager is creating staff account */}
-                  {directPasswordSetup && (
+                  {/* Password fields — only when creating staff/manager account */}
+                  {!showSalonStepTwo && directPasswordSetup && (
                     <>
                       <FormField
                         label="Username"
@@ -446,7 +525,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                   )}
 
                   {/* Team-specific fields */}
-                  {showTeamFields && (
+                  {!showSalonStepTwo && showTeamFields && (
                     <>
                       <FormField
                         label="Branch"
@@ -627,30 +706,112 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                           )}
                         </div>
                       </div>
+
+                      <div className="md:col-span-2 rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/60 p-4">
+                        <WeekOffSelector
+                          value={values.weekly_off}
+                          onChange={(days) => setFieldValue('weekly_off', days)}
+                        />
+                      </div>
                     </>
                   )}
                 </div>
 
                 {/* Login info hint */}
-                <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
-                  {directPasswordSetup
-                    ? 'The account will be created immediately. The user can sign in with their email and the password you set.'
-                    : 'An invitation email will be sent. The user will click the link to set their own password and activate their account.'}
-                </div>
+                {!showSalonStepTwo && (
+                  <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+                    {directPasswordSetup
+                      ? 'The account will be created immediately. Share the email and password with the team member manually.'
+                      : 'An invitation email will be sent. The salon owner will click the link to set their password and activate their account.'}
+                  </div>
+                )}
               </ModalBody>
               <ModalFooter className="!pt-0">
-                <Button type="button" variant="secondary" onClick={onClose}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setSalonOwnerStep(1);
+                    onClose();
+                  }}
+                >
                   Cancel
                 </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="!bg-[var(--color-brand-gold)] hover:!bg-[var(--color-brand-gold-dark)]"
-                  isLoading={isSubmitting || formSubmitting}
-                  loadingText={directPasswordSetup ? 'Creating...' : 'Sending...'}
-                >
-                  {directPasswordSetup ? 'Create Account' : 'Send Invitation'}
-                </Button>
+                {showSalonStepOne ? (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="!bg-[var(--color-brand-gold)] hover:!bg-[var(--color-brand-gold-dark)]"
+                    onClick={async () => {
+                      const schema = buildInviteValidationSchema(
+                        values.role,
+                        requiresTenantSelection(inviterRole, values.role),
+                        false
+                      ).pick([
+                        'role',
+                        'full_name',
+                        'email',
+                        'phone',
+                        'salon_name',
+                        'salon_type',
+                        'subscription_plan',
+                        'salon_phone_number',
+                        'gst_number',
+                        'branch_name',
+                      ]);
+                      try {
+                        await schema.validate(values, { abortEarly: false });
+                        setLocationConfirmed(false);
+                        setSalonOwnerStep(2);
+                      } catch (err) {
+                        if (err instanceof Yup.ValidationError) {
+                          showToast('error', err.errors[0] || 'Please complete salon details');
+                        }
+                      }
+                    }}
+                  >
+                    Next: Search Location
+                  </Button>
+                ) : showSalonStepTwo ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setSalonOwnerStep(1);
+                        setLocationConfirmed(false);
+                      }}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      className="!bg-[var(--color-brand-gold)] hover:!bg-[var(--color-brand-gold-dark)]"
+                      isLoading={isSubmitting || formSubmitting}
+                      loadingText="Sending..."
+                      disabled={!locationConfirmed}
+                      onClick={(event) => {
+                        if (!locationConfirmed) {
+                          event.preventDefault();
+                          showToast('error', 'Please select a valid salon location.');
+                        }
+                      }}
+                    >
+                      Send Invitation
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    className="!bg-[var(--color-brand-gold)] hover:!bg-[var(--color-brand-gold-dark)]"
+                    isLoading={isSubmitting || formSubmitting}
+                    loadingText={directPasswordSetup ? 'Creating...' : 'Sending...'}
+                  >
+                    {directPasswordSetup ? 'Create Account' : 'Send Invitation'}
+                  </Button>
+                )}
               </ModalFooter>
             </Form>
           );

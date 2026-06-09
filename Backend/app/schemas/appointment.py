@@ -124,6 +124,8 @@ class AppointmentServiceResponse(BaseModel):
 
 class AppointmentProductResponse(BaseModel):
     product_id: str
+    salon_product_id: Optional[str] = None
+    brand_id: Optional[str] = None
     name: str
     price: float
     tax_rate: float

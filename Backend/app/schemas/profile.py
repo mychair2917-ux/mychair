@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -61,13 +61,14 @@ class ProfileResponse(BaseModel):
     can_edit_professional_info: bool = False
     can_change_password: bool = True
     can_manage_avatar: bool = True
+    permissions: Dict[str, bool] = Field(default_factory=dict)
 
 
 class ProfileUpdateRequest(BaseModel):
-    first_name: str = Field(..., min_length=1, max_length=50)
-    last_name: str = Field(..., min_length=1, max_length=50)
-    email: EmailStr
-    phone: str = Field(..., min_length=7, max_length=20)
+    first_name: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    last_name: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(default=None, min_length=7, max_length=20)
     alternate_phone: Optional[str] = Field(default=None, max_length=20)
     gender: Optional[str] = Field(default=None, max_length=20)
     dob: Optional[datetime] = None
@@ -94,9 +95,19 @@ class ProfileUpdateRequest(BaseModel):
         stripped = value.strip()
         return stripped or None
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def strip_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        stripped = str(value).strip()
+        return stripped or None
+
     @field_validator("phone")
     @classmethod
-    def validate_phone(cls, value: str) -> str:
+    def validate_phone(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
         validated = _validate_phone(value, "phone")
         if validated is None:
             raise ValueError("phone is required")
@@ -135,6 +146,12 @@ class ProfileUpdateRequest(BaseModel):
             and self.phone.strip() == self.alternate_phone.strip()
         ):
             raise ValueError("alternate_phone must be different from phone")
+        return self
+
+    @model_validator(mode="after")
+    def ensure_at_least_one_field(self) -> "ProfileUpdateRequest":
+        if not self.model_dump(exclude_unset=True):
+            raise ValueError("At least one profile field must be provided")
         return self
 
 

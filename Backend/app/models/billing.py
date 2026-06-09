@@ -8,6 +8,8 @@ class InvoiceItem(BaseModel):
     """Represents a snapshotted line item inside an invoice."""
     item_type: str  # "SERVICE" or "PRODUCT"
     item_id: str
+    salon_product_id: Optional[str] = None
+    brand_id: Optional[str] = None
     name: str
     quantity: int = Field(default=1, ge=1)
     unit_price: float = Field(..., ge=0.0)

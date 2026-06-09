@@ -24,7 +24,6 @@ export interface ProfileData {
   branch_id?: string | null;
   branch_name?: string | null;
   salon_name?: string | null;
-  shift?: string | null;
   joining_date?: string | null;
   employee_id?: string | null;
   employee_code?: string | null;
@@ -40,10 +39,10 @@ export interface ProfileData {
 }
 
 export interface UpdateProfileRequest {
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
   alternate_phone?: string | null;
   gender?: string | null;
   dob?: string | null;

@@ -4,6 +4,8 @@ import { baseApi } from '../api/baseApi';
 import { ApiResponse } from '../api/Types';
 import {
   CreateSalonProductRequest,
+  BrandItem,
+  BrandsQueryParams,
   MasterProductItem,
   SalonProductItem,
   SalonProductsQueryParams,
@@ -27,6 +29,17 @@ export const salonProductsApi = baseApi.injectEndpoints({
       }),
       providesTags: ['SalonProducts'],
     }),
+    getBrands: builder.query<ApiResponse<BrandItem[]>, BrandsQueryParams | void>({
+      query: (params) => ({
+        url: API_PATHS.BRANDS.LIST,
+        method: HTTP_METHODS.GET,
+        params: {
+          ...(params?.salon_id ? { salon_id: params.salon_id } : {}),
+          ...(params?.search ? { search: params.search } : {}),
+        },
+      }),
+      providesTags: ['Brands'],
+    }),
     createSalonProduct: builder.mutation<
       ApiResponse<SalonProductItem>,
       { body: CreateSalonProductRequest; salon_id?: string }
@@ -37,7 +50,7 @@ export const salonProductsApi = baseApi.injectEndpoints({
         params: salon_id ? { salon_id } : undefined,
         body,
       }),
-      invalidatesTags: ['SalonProducts'],
+      invalidatesTags: ['SalonProducts', 'Brands', 'Inventory'],
     }),
     updateSalonProduct: builder.mutation<
       ApiResponse<SalonProductItem>,
@@ -49,7 +62,7 @@ export const salonProductsApi = baseApi.injectEndpoints({
         params: salon_id ? { salon_id } : undefined,
         body,
       }),
-      invalidatesTags: ['SalonProducts'],
+      invalidatesTags: ['SalonProducts', 'Brands', 'Inventory'],
     }),
     deleteSalonProduct: builder.mutation<
       ApiResponse<null>,
@@ -68,6 +81,7 @@ export const salonProductsApi = baseApi.injectEndpoints({
 export const {
   useGetMasterProductsQuery,
   useGetSalonProductsQuery,
+  useGetBrandsQuery,
   useCreateSalonProductMutation,
   useUpdateSalonProductMutation,
   useDeleteSalonProductMutation,

@@ -55,6 +55,7 @@ const SalonOwnerLogin: React.FC = () => {
             token: access_token,
             refreshToken: refresh_token,
             orgId: salon_id,
+            permissions: response.data.permissions ?? undefined,
           })
         );
         showToast('success', response.message || 'Login successful');

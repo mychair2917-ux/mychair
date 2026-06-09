@@ -16,6 +16,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.profile import ChangePasswordRequest, ProfileResponse, ProfileUpdateRequest
+from app.services.permission_service import PermissionService
 
 
 ALLOWED_IMAGE_TYPES = {"jpeg", "png"}
@@ -66,6 +67,7 @@ class ProfileService:
     async def to_profile_response(self, user: User) -> ProfileResponse:
         salon_name = await self._resolve_salon_name(user)
         branch_name = await self._resolve_branch_name(user)
+        permissions = await PermissionService().get_merged_permissions(user)
         return ProfileResponse(
             id=str(user.id),
             tenant_id=user.tenant_id,
@@ -102,6 +104,7 @@ class ProfileService:
             can_edit_professional_info=self._can_edit_professional_fields(user),
             can_change_password=True,
             can_manage_avatar=True,
+            permissions=permissions,
         )
 
     async def get_profile(self, current_user: User) -> ProfileResponse:
@@ -110,50 +113,44 @@ class ProfileService:
     async def update_profile(
         self, current_user: User, payload: ProfileUpdateRequest
     ) -> ProfileResponse:
-        if normalize_role(current_user.role) == ROLE_SUPER_ADMIN:
-            existing = await self.repo.get_by_email_global_excluding_user(
-                payload.email,
-                str(current_user.id),
-            )
-        else:
-            existing = await self.repo.get_by_email_excluding_user(
-                payload.email,
-                str(current_user.id),
-                tenant_id=current_user.tenant_id,
-            )
-        if existing:
-            raise PermissionDeniedException(detail="Email is already registered")
+        update_data: Dict[str, Any] = payload.model_dump(exclude_unset=True)
+        if not update_data:
+            return await self.to_profile_response(current_user)
 
-        update_data: Dict[str, Any] = {
-            "first_name": payload.first_name,
-            "last_name": payload.last_name,
-            "email": str(payload.email).lower(),
-            "phone": payload.phone,
-            "alternate_phone": payload.alternate_phone,
-            "gender": payload.gender,
-            "dob": payload.dob,
-            "address": payload.address,
-            "city": payload.city,
-            "state": payload.state,
-            "country": payload.country,
-            "pincode": payload.pincode,
-            "updated_by": str(current_user.id),
+        if "email" in update_data:
+            normalized_email = str(update_data["email"]).lower()
+            current_email = str(current_user.email or "").lower()
+            if normalized_email != current_email:
+                if normalize_role(current_user.role) == ROLE_SUPER_ADMIN:
+                    existing = await self.repo.get_by_email_global_excluding_user(
+                        normalized_email, str(current_user.id)
+                    )
+                else:
+                    existing = await self.repo.get_by_email_excluding_user(
+                        normalized_email,
+                        str(current_user.id),
+                        tenant_id=current_user.tenant_id,
+                    )
+                if existing:
+                    raise PermissionDeniedException(detail="Email is already registered")
+            update_data["email"] = normalized_email
+
+        professional_fields = {
+            "department",
+            "designation",
+            "shift",
+            "branch_id",
+            "branch_name",
+            "employee_code",
+            "joining_date",
+            "status",
+            "is_active",
         }
+        if not self._can_edit_professional_fields(current_user):
+            for field in professional_fields:
+                update_data.pop(field, None)
 
-        if self._can_edit_professional_fields(current_user):
-            update_data.update(
-                {
-                    "department": payload.department,
-                    "designation": payload.designation,
-                    "shift": payload.shift,
-                    "branch_id": payload.branch_id,
-                    "branch_name": payload.branch_name,
-                    "employee_code": payload.employee_code,
-                    "joining_date": payload.joining_date,
-                    "status": payload.status or current_user.status,
-                    "is_active": current_user.is_active if payload.is_active is None else payload.is_active,
-                }
-            )
+        update_data["updated_by"] = str(current_user.id)
         for field, value in update_data.items():
             setattr(current_user, field, value)
         await current_user.save()

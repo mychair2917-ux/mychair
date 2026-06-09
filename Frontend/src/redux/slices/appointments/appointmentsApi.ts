@@ -12,12 +12,14 @@ import {
   AppointmentListParams,
   AppointmentServiceOption,
   AppointmentStaffOption,
+  BillByAppointmentParams,
   CreateAppointmentClientRequest,
   CreateFrontDeskAppointmentRequest,
   PaginatedAppointmentData,
   SearchClientsParams,
   TodayAppointmentsParams,
 } from './Types';
+import type { BillDetail } from '../billing/Types';
 
 export const appointmentsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
@@ -114,6 +116,18 @@ export const appointmentsApi = baseApi.injectEndpoints({
       },
       providesTags: ['Appointments'],
     }),
+
+    getBillByAppointment: builder.query<ApiResponse<BillDetail | null>, BillByAppointmentParams>({
+      query: ({ salon_id, appointment_id }) => ({
+        url: API_PATHS.BILLING.BILLS,
+        method: HTTP_METHODS.GET,
+        params: { salon_id, appointment_id, limit: 1 },
+      }),
+      transformResponse: (response: ApiResponse<{ items: BillDetail[] }>) => {
+        const first = response?.data?.items?.[0] ?? null;
+        return { ...response, data: first };
+      },
+    }),
   }),
 });
 
@@ -127,4 +141,5 @@ export const {
   useGetAppointmentStaffQuery,
   useCreateFrontDeskAppointmentMutation,
   useListAppointmentsQuery,
+  useLazyGetBillByAppointmentQuery,
 } = appointmentsApi;

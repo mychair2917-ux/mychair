@@ -37,6 +37,11 @@ export interface CreateInviteRequest {
   incentive_base?: boolean;
   service_incentive_percent?: number;
   product_incentive_percent?: number;
+  latitude?: number;
+  longitude?: number;
+  attendance_radius?: number;
+  shift_start?: string;
+  weekly_off?: string[];
 }
 
 /** @deprecated Use CreateInviteRequest */

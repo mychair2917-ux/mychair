@@ -1,17 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Briefcase,
-  Building2,
-  CalendarDays,
   Camera,
-  IdCard,
   Mail,
-  MapPin,
   Phone,
   Save,
   ShieldCheck,
   Trash2,
-  UserRound,
 } from 'lucide-react';
 
 import { Button, CommonCard, EmptyState, FormField, Input, PageLoader, Select } from '../../components/common';
@@ -26,7 +20,6 @@ import {
 } from '../../redux/slices/profile/profileApi';
 import { ProfileData, UpdateProfileRequest } from '../../redux/slices/profile/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
-import { cn } from '../../utils/cn';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
 
 type ProfileFormState = {
@@ -68,10 +61,7 @@ const genderOptions = [
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
-const statusOptions = [
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'INACTIVE', label: 'Inactive' },
-];
+
 
 const createFormState = (profile?: ProfileData | null): ProfileFormState => ({
   first_name: profile?.first_name ?? '',
@@ -241,31 +231,50 @@ const Profile: React.FC = () => {
 
   const handleProfileSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!validateProfile()) return;
+    if (!validateProfile() || !profile) return;
 
-    const payload: UpdateProfileRequest = {
-      first_name: formState.first_name.trim(),
-      last_name: formState.last_name.trim(),
-      email: formState.email.trim(),
-      phone: formState.phone.trim(),
-      alternate_phone: formState.alternate_phone.trim() || null,
-      gender: formState.gender || null,
-      dob: formState.dob || null,
-      address: formState.address.trim() || null,
-      city: formState.city.trim() || null,
-      state: formState.state.trim() || null,
-      country: formState.country.trim() || null,
-      pincode: formState.pincode.trim() || null,
-      department: isProfessionalEditable ? formState.department.trim() || null : undefined,
-      designation: isProfessionalEditable ? formState.designation.trim() || null : undefined,
-      shift: isProfessionalEditable ? formState.shift.trim() || null : undefined,
-      branch_id: isProfessionalEditable ? formState.branch_id.trim() || null : undefined,
-      branch_name: isProfessionalEditable ? formState.branch_name.trim() || null : undefined,
-      employee_code: isProfessionalEditable ? formState.employee_code.trim() || null : undefined,
-      joining_date: isProfessionalEditable ? formState.joining_date || null : undefined,
-      status: isProfessionalEditable ? formState.status || null : undefined,
-      is_active: isProfessionalEditable ? formState.is_active : undefined,
+    const baseline = createFormState(profile);
+    const payload: UpdateProfileRequest = {};
+
+    const assignIfChanged = <K extends keyof UpdateProfileRequest>(
+      field: K,
+      value: UpdateProfileRequest[K]
+    ) => {
+      const baselineValue = baseline[field as keyof ProfileFormState];
+      if (JSON.stringify(value) !== JSON.stringify(baselineValue)) {
+        payload[field] = value;
+      }
     };
+
+    assignIfChanged('first_name', formState.first_name.trim());
+    assignIfChanged('last_name', formState.last_name.trim());
+    assignIfChanged('email', formState.email.trim().toLowerCase());
+    assignIfChanged('phone', formState.phone.trim());
+    assignIfChanged('alternate_phone', formState.alternate_phone.trim() || null);
+    assignIfChanged('gender', formState.gender || null);
+    assignIfChanged('dob', formState.dob || null);
+    assignIfChanged('address', formState.address.trim() || null);
+    assignIfChanged('city', formState.city.trim() || null);
+    assignIfChanged('state', formState.state.trim() || null);
+    assignIfChanged('country', formState.country.trim() || null);
+    assignIfChanged('pincode', formState.pincode.trim() || null);
+
+    if (isProfessionalEditable) {
+      assignIfChanged('department', formState.department.trim() || null);
+      assignIfChanged('designation', formState.designation.trim() || null);
+      assignIfChanged('shift', formState.shift.trim() || null);
+      assignIfChanged('branch_id', formState.branch_id.trim() || null);
+      assignIfChanged('branch_name', formState.branch_name.trim() || null);
+      assignIfChanged('employee_code', formState.employee_code.trim() || null);
+      assignIfChanged('joining_date', formState.joining_date || null);
+      assignIfChanged('status', formState.status || null);
+      assignIfChanged('is_active', formState.is_active);
+    }
+
+    if (Object.keys(payload).length === 0) {
+      showToast('info', 'No profile changes to save');
+      return;
+    }
 
     try {
       await updateProfile(payload).unwrap();
@@ -317,104 +326,88 @@ const Profile: React.FC = () => {
 
   return (
     <div className="space-y-6 p-4 sm:p-6 md:p-8">
-      <CommonCard
-        className="overflow-hidden"
-        bodyClassName="p-0"
-      >
-        <div className="bg-gradient-to-r from-[#1f172a] via-[#3b274f] to-[#8b6b33] px-6 py-8 text-white">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-              <div className="relative h-28 w-28 shrink-0 rounded-full border-4 border-white/30 bg-white/10 p-1 shadow-xl">
-                {displayAvatar ? (
-                  <img
-                    src={displayAvatar}
-                    alt={displayName}
-                    className="h-full w-full rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center rounded-full bg-white/10 text-3xl font-semibold uppercase">
-                    {(displayName[0] || 'U').toUpperCase()}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <h1 className="text-3xl font-semibold tracking-[0.01em]">{displayName}</h1>
-                  <p className="mt-1 text-sm text-white/75">
-                    {(profile.role || 'user').replace(/_/g, ' ')}{profile.designation ? ` • ${profile.designation}` : ''}
-                  </p>
+      <CommonCard className="overflow-hidden">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="relative h-24 w-24 shrink-0 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] p-0.5 shadow-sm">
+              {displayAvatar ? (
+                <img
+                  src={displayAvatar}
+                  alt={displayName}
+                  className="h-full w-full rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center rounded-full bg-[var(--color-border-soft)] text-2xl font-bold uppercase text-[var(--color-text-secondary)]">
+                  {(displayName[0] || 'U').toUpperCase()}
                 </div>
-
-                <div className="grid gap-2 text-sm text-white/85 sm:grid-cols-2">
-                  <div className="flex items-center gap-2">
-                    <IdCard className="h-4 w-4 text-[var(--color-brand-gold-light)]" />
-                    <span>Employee ID: {profile.employee_id || profile.employee_code || '---'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-[var(--color-brand-gold-light)]" />
-                    <span>{profile.branch_name || profile.salon_name || 'Salon not assigned'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-[var(--color-brand-gold-light)]" />
-                    <span>Status: {profile.status === 'ACTIVE' ? 'Active' : 'Inactive'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="h-4 w-4 text-[var(--color-brand-gold-light)]" />
-                    <span>Joined: {formatDateDMY(profile.joining_date)}</span>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
 
-            <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
-              <div className="flex flex-col gap-3">
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15">
-                  <Camera className="h-4 w-4" />
-                  <span>{avatarFile ? 'Change selected image' : 'Choose profile image'}</span>
-                  <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleAvatarSelect} />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="!border-white/20 !bg-white !text-[var(--color-text-primary)]"
-                    onClick={handleAvatarUpload}
-                    disabled={!avatarFile || isAvatarBusy}
-                    isLoading={isUploadingAvatar}
-                  >
-                    Save image
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="!text-white hover:!bg-white/10"
-                    onClick={() => {
-                      setAvatarFile(null);
-                      setAvatarPreview(null);
-                    }}
-                    disabled={!avatarPreview || isAvatarBusy}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="!text-white hover:!bg-white/10"
-                    onClick={handleAvatarRemove}
-                    disabled={(!profile.avatar && !avatarPreview) || isAvatarBusy}
-                    isLoading={isRemovingAvatar}
-                    leftIcon={<Trash2 className="h-4 w-4" />}
-                  >
-                    Remove
-                  </Button>
-                </div>
-                <p className="text-xs text-white/70">PNG or JPG, maximum 2MB.</p>
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{displayName}</h1>
+              <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+                {(profile.role || 'user').replace(/_/g, ' ')}{profile.designation ? ` • ${profile.designation}` : ''}
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--color-text-tertiary)] pt-1">
+                {profile.employee_code || profile.employee_id ? (
+                  <span>ID: {profile.employee_code || profile.employee_id}</span>
+                ) : null}
+                {profile.branch_name || profile.salon_name ? (
+                  <span>• {profile.branch_name || profile.salon_name}</span>
+                ) : null}
+                <span>• Joined {formatDateDMY(profile.joining_date)}</span>
               </div>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--color-text-primary)] transition hover:bg-[var(--color-surface-bg)]">
+              <Camera className="h-4 w-4 text-[var(--color-text-secondary)]" />
+              <span>{avatarFile ? 'Change photo' : 'Upload photo'}</span>
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleAvatarSelect} />
+            </label>
+
+            {avatarFile && (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  onClick={handleAvatarUpload}
+                  disabled={isAvatarBusy}
+                  isLoading={isUploadingAvatar}
+                >
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setAvatarFile(null);
+                    setAvatarPreview(null);
+                  }}
+                  disabled={isAvatarBusy}
+                >
+                  Cancel
+                </Button>
+              </>
+            )}
+
+            {(profile.avatar || avatarPreview) && !avatarFile && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={handleAvatarRemove}
+                disabled={isAvatarBusy}
+                isLoading={isRemovingAvatar}
+                leftIcon={<Trash2 className="h-4 w-4" />}
+              >
+                Remove
+              </Button>
+            )}
           </div>
         </div>
       </CommonCard>
@@ -494,69 +487,6 @@ const Profile: React.FC = () => {
               </div>
             </form>
           </CommonCard>
-
-          <CommonCard
-            title="Professional Information"
-            subtitle={isProfessionalEditable ? 'Authorized role detected. You can update assignment metadata.' : 'These fields are read-only for your access level.'}
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <ProfileField icon={Briefcase} label="Role" value={profile.role.replace(/_/g, ' ')} />
-              <ProfileField icon={IdCard} label="Employee Code" value={profile.employee_code || profile.employee_id || '---'}>
-                <Input
-                  value={formState.employee_code}
-                  onChange={(e) => handleFieldChange('employee_code', e.target.value)}
-                  disabled={!isProfessionalEditable}
-                />
-              </ProfileField>
-              <ProfileField icon={Building2} label="Assigned Branch" value={profile.branch_name || profile.salon_name || '---'}>
-                <Input
-                  value={formState.branch_name}
-                  onChange={(e) => handleFieldChange('branch_name', e.target.value)}
-                  disabled={!isProfessionalEditable}
-                />
-              </ProfileField>
-              <ProfileField icon={Briefcase} label="Department" value={profile.department || '---'}>
-                <Input
-                  value={formState.department}
-                  onChange={(e) => handleFieldChange('department', e.target.value)}
-                  disabled={!isProfessionalEditable}
-                />
-              </ProfileField>
-              <ProfileField icon={UserRound} label="Designation" value={profile.designation || '---'}>
-                <Input
-                  value={formState.designation}
-                  onChange={(e) => handleFieldChange('designation', e.target.value)}
-                  disabled={!isProfessionalEditable}
-                />
-              </ProfileField>
-              <ProfileField icon={CalendarDays} label="Shift" value={profile.shift || '---'}>
-                <Input
-                  value={formState.shift}
-                  onChange={(e) => handleFieldChange('shift', e.target.value)}
-                  disabled={!isProfessionalEditable}
-                />
-              </ProfileField>
-              <ProfileField icon={CalendarDays} label="Joining Date" value={formatDateDMY(profile.joining_date)}>
-                <div className="space-y-2">
-                  <Input
-                    type="date"
-                    value={formState.joining_date}
-                    onChange={(e) => handleFieldChange('joining_date', e.target.value)}
-                    disabled={!isProfessionalEditable}
-                  />
-                  <p className="text-xs text-[var(--color-text-secondary)]">{formatDateDMY(formState.joining_date)}</p>
-                </div>
-              </ProfileField>
-              <ProfileField icon={ShieldCheck} label="Account Status" value={profile.status === 'ACTIVE' ? 'Active' : 'Inactive'}>
-                <Select
-                  value={formState.status}
-                  onChange={(e) => handleFieldChange('status', e.target.value)}
-                  options={statusOptions}
-                  disabled={!isProfessionalEditable}
-                />
-              </ProfileField>
-            </div>
-          </CommonCard>
         </div>
 
         <div className="space-y-6">
@@ -564,7 +494,7 @@ const Profile: React.FC = () => {
             <div className="space-y-4">
               <InfoRow icon={Mail} label="Primary Email" value={profile.email} />
               <InfoRow icon={Phone} label="Last Login" value={profile.last_login ? `${formatDateDMY(profile.last_login)} • ${new Date(profile.last_login).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '---'} />
-              <InfoRow icon={MapPin} label="Session Context" value="Current authenticated browser session" />
+              
               <InfoRow icon={ShieldCheck} label="Account Status" value={profile.status === 'ACTIVE' ? 'Active' : 'Inactive'} />
             </div>
           </CommonCard>
@@ -603,20 +533,6 @@ const InfoRow: React.FC<{ icon: React.ElementType; label: string; value: string 
   </div>
 );
 
-const ProfileField: React.FC<{
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  children?: React.ReactNode;
-}> = ({ icon: Icon, label, value, children }) => (
-  <div className="rounded-2xl border border-[var(--color-border-soft)] p-4">
-    <div className="mb-3 flex items-center gap-2 text-[var(--color-text-primary)]">
-      <Icon className="h-4 w-4 text-[var(--color-brand-gold-dark)]" />
-      <span className="text-sm font-semibold">{label}</span>
-    </div>
-    <p className={cn('mb-3 text-sm text-[var(--color-text-secondary)]', children && 'mb-4')}>{value}</p>
-    {children}
-  </div>
-);
+
 
 export default Profile;

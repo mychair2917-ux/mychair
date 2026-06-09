@@ -27,6 +27,7 @@ export interface SalonOwnerLoginResponseData {
   status?: string;
   joining_date?: string | null;
   last_login?: string | null;
+  permissions?: Record<string, boolean>;
 }
 
 export interface SalonOwnerProfileData {

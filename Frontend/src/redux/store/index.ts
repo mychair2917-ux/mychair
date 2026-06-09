@@ -15,6 +15,9 @@ import '../slices/payroll/payrollApi';
 import '../slices/myEarnings/myEarningsApi';
 import '../slices/customerAnalytics/customerAnalyticsApi';
 import '../slices/profile/profileApi';
+import '../slices/expenses/expensesApi';
+import '../slices/attendance/attendanceApi';
+import '../slices/permissions/permissionsApi';
 
 export const store = configureStore({
   reducer: {

@@ -8,6 +8,7 @@ from app.core.exceptions import ResourceNotFoundException
 from app.models.customer import Customer
 from app.models.product import Product
 from app.models.salon_product import SalonProduct
+from app.models.brand import Brand
 from app.models.salon_service import SalonService
 from app.models.service import Service
 from app.models.user import User
@@ -58,21 +59,41 @@ def _customer_response(customer: Customer) -> dict:
 
 
 async def _appointment_response(appointment: Appointment) -> dict:
-    customer = await Customer.find_one(
-        Customer.id == appointment.customer_id, Customer.is_deleted == False
-    )
-    staff = await User.find_one(User.id == appointment.staff_id, User.is_deleted == False)
+    customer = None
+    if appointment.customer_id:
+        try:
+            customer = await Customer.find_one(
+                {"_id": PydanticObjectId(appointment.customer_id), "is_deleted": False}
+            )
+        except Exception:
+            customer = None
+
+    staff = None
+    if appointment.staff_id:
+        try:
+            staff = await User.find_one(
+                {"_id": PydanticObjectId(appointment.staff_id), "is_deleted": False}
+            )
+        except Exception:
+            staff = None
+
     staff_name = None
     if staff:
         staff_name = " ".join(part for part in [staff.first_name, staff.last_name] if part).strip()
         staff_name = staff_name or staff.email
 
+    customer_name = "Deleted Customer"
+    customer_phone = ""
+    if customer:
+        customer_name = customer.full_name.strip() or "Unnamed Customer"
+        customer_phone = customer.phone or ""
+
     return {
         "id": str(appointment.id),
         "salon_id": appointment.salon_id,
         "customer_id": appointment.customer_id,
-        "customer_name": customer.full_name.strip() if customer else "Unknown client",
-        "customer_phone": customer.phone if customer else "",
+        "customer_name": customer_name,
+        "customer_phone": customer_phone,
         "staff_id": appointment.staff_id,
         "staff_name": staff_name,
         "start_datetime": appointment.start_datetime.isoformat(),
@@ -271,20 +292,42 @@ async def list_salon_products_for_appointments(
             {"_id": {"$in": master_product_ids}, "is_deleted": False}
         ).to_list()
     master_product_map = {str(item.id): item for item in master_products}
+    brand_ids = []
+    for product in salon_products:
+        if not product.brand_id:
+            continue
+        try:
+            brand_ids.append(PydanticObjectId(product.brand_id))
+        except Exception:
+            continue
+    brands = []
+    if brand_ids:
+        brands = await Brand.find({"_id": {"$in": brand_ids}, "is_deleted": False}).to_list()
+    brand_map = {str(item.id): item for item in brands}
 
     payload = []
     for salon_product in salon_products:
-        product_name = (
+        base_product_name = (
             master_product_map.get(salon_product.product_id).name
             if salon_product.product_id and master_product_map.get(salon_product.product_id)
             else salon_product.custom_product_name
         ) or "-"
+        brand_name = (
+            brand_map.get(salon_product.brand_id).name
+            if salon_product.brand_id and brand_map.get(salon_product.brand_id)
+            else salon_product.custom_brand_name
+        )
+        product_name = (
+            f"{base_product_name} ({brand_name})" if brand_name else base_product_name
+        )
         payload.append(
             {
                 "salon_product_id": str(salon_product.id),
                 "product_name": product_name,
                 "price": salon_product.price,
                 "product_id": salon_product.product_id,
+                "brand_id": salon_product.brand_id,
+                "brand_name": brand_name,
             }
         )
 
@@ -318,12 +361,22 @@ async def list_staff_users(
     )
 
 
+QUEUE_ACTIVE_STATUSES = {"BOOKED", "CHECKED_IN", "IN_PROGRESS"}
+QUEUE_ALL_STATUSES = QUEUE_ACTIVE_STATUSES | {"COMPLETED", "CANCELLED", "NO_SHOW"}
+
+
 @router.get("/frontdesk/today")
 async def get_frontdesk_today(
     salon_id: str,
     status_filter: Optional[str] = Query(default=None),
+    include_completed: bool = Query(default=False, description="Include COMPLETED and CANCELLED appointments"),
     current_user: User = Depends(PermissionChecker("appointments.view")),
 ):
+    """
+    Returns today's appointment queue for a salon.
+    By default only returns active queue items (BOOKED, CHECKED_IN, IN_PROGRESS).
+    Pass include_completed=true to also show COMPLETED/CANCELLED appointments.
+    """
     now = datetime.now().astimezone()
     start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end_dt = start_dt + timedelta(days=1)
@@ -332,8 +385,19 @@ async def get_frontdesk_today(
         start_range=start_dt,
         end_range=end_dt,
     )
+
     if status_filter:
-        appointments = [item for item in appointments if item.status == status_filter.upper()]
+        appointments = [
+            item for item in appointments if item.status == status_filter.upper()
+        ]
+    elif not include_completed:
+        appointments = [
+            item for item in appointments if item.status in QUEUE_ACTIVE_STATUSES
+        ]
+
+    # Sort by start_datetime ascending for proper queue ordering
+    appointments.sort(key=lambda a: a.start_datetime)
+
     return success_response(
         "Appointments retrieved successfully",
         data=[await _appointment_response(item) for item in appointments],

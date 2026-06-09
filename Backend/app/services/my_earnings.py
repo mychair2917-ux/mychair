@@ -49,9 +49,23 @@ class _LineLedger:
     tax_amount: float
 
 
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalize a potentially naive datetime to UTC-aware."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 class MyEarningsService:
-    def _resolve_salon_id(self, actor: User) -> str:
+    def _resolve_tenant_id(self, actor: User) -> str:
+        """Return the tenant/org ID for the given user (used for DB tenant isolation)."""
         return tenant_context.get_tenant_id() or str(actor.tenant_id or "")
+
+    def _resolve_salon_id(self, actor: User) -> str:
+        """Return the salon/branch ID for the given user. Falls back to tenant_id if branch_id is not set."""
+        return str(actor.branch_id or "").strip() or self._resolve_tenant_id(actor)
 
     @staticmethod
     def _safe_round(value: float) -> float:
@@ -205,16 +219,20 @@ class MyEarningsService:
     async def _load_ledgers(
         self, actor: User, start: datetime, end: datetime
     ) -> List[_LineLedger]:
-        salon_id = self._resolve_salon_id(actor)
-        invoices = await Invoice.find(
-            {
-                "salon_id": salon_id,
-                "tenant_id": salon_id,
-                "is_deleted": False,
-                "created_at": {"$gte": start, "$lt": end},
-                "items.staff_id": str(actor.id),
-            }
-        ).sort("+created_at").to_list()
+        tenant_id = self._resolve_tenant_id(actor)
+        salon_id = str(actor.branch_id or "").strip() if actor.branch_id else None
+
+        query: Dict = {
+            "tenant_id": tenant_id,
+            "is_deleted": False,
+            "created_at": {"$gte": start, "$lt": end},
+            "items.staff_id": str(actor.id),
+        }
+        # Filter by specific salon/branch if the staff is assigned to one
+        if salon_id:
+            query["salon_id"] = salon_id
+
+        invoices = await Invoice.find(query).sort("+created_at").to_list()
         if not invoices:
             return []
 
@@ -234,7 +252,8 @@ class MyEarningsService:
                 continue
 
             refund_ratio = self._refund_ratio(invoice, payment_map.get(str(invoice.id), []))
-            ledger_date = invoice.finalized_at or invoice.created_at
+            raw_date = invoice.finalized_at or invoice.created_at
+            ledger_date = _ensure_utc(raw_date) or start
             for index, item in enumerate(invoice.items):
                 if item.staff_id != str(actor.id):
                     continue
@@ -338,7 +357,7 @@ class MyEarningsService:
 
         payroll = await Payroll.find_one(
             {
-                "tenant_id": self._resolve_salon_id(actor),
+                "tenant_id": self._resolve_tenant_id(actor),
                 "employee_id": str(actor.id),
                 "month": active_month,
                 "year": active_year,
@@ -478,7 +497,7 @@ class MyEarningsService:
 
         payrolls = await Payroll.find(
             {
-                "tenant_id": self._resolve_salon_id(actor),
+                "tenant_id": self._resolve_tenant_id(actor),
                 "employee_id": str(actor.id),
                 "payment_status": "PAID",
                 "is_deleted": False,
@@ -520,7 +539,7 @@ class MyEarningsService:
         self, actor: User, page: int = 1, limit: int = 12
     ) -> SalaryHistoryResponse:
         query = {
-            "tenant_id": self._resolve_salon_id(actor),
+            "tenant_id": self._resolve_tenant_id(actor),
             "employee_id": str(actor.id),
             "is_deleted": False,
         }
@@ -583,7 +602,7 @@ class MyEarningsService:
         payroll = await Payroll.find_one(
             {
                 "_id": PydanticObjectId(payroll_id),
-                "tenant_id": self._resolve_salon_id(actor),
+                "tenant_id": self._resolve_tenant_id(actor),
                 "employee_id": str(actor.id),
                 "is_deleted": False,
             }
@@ -591,7 +610,12 @@ class MyEarningsService:
         if not payroll:
             raise ValueError("Salary slip not found")
 
-        tenant = await Tenant.get(payroll.tenant_id) if payroll.tenant_id else None
+        tenant = None
+        if payroll.tenant_id:
+            try:
+                tenant = await Tenant.get(PydanticObjectId(payroll.tenant_id))
+            except Exception:
+                tenant = None
         return {
             "id": str(payroll.id),
             "employee_id": payroll.employee_id,

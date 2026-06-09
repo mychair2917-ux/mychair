@@ -8,6 +8,7 @@ export interface EmployeeListItem {
   status: string;
   is_active: boolean;
   created_at: string;
+  weekly_off?: string[];
 }
 
 export interface EmployeeUpdateRequest {
@@ -17,6 +18,7 @@ export interface EmployeeUpdateRequest {
   role?: string;
   branch_name?: string;
   is_active?: boolean;
+  weekly_off?: string[];
 }
 
 export interface EmployeeStatusRequest {

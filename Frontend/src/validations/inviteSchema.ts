@@ -35,6 +35,11 @@ export interface InviteFormValues {
   incentive_base: boolean;
   service_incentive_percent: string;
   product_incentive_percent: string;
+  latitude: number;
+  longitude: number;
+  attendance_radius: number;
+  shift_start: string;
+  weekly_off: string[];
 }
 
 const todayIso = (): string => {
@@ -68,6 +73,11 @@ export const defaultInviteFormValues: InviteFormValues = {
   incentive_base: false,
   service_incentive_percent: '',
   product_incentive_percent: '',
+  latitude: 28.6139,
+  longitude: 77.209,
+  attendance_radius: 100,
+  shift_start: '09:00',
+  weekly_off: [],
 };
 
 /**
@@ -124,6 +134,11 @@ export function buildInviteValidationSchema(
     incentive_base: Yup.boolean(),
     service_incentive_percent: Yup.string(),
     product_incentive_percent: Yup.string(),
+    latitude: Yup.number(),
+    longitude: Yup.number(),
+    attendance_radius: Yup.number(),
+    shift_start: Yup.string(),
+    weekly_off: Yup.array().of(Yup.string()),
   };
 
   const isTeamRole =
@@ -139,6 +154,21 @@ export function buildInviteValidationSchema(
     base.subscription_plan = Yup.string()
       .required('Subscription plan is required')
       .notOneOf([''], 'Select subscription plan');
+    base.latitude = Yup.number()
+      .min(-90)
+      .max(90)
+      .required('Salon location is required');
+    base.longitude = Yup.number()
+      .min(-180)
+      .max(180)
+      .required('Salon location is required');
+    base.attendance_radius = Yup.number()
+      .min(10, 'Minimum radius is 10 meters')
+      .max(5000, 'Maximum radius is 5000 meters')
+      .required('Attendance radius is required');
+    base.shift_start = Yup.string()
+      .matches(/^\d{2}:\d{2}$/, 'Enter shift start as HH:MM')
+      .required('Shift start is required');
   }
 
   if (isTeamRole) {

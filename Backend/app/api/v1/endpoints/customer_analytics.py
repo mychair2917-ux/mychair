@@ -2,7 +2,7 @@
 Customer Analytics — overview dashboard endpoint.
 Aggregates customer KPIs and trend data for the Analytics Overview tab.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends
 
@@ -21,6 +21,28 @@ def _effective_tenant(current_user: User) -> Optional[str]:
     if current_user.role == "super_admin":
         return tenant_context.get_tenant_id()
     return str(current_user.tenant_id or "").strip() or None
+
+
+def _to_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalize a potentially naive datetime to UTC-aware for safe comparisons."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _month_bounds(base: datetime, months_back: int):
+    """Return (m_start, m_end) UTC-aware datetimes for a month offset from base."""
+    absolute = (base.year * 12 + (base.month - 1)) - months_back
+    y = absolute // 12
+    m = (absolute % 12) + 1
+    m_start = datetime(y, m, 1, tzinfo=timezone.utc)
+    if m == 12:
+        m_end = datetime(y + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        m_end = datetime(y, m + 1, 1, tzinfo=timezone.utc)
+    return m_start, m_end
 
 
 @router.get("/overview")
@@ -43,10 +65,11 @@ async def get_analytics_overview(
     active_customers = sum(
         1
         for c in all_customers
-        if c.last_visit_at and c.last_visit_at >= active_cutoff
+        if c.last_visit_at and (_to_utc(c.last_visit_at) or now) >= active_cutoff
     )
     new_customers = sum(
-        1 for c in all_customers if c.created_at and c.created_at >= month_start
+        1 for c in all_customers
+        if c.created_at and (_to_utc(c.created_at) or now) >= month_start
     )
     repeat_customers = sum(1 for c in all_customers if (c.total_visits or 0) > 1)
 
@@ -70,19 +93,11 @@ async def get_analytics_overview(
     # Monthly new customers — last 6 months
     monthly_new_customers = []
     for i in range(5, -1, -1):
-        # Compute start and end of each month going back i months
-        target = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        month_offset = (target.month - 1 - i) % 12 + 1
-        year_offset = target.year + ((target.month - 1 - i) // 12)
-        m_start = target.replace(year=year_offset, month=month_offset, day=1)
-        if month_offset == 12:
-            m_end = m_start.replace(year=year_offset + 1, month=1, day=1)
-        else:
-            m_end = m_start.replace(month=month_offset + 1)
+        m_start, m_end = _month_bounds(now, i)
         count = sum(
             1
             for c in all_customers
-            if c.created_at and m_start <= c.created_at < m_end
+            if c.created_at and m_start <= (_to_utc(c.created_at) or now) < m_end
         )
         monthly_new_customers.append({
             "month": m_start.strftime("%b %Y"),
@@ -92,18 +107,11 @@ async def get_analytics_overview(
     # Reward points trend — last 6 months
     reward_points_trend = []
     for i in range(5, -1, -1):
-        target = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        month_offset = (target.month - 1 - i) % 12 + 1
-        year_offset = target.year + ((target.month - 1 - i) // 12)
-        m_start = target.replace(year=year_offset, month=month_offset, day=1)
-        if month_offset == 12:
-            m_end = m_start.replace(year=year_offset + 1, month=1, day=1)
-        else:
-            m_end = m_start.replace(month=month_offset + 1)
+        m_start, m_end = _month_bounds(now, i)
         pts = sum(
             t.points
             for t in all_txns
-            if t.created_at and m_start <= t.created_at < m_end
+            if t.created_at and m_start <= (_to_utc(t.created_at) or now) < m_end
         )
         reward_points_trend.append({
             "month": m_start.strftime("%b %Y"),

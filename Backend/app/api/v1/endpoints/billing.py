@@ -88,6 +88,7 @@ def _parse_date_yyyy_mm_dd(value: Optional[str]) -> Optional[datetime]:
 async def list_bills(
     salon_id: str = Query(..., description="Salon branch ID"),
     branch_id: Optional[str] = Query(default=None, description="Optional branch override"),
+    appointment_id: Optional[str] = Query(default=None, description="Filter by appointment ID"),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     payment_status: Optional[str] = Query(default=None, description="PAID, PENDING, PARTIALLY_PAID"),
@@ -114,6 +115,8 @@ async def list_bills(
     if effective_tenant:
         query["tenant_id"] = effective_tenant
 
+    if appointment_id and appointment_id.strip():
+        query["appointment_id"] = appointment_id.strip()
     if payment_status:
         query["payment_status"] = payment_status.upper()
     if bill_status:

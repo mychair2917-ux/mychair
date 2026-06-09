@@ -4,12 +4,14 @@ from app.models.billing import Invoice, InvoiceItem, Payment
 from app.repositories.billing import InvoiceRepository, PaymentRepository
 from app.core.exceptions import ResourceNotFoundException, ImmutableResourceException
 from app.core import tenant_context
+from app.services.inventory import InventoryService
 from app.utils.timezone import now_utc
 
 class BillingService:
     def __init__(self) -> None:
         self.invoice_repo = InvoiceRepository()
         self.payment_repo = PaymentRepository()
+        self.inventory_service = InventoryService()
 
     async def _generate_invoice_number(self, salon_id: str) -> str:
         """Generates a unique invoice number per salon: INV-{SALON_SHORT}-{SEQ:04d}."""
@@ -74,6 +76,8 @@ class BillingService:
                 InvoiceItem(
                     item_type="PRODUCT",
                     item_id=prod.get("product_id", ""),
+                    salon_product_id=prod.get("salon_product_id"),
+                    brand_id=prod.get("brand_id"),
                     name=prod.get("name", "Product"),
                     quantity=1,
                     unit_price=price,
@@ -121,6 +125,19 @@ class BillingService:
             finalized_at=now_utc(),
         )
         await invoice.insert()
+        for item in invoice.items:
+            if item.item_type != "PRODUCT":
+                continue
+            try:
+                await self.inventory_service.deduct_sold_product(
+                    salon_id=salon_id,
+                    product_id=item.item_id,
+                    brand_id=item.brand_id,
+                    quantity=item.quantity,
+                    reference_id=str(invoice.id),
+                )
+            except ResourceNotFoundException:
+                continue
         return invoice
 
     async def create_draft_invoice(

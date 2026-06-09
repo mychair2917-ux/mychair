@@ -86,11 +86,10 @@ const Header: React.FC = () => {
           </div>
         )}
 
-        <div className="hidden min-w-0 flex-1 md:block">
+        <div className="hidden w-3/5 flex-1 md:block">
           <div className="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)] px-4 py-3 shadow-sm">
             <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
-              Premium salon operations, staff flow, and finance at a glance
-            </p>
+              Premium salon operations    </p>
           </div>
         </div>
       </div>

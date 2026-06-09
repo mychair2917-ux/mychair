@@ -1,7 +1,7 @@
 import {
   Bell,
-  Boxes,
   CalendarDays,
+  ClipboardCheck,
   CreditCard,
   HandCoins,
   LayoutDashboard,
@@ -9,7 +9,6 @@ import {
   MailPlus,
   Shield,
   Store,
-  UserCheck,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -32,6 +31,7 @@ export const MODULES = {
   BILLING_FINANCE: 'billing_finance',
   PRODUCTS_INVENTORY: 'products_inventory',
   STAFF_MONITORING: 'staff_monitoring',
+  ATTENDANCE: 'attendance',
   CUSTOMER_ANALYTICS: 'customer_analytics',
   NOTIFICATIONS_COMMUNICATION: 'notifications_communication',
   PROFILE: 'profile',
@@ -39,6 +39,15 @@ export const MODULES = {
 } as const;
 
 export type ModuleKey = (typeof MODULES)[keyof typeof MODULES];
+
+/** Billing sub-module keys for nested sidebar permissions. */
+export const BILLING_PERMISSION_KEYS = {
+  BILLS: 'billing_bills',
+  PAYROLL: 'billing_payroll',
+  EXPENSES: 'billing_expenses',
+} as const;
+
+export type PermissionMap = Record<string, boolean>;
 
 const ALL_MODULES: ModuleKey[] = Object.values(MODULES);
 
@@ -60,18 +69,19 @@ const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
     MODULES.APPOINTMENTS,
     MODULES.MY_EARNINGS,
     MODULES.SALON_MANAGEMENT,
+    MODULES.EMPLOYEES,
     MODULES.SERVICES,
     MODULES.PRODUCTS_INVENTORY,
+    MODULES.CUSTOMER_ANALYTICS,
     MODULES.NOTIFICATIONS_COMMUNICATION,
+    MODULES.ATTENDANCE,
+    MODULES.PROFILE,
   ],
   [ROLES.EMPLOYEE]: [
     MODULES.DASHBOARD,
-    MODULES.APPOINTMENTS,
     MODULES.MY_EARNINGS,
-    MODULES.SALON_MANAGEMENT,
-    MODULES.SERVICES,
+    MODULES.ATTENDANCE,
     MODULES.PROFILE,
-    MODULES.SETTINGS,
   ],
 };
 
@@ -80,11 +90,39 @@ export function normalizeRole(role: string | undefined): string | undefined {
   return ROLE_ALIASES[role] ?? role;
 }
 
-export function canAccessModule(role: string | undefined, module: ModuleKey): boolean {
+export function canShowRolesPermissionsSidebar(role: string | undefined): boolean {
+  const normalized = normalizeRole(role);
+  return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
+}
+
+export function canAccessModule(
+  role: string | undefined,
+  module: ModuleKey,
+  permissions?: PermissionMap | null
+): boolean {
+  if (module === MODULES.ROLES_PERMISSIONS) {
+    return canShowRolesPermissionsSidebar(role);
+  }
+
+  if (permissions) {
+    return Boolean(permissions[module]);
+  }
+
   const normalized = normalizeRole(role);
   if (!normalized) return false;
   const allowed = ROLE_MODULE_ACCESS[normalized];
   return allowed?.includes(module) ?? false;
+}
+
+export function canAccessPermissionKey(
+  role: string | undefined,
+  key: string,
+  permissions?: PermissionMap | null
+): boolean {
+  if (permissions) {
+    return Boolean(permissions[key]);
+  }
+  return canAccessModule(role, key as ModuleKey);
 }
 
 export function isSuperAdmin(role: string | undefined): boolean {
@@ -123,6 +161,7 @@ export interface SidebarNavChild {
   name: string;
   module: ModuleKey;
   path: string;
+  permissionKey?: string;
 }
 
 export interface SidebarNavItem {
@@ -141,27 +180,51 @@ function orgPath(orgId: string, segment: string): string {
 function salonManagementChildren(
   role: string | undefined,
   employeesPath: string,
-  servicesPath: string
+  servicesPath: string,
+  productsInventoryPath: string,
+  permissions?: PermissionMap | null
 ): SidebarNavChild[] {
   const children: SidebarNavChild[] = [];
-  if (canAccessModule(role, MODULES.EMPLOYEES)) {
+  if (canAccessModule(role, MODULES.EMPLOYEES, permissions)) {
     children.push({ name: 'Employees', module: MODULES.EMPLOYEES, path: employeesPath });
   }
-  if (canAccessModule(role, MODULES.SERVICES)) {
+  if (canAccessModule(role, MODULES.SERVICES, permissions)) {
     children.push({ name: 'Manage Salon', module: MODULES.SERVICES, path: servicesPath });
+  }
+  if (canAccessModule(role, MODULES.PRODUCTS_INVENTORY, permissions)) {
+    children.push({
+      name: 'Products & Inventory',
+      module: MODULES.PRODUCTS_INVENTORY,
+      path: productsInventoryPath,
+    });
   }
   return children;
 }
 
-function financeChildren(basePath: string): SidebarNavChild[] {
-  return [
-    { name: 'Bills', module: MODULES.BILLING_FINANCE, path: `${basePath}/bills` },
-    { name: 'Payroll', module: MODULES.BILLING_FINANCE, path: `${basePath}/payroll` },
-    { name: 'Expenses', module: MODULES.BILLING_FINANCE, path: `${basePath}/expenses` },
-    { name: 'Purchasing', module: MODULES.BILLING_FINANCE, path: `${basePath}/purchasing` },
-    { name: 'Payments', module: MODULES.BILLING_FINANCE, path: `${basePath}/payments` },
-    { name: 'Reports', module: MODULES.BILLING_FINANCE, path: `${basePath}/reports` },
+function financeChildren(
+  basePath: string,
+  role: string | undefined,
+  permissions?: PermissionMap | null
+): SidebarNavChild[] {
+  const items: { name: string; key: string; segment: string }[] = [
+    { name: 'Bills', key: BILLING_PERMISSION_KEYS.BILLS, segment: 'bills' },
+    { name: 'Payroll', key: BILLING_PERMISSION_KEYS.PAYROLL, segment: 'payroll' },
+    { name: 'Expenses', key: BILLING_PERMISSION_KEYS.EXPENSES, segment: 'expenses' },
   ];
+
+  return items
+    .filter((item) => {
+      if (permissions) {
+        return Boolean(permissions[item.key]);
+      }
+      return canAccessModule(role, MODULES.BILLING_FINANCE);
+    })
+    .map((item) => ({
+      name: item.name,
+      module: MODULES.BILLING_FINANCE,
+      path: `${basePath}/${item.segment}`,
+      permissionKey: item.key,
+    }));
 }
 
 export function isPlatformTenantId(tenantId: string | null | undefined): boolean {
@@ -183,7 +246,8 @@ export function resolveEmployeeListTenantId(
 /** Build sidebar navigation for the current user context. */
 export function getSidebarNavItems(
   role: string | undefined,
-  orgId: string | undefined
+  orgId: string | undefined,
+  permissions?: PermissionMap | null
 ): SidebarNavItem[] {
   const normalized = normalizeRole(role);
   if (!normalized) return [];
@@ -196,13 +260,6 @@ export function getSidebarNavItems(
           path: `/${ROUTE_PATHS.ADMIN_DASHBOARD}`,
           icon: LayoutDashboard,
         },
-        {
-          name: 'Profile',
-          module: MODULES.PROFILE,
-          path: `/${ROUTE_PATHS.ADMIN_PROFILE}`,
-          icon: Users,
-        },
-    
         {
           name: 'Invite',
           module: MODULES.INVITE,
@@ -222,22 +279,33 @@ export function getSidebarNavItems(
           icon: HandCoins,
         },
         {
+          name: 'Attendance',
+          module: MODULES.ATTENDANCE,
+          path: `/${ROUTE_PATHS.ADMIN_ATTENDANCE}`,
+          icon: ClipboardCheck,
+        },
+        {
           name: 'Salon Management',
           module: MODULES.SALON_MANAGEMENT,
           icon: Store,
           children: salonManagementChildren(
             role,
             `/${ROUTE_PATHS.ADMIN_SALON_EMPLOYEES}`,
-            `/${ROUTE_PATHS.ADMIN_SALON_SERVICES}`
+            `/${ROUTE_PATHS.ADMIN_SALON_SERVICES}`,
+            `/${ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY}`,
+            permissions
           ),
         },
-      
-        {
-          name: 'Role & Permissions',
-          module: MODULES.ROLES_PERMISSIONS,
-          path: `/${ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS}`,
-          icon: Shield,
-        },
+        ...(canShowRolesPermissionsSidebar(role)
+          ? [
+              {
+                name: 'Role & Permissions',
+                module: MODULES.ROLES_PERMISSIONS,
+                path: `/${ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS}`,
+                icon: Shield,
+              },
+            ]
+          : []),
         {
           name: 'Subscription Management',
           module: MODULES.SUBSCRIPTION_MANAGEMENT,
@@ -249,19 +317,11 @@ export function getSidebarNavItems(
           module: MODULES.BILLING_FINANCE,
           path: `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
           icon: Wallet,
-          children: financeChildren(`/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`),
-        },
-        {
-          name: 'Products & Inventory',
-          module: MODULES.PRODUCTS_INVENTORY,
-          path: `/${ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY}`,
-          icon: Boxes,
-        },
-        {
-          name: 'Staff & HR Monitoring',
-          module: MODULES.STAFF_MONITORING,
-          path: `/${ROUTE_PATHS.ADMIN_STAFF_MONITORING}`,
-          icon: UserCheck,
+          children: financeChildren(
+            `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
+            role,
+            permissions
+          ),
         },
         {
           name: 'Customer Analytics',
@@ -275,6 +335,12 @@ export function getSidebarNavItems(
           path: `/${ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION}`,
           icon: Bell,
         },
+         {
+          name: 'Profile',
+          module: MODULES.PROFILE,
+          path: `/${ROUTE_PATHS.ADMIN_PROFILE}`,
+          icon: Users,
+        },
       ]
     : orgId
       ? [
@@ -284,12 +350,7 @@ export function getSidebarNavItems(
             path: orgPath(orgId, ROUTE_PATHS.DASHBOARD),
             icon: LayoutDashboard,
           },
-          {
-            name: 'Profile',
-            module: MODULES.PROFILE,
-            path: orgPath(orgId, ROUTE_PATHS.PROFILE),
-            icon: Users,
-          },
+         
           {
             name: 'Invite',
             module: MODULES.INVITE,
@@ -312,13 +373,21 @@ export function getSidebarNavItems(
             icon: HandCoins,
           },
           {
+            name: 'Attendance',
+            module: MODULES.ATTENDANCE,
+            path: orgPath(orgId, ROUTE_PATHS.ATTENDANCE),
+            icon: ClipboardCheck,
+          },
+          {
             name: 'Salon Management',
             module: MODULES.SALON_MANAGEMENT,
             icon: Store,
             children: salonManagementChildren(
               role,
               orgPath(orgId, ROUTE_PATHS.SALON_EMPLOYEES),
-              orgPath(orgId, ROUTE_PATHS.SALON_SERVICES)
+              orgPath(orgId, ROUTE_PATHS.SALON_SERVICES),
+              orgPath(orgId, ROUTE_PATHS.PRODUCTS_INVENTORY),
+              permissions
             ),
           },
           {
@@ -327,12 +396,16 @@ export function getSidebarNavItems(
             path: orgPath(orgId, ROUTE_PATHS.USER_MANAGEMENT),
             icon: Users,
           },
-          {
-            name: 'Role & Permissions',
-            module: MODULES.ROLES_PERMISSIONS,
-            path: orgPath(orgId, ROUTE_PATHS.ROLES_PERMISSIONS),
-            icon: Shield,
-          },
+          ...(canShowRolesPermissionsSidebar(role)
+            ? [
+                {
+                  name: 'Role & Permissions',
+                  module: MODULES.ROLES_PERMISSIONS,
+                  path: orgPath(orgId, ROUTE_PATHS.ROLES_PERMISSIONS),
+                  icon: Shield,
+                },
+              ]
+            : []),
           {
             name: 'Subscription Management',
             module: MODULES.SUBSCRIPTION_MANAGEMENT,
@@ -344,19 +417,11 @@ export function getSidebarNavItems(
             module: MODULES.BILLING_FINANCE,
             path: orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE),
             icon: Wallet,
-          children: financeChildren(orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE)),
-          },
-          {
-            name: 'Products & Inventory',
-            module: MODULES.PRODUCTS_INVENTORY,
-            path: orgPath(orgId, ROUTE_PATHS.PRODUCTS_INVENTORY),
-            icon: Boxes,
-          },
-          {
-            name: 'Staff & HR Monitoring',
-            module: MODULES.STAFF_MONITORING,
-            path: orgPath(orgId, ROUTE_PATHS.STAFF_MONITORING),
-            icon: UserCheck,
+          children: financeChildren(
+              orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE),
+              role,
+              permissions
+            ),
           },
           {
             name: 'Customer Analytics',
@@ -370,22 +435,35 @@ export function getSidebarNavItems(
             path: orgPath(orgId, ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION),
             icon: Bell,
           },
+           {
+            name: 'Profile',
+            module: MODULES.PROFILE,
+            path: orgPath(orgId, ROUTE_PATHS.PROFILE),
+            icon: Users,
+          },
         ]
       : [];
 
   return allItems
     .map((item) => {
       if (item.children?.length) {
-        const visibleChildren = item.children.filter((child) =>
-          canAccessModule(role, child.module)
-        );
+        const visibleChildren = item.children.filter((child) => {
+          if (child.permissionKey && permissions) {
+            return Boolean(permissions[child.permissionKey]);
+          }
+          return canAccessModule(role, child.module, permissions);
+        });
         if (!visibleChildren.length) return null;
         return { ...item, children: visibleChildren };
       }
       if (!item.path) return null;
       return item;
     })
-    .filter((item): item is SidebarNavItem => item !== null && canAccessModule(role, item.module));
+    .filter((item): item is SidebarNavItem => {
+      if (item === null) return false;
+      if (item.children?.length) return true;
+      return canAccessModule(role, item.module, permissions);
+    });
 }
 
 /** Map org route segments to RBAC modules for route guards. */
@@ -405,6 +483,7 @@ export const ORG_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.BILLING_FINANCE]: MODULES.BILLING_FINANCE,
   [ROUTE_PATHS.PRODUCTS_INVENTORY]: MODULES.PRODUCTS_INVENTORY,
   [ROUTE_PATHS.STAFF_MONITORING]: MODULES.STAFF_MONITORING,
+  [ROUTE_PATHS.ATTENDANCE]: MODULES.ATTENDANCE,
   [ROUTE_PATHS.CUSTOMER_ANALYTICS]: MODULES.CUSTOMER_ANALYTICS,
   [ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION]: MODULES.NOTIFICATIONS_COMMUNICATION,
 };
@@ -426,6 +505,7 @@ export const ADMIN_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.ADMIN_BILLING_FINANCE]: MODULES.BILLING_FINANCE,
   [ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY]: MODULES.PRODUCTS_INVENTORY,
   [ROUTE_PATHS.ADMIN_STAFF_MONITORING]: MODULES.STAFF_MONITORING,
+  [ROUTE_PATHS.ADMIN_ATTENDANCE]: MODULES.ATTENDANCE,
   [ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS]: MODULES.CUSTOMER_ANALYTICS,
   [ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION]: MODULES.NOTIFICATIONS_COMMUNICATION,
 };

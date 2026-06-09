@@ -97,6 +97,7 @@ const Employees: React.FC = () => {
     phone: string;
     role: string;
     branch_name: string;
+    weekly_off: string[];
   }) => {
     if (!editEmployee) return;
     try {

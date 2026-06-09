@@ -41,18 +41,10 @@ export function requiresTenantSelection(
   return inviterRole === ROLES.SUPER_ADMIN && targetRole !== INVITE_ROLES.SALON_OWNER;
 }
 
-/** Salon owner/admin/manager sets password on invite — no email to manager/staff. */
+/** Manager and staff are always created with a password — no invitation email. */
 export function usesDirectPasswordProvisioning(
-  inviterRole: string | undefined,
+  _inviterRole: string | undefined,
   targetRole: string
 ): boolean {
-  if (!inviterRole || inviterRole === ROLES.SUPER_ADMIN) return false;
-  const normalizedInviter = normalizeRole(inviterRole) ?? inviterRole;
-  const allowedInviters = [
-    ROLES.SALON_OWNER,
-    ROLES.SALON_ADMIN,
-    INVITE_ROLES.MANAGER, // salon_manager
-  ];
-  if (!allowedInviters.includes(normalizedInviter)) return false;
   return isStaffInviteRole(targetRole);
 }

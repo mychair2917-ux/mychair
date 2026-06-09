@@ -14,3 +14,6 @@ export { default as Appointments } from './Appointments';
 export { default as BillingFinance } from './BillingFinance';
 export { default as MyEarnings } from './MyEarnings';
 export { default as CustomerAnalytics } from './CustomerAnalytics';
+export { default as Attendance } from './Attendance';
+export { default as ProductsInventory } from './ProductsInventory';
+export { default as RolesPermissions } from './RolesPermissions';

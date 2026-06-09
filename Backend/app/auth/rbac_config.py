@@ -44,6 +44,7 @@ class Module(str, Enum):
     BILLING_FINANCE = "billing_finance"
     PRODUCTS_INVENTORY = "products_inventory"
     STAFF_MONITORING = "staff_monitoring"
+    ATTENDANCE = "attendance"
     CUSTOMER_ANALYTICS = "customer_analytics"
     NOTIFICATIONS_COMMUNICATION = "notifications_communication"
     PROFILE = "profile"
@@ -73,18 +74,18 @@ ROLE_MODULE_ACCESS: dict[str, FrozenSet[Module]] = {
             Module.EMPLOYEES,
             Module.SERVICES,
             Module.PRODUCTS_INVENTORY,
+            Module.CUSTOMER_ANALYTICS,
             Module.NOTIFICATIONS_COMMUNICATION,
+            Module.ATTENDANCE,
+            Module.PROFILE,
         }
     ),
     ROLE_EMPLOYEE: frozenset(
         {
             Module.DASHBOARD,
-            Module.APPOINTMENTS,
             Module.MY_EARNINGS,
-            Module.SALON_MANAGEMENT,
-            Module.SERVICES,
+            Module.ATTENDANCE,
             Module.PROFILE,
-            Module.SETTINGS,
         }
     ),
 }
