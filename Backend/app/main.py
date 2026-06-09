@@ -9,11 +9,15 @@ from app.db.redis import redis_client
 from app.middleware.tenant import TenantMiddleware
 from app.api.v1.router import api_router
 from app.core.exceptions import SalonERPException
+from app.services.salon_product import SalonProductService
+from app.services.salon_service import SalonServiceService
 import logging
 
 # Production logger setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
+salon_service_service = SalonServiceService()
+salon_product_service = SalonProductService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,6 +27,8 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Initializing database connections...")
     await init_db()
+    await salon_service_service.seed_master_services()
+    await salon_product_service.seed_master_products()
     
     logger.info("Initializing Redis clients...")
     redis_client.init_redis()

@@ -27,3 +27,6 @@ dist-ssr
 .env.local
 .env.development
 .env.production
+
+# Ignore compiled Python files
+*.pyc

@@ -1,5 +1,7 @@
 import React, { ReactNode } from 'react';
 
+import { ButtonVariant } from '../Button/Types';
+
 export interface ModalProps extends React.HTMLAttributes<HTMLDivElement> {
   classNames?: ModalClassNamesType;
   open?: boolean;
@@ -8,6 +10,23 @@ export interface ModalProps extends React.HTMLAttributes<HTMLDivElement> {
   outsidePress?: boolean;
   onClose?: () => void;
   isShowIcon?: boolean;
+}
+
+export interface CommonModalProps {
+  open?: boolean;
+  title: ReactNode;
+  subtitle?: ReactNode;
+  children?: ReactNode;
+  onClose?: () => void;
+  footer?: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm?: () => void;
+  isLoading?: boolean;
+  mode?: 'default' | 'confirmation' | 'form';
+  size?: ModalSize;
+  confirmVariant?: ButtonVariant;
+  className?: string;
 }
 
 export interface ModalContentProps {

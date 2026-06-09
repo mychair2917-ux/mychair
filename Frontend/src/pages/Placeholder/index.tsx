@@ -14,7 +14,7 @@ const PlaceholderPage: React.FC<PlaceholderProps> = ({ title, description, icon:
         <div className="mx-auto w-20 h-20 bg-gradient-to-br from-[var(--color-brand-gold-light)] to-[var(--color-brand-gold)] rounded-2xl flex items-center justify-center mb-6 shadow-lg rotate-3">
           <Icon className="h-10 w-10 text-white -rotate-3" />
         </div>
-        <h1 className="text-3xl font-bold text-[var(--color-text-primary)] mb-3 font-['Outfit']">{title}</h1>
+        <h1 className="mb-3 text-3xl font-bold text-[var(--color-text-primary)]">{title}</h1>
         <p className="text-[var(--color-text-secondary)] mb-8 text-sm">{description}</p>
         
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 text-left">

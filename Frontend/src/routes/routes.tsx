@@ -1,6 +1,6 @@
 import React, { lazy } from 'react';
 import { RouteObject } from 'react-router';
-import { Store, Users, Shield, CreditCard, Wallet, Boxes, UserCheck, LineChart, Bell } from 'lucide-react';
+import { Users, CreditCard, UserCheck, Bell } from 'lucide-react';
 
 import App from '../App';
 import { MODULES } from '../config/rbac';
@@ -16,6 +16,33 @@ const Dashboard = lazy(() => import('../pages').then((module) => ({ default: mod
 const Profile = lazy(() => import('../pages').then((module) => ({ default: module.Profile })));
 const Settings = lazy(() => import('../pages').then((module) => ({ default: module.Settings })));
 const Placeholder = lazy(() => import('../pages').then((module) => ({ default: module.Placeholder })));
+const Employees = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Employees }))
+);
+const Services = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Services }))
+);
+const Appointments = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Appointments }))
+);
+const MyEarnings = lazy(() =>
+  import('../pages').then((module) => ({ default: module.MyEarnings }))
+);
+const BillingFinance = lazy(() =>
+  import('../pages').then((module) => ({ default: module.BillingFinance }))
+);
+const CustomerAnalytics = lazy(() =>
+  import('../pages').then((module) => ({ default: module.CustomerAnalytics }))
+);
+const Attendance = lazy(() =>
+  import('../pages').then((module) => ({ default: module.Attendance }))
+);
+const ProductsInventory = lazy(() =>
+  import('../pages').then((module) => ({ default: module.ProductsInventory }))
+);
+const RolesPermissions = lazy(() =>
+  import('../pages').then((module) => ({ default: module.RolesPermissions }))
+);
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
   <ProtectedRoute module={module}>
@@ -51,12 +78,28 @@ export const routes: RouteObject[] = [
         element: protectAdmin(MODULES.DASHBOARD, <Dashboard />),
       },
       {
+        path: ROUTE_PATHS.ADMIN_PROFILE,
+        element: protectAdmin(MODULES.PROFILE, <Profile />),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_SETTINGS,
+        element: protectAdmin(MODULES.SETTINGS, <Settings />),
+      },
+      {
         path: ROUTE_PATHS.ADMIN_INVITE,
         element: (
           <ProtectedRoute module={MODULES.INVITE} superAdminOnly>
             <Invite />
           </ProtectedRoute>
         ),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_APPOINTMENTS,
+        element: protectAdmin(MODULES.APPOINTMENTS, <Appointments />),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_MY_EARNINGS,
+        element: protectAdmin(MODULES.MY_EARNINGS, <MyEarnings />),
       },
       {
         path: ROUTE_PATHS.INVITE,
@@ -83,13 +126,12 @@ export const routes: RouteObject[] = [
         ),
       },
       {
-        path: ROUTE_PATHS.ADMIN_SALON_MANAGEMENT,
-        element: adminPlaceholder(
-          MODULES.SALON_MANAGEMENT,
-          'Salon Management',
-          'Oversee all salon branches, configurations, and operational settings across the platform.',
-          Store
-        ),
+        path: ROUTE_PATHS.ADMIN_SALON_EMPLOYEES,
+        element: protectAdmin(MODULES.EMPLOYEES, <Employees />),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_SALON_SERVICES,
+        element: protectAdmin(MODULES.SERVICES, <Services />),
       },
       {
         path: ROUTE_PATHS.ADMIN_USER_MANAGEMENT,
@@ -102,12 +144,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTE_PATHS.ADMIN_ROLES_PERMISSIONS,
-        element: adminPlaceholder(
-          MODULES.ROLES_PERMISSIONS,
-          'Role & Permissions',
-          'Configure platform-wide access levels, roles, and permission policies.',
-          Shield
-        ),
+        element: protectAdmin(MODULES.ROLES_PERMISSIONS, <RolesPermissions />),
       },
       {
         path: ROUTE_PATHS.ADMIN_SUBSCRIPTION_MANAGEMENT,
@@ -120,21 +157,15 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTE_PATHS.ADMIN_BILLING_FINANCE,
-        element: adminPlaceholder(
-          MODULES.BILLING_FINANCE,
-          'Billing & Finance',
-          'View platform-wide invoices, revenue analytics, and financial reports.',
-          Wallet
-        ),
+        element: protectAdmin(MODULES.BILLING_FINANCE, <BillingFinance />),
+      },
+      {
+        path: `${ROUTE_PATHS.ADMIN_BILLING_FINANCE}/:financeSection`,
+        element: protectAdmin(MODULES.BILLING_FINANCE, <BillingFinance />),
       },
       {
         path: ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY,
-        element: adminPlaceholder(
-          MODULES.PRODUCTS_INVENTORY,
-          'Products & Inventory',
-          'Monitor product catalogs, inventory levels, and supplier management.',
-          Boxes
-        ),
+        element: protectAdmin(MODULES.PRODUCTS_INVENTORY, <ProductsInventory />),
       },
       {
         path: ROUTE_PATHS.ADMIN_STAFF_MONITORING,
@@ -146,13 +177,12 @@ export const routes: RouteObject[] = [
         ),
       },
       {
+        path: ROUTE_PATHS.ADMIN_ATTENDANCE,
+        element: protectAdmin(MODULES.ATTENDANCE, <Attendance />),
+      },
+      {
         path: ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS,
-        element: adminPlaceholder(
-          MODULES.CUSTOMER_ANALYTICS,
-          'Customer Analytics',
-          'Analyze customer retention, spending patterns, and engagement across the platform.',
-          LineChart
-        ),
+        element: protectAdmin(MODULES.CUSTOMER_ANALYTICS, <CustomerAnalytics />),
       },
       {
         path: ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION,
@@ -177,17 +207,24 @@ export const routes: RouteObject[] = [
         element: protectOrg(MODULES.SETTINGS, <Settings />),
       },
       {
-        path: `orgs/:orgId/${ROUTE_PATHS.SALON_MANAGEMENT}`,
-        element: orgPlaceholder(
-          MODULES.SALON_MANAGEMENT,
-          'Salon Management',
-          'Configure your salon branches, working hours, and general settings.',
-          Store
-        ),
+        path: `orgs/:orgId/${ROUTE_PATHS.SALON_EMPLOYEES}`,
+        element: protectOrg(MODULES.EMPLOYEES, <Employees />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.SALON_SERVICES}`,
+        element: protectOrg(MODULES.SERVICES, <Services />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.ORG_INVITE}`,
         element: protectOrg(MODULES.INVITE, <Invite />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.APPOINTMENTS}`,
+        element: protectOrg(MODULES.APPOINTMENTS, <Appointments />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.MY_EARNINGS}`,
+        element: protectOrg(MODULES.MY_EARNINGS, <MyEarnings />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.USER_MANAGEMENT}`,
@@ -200,12 +237,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.ROLES_PERMISSIONS}`,
-        element: orgPlaceholder(
-          MODULES.ROLES_PERMISSIONS,
-          'Role & Permissions',
-          'Configure system access levels and staff permissions.',
-          Shield
-        ),
+        element: protectOrg(MODULES.ROLES_PERMISSIONS, <RolesPermissions />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`,
@@ -218,21 +250,15 @@ export const routes: RouteObject[] = [
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.BILLING_FINANCE}`,
-        element: orgPlaceholder(
-          MODULES.BILLING_FINANCE,
-          'Billing & Finance',
-          'View invoices, POS transactions, and financial analytics.',
-          Wallet
-        ),
+        element: protectOrg(MODULES.BILLING_FINANCE, <BillingFinance />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.BILLING_FINANCE}/:financeSection`,
+        element: protectOrg(MODULES.BILLING_FINANCE, <BillingFinance />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.PRODUCTS_INVENTORY}`,
-        element: orgPlaceholder(
-          MODULES.PRODUCTS_INVENTORY,
-          'Products & Inventory',
-          'Track retail products, professional stock, and suppliers.',
-          Boxes
-        ),
+        element: protectOrg(MODULES.PRODUCTS_INVENTORY, <ProductsInventory />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.STAFF_MONITORING}`,
@@ -244,13 +270,12 @@ export const routes: RouteObject[] = [
         ),
       },
       {
+        path: `orgs/:orgId/${ROUTE_PATHS.ATTENDANCE}`,
+        element: protectOrg(MODULES.ATTENDANCE, <Attendance />),
+      },
+      {
         path: `orgs/:orgId/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`,
-        element: orgPlaceholder(
-          MODULES.CUSTOMER_ANALYTICS,
-          'Customer Analytics',
-          'Understand client retention, spending patterns, and behavior.',
-          LineChart
-        ),
+        element: protectOrg(MODULES.CUSTOMER_ANALYTICS, <CustomerAnalytics />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`,

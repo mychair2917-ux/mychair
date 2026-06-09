@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.models.invitation_token import InvitationToken
 from app.models.subscription import Subscription
+from app.models.salon import Salon
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.email_service import send_invitation_email
@@ -41,6 +42,20 @@ class InvitationService:
         slug = re.sub(r"[^a-z0-9]+", "-", slug)
         slug = re.sub(r"-+", "-", slug).strip("-")
         return slug[:100] or "salon"
+
+    @staticmethod
+    def _normalize_salon_name(name: str) -> str:
+        return " ".join((name or "").strip().split()).casefold()
+
+    async def _salon_name_exists(self, salon_name: str) -> bool:
+        normalized_input = self._normalize_salon_name(salon_name)
+        if not normalized_input:
+            return False
+        tenants = await Tenant.find({"is_deleted": False}).to_list()
+        for tenant in tenants:
+            if self._normalize_salon_name(tenant.name) == normalized_input:
+                return True
+        return False
 
     @staticmethod
     def _generate_username(owner_full_name: str, email: str) -> str:
@@ -161,20 +176,31 @@ class InvitationService:
         address: str = "",
         slug: Optional[str] = None,
         username: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        attendance_radius: int = 100,
+        shift_start: str = "09:00",
     ) -> Tuple[Optional[dict], Optional[dict]]:
         """
         Create tenant, salon owner user, token and send invitation email.
         All salon/owner profile data is stored on the User document.
         Returns (data, errors) — one will be None.
         """
+        salon_name = " ".join((salon_name or "").strip().split())
         salon_type = salon_type.strip().lower()
         subscription_plan = subscription_plan.strip().upper()
 
         field_errors: dict = {}
+        if not salon_name:
+            field_errors["salon_name"] = ["Salon name is required"]
+        elif await self._salon_name_exists(salon_name):
+            field_errors["salon_name"] = ["Salon name already exists"]
         if salon_type not in VALID_SALON_TYPE_VALUES:
             field_errors["salon_type"] = ["Please select a valid salon type"]
         if subscription_plan not in VALID_SUBSCRIPTION_PLAN_VALUES:
             field_errors["subscription_plan"] = ["Please select a valid subscription plan"]
+        if latitude is None or longitude is None:
+            field_errors["location"] = ["Salon location is required for attendance"]
         if field_errors:
             return None, field_errors
 
@@ -214,9 +240,24 @@ class InvitationService:
             subscription_plan=subscription_plan,
             subscription_tier=subscription_plan,
             subscription_status="ACTIVE",
+            latitude=latitude,
+            longitude=longitude,
+            attendance_radius=attendance_radius,
+            shift_start=shift_start or "09:00",
         )
         await tenant.insert()
         tenant_id = str(tenant.id)
+
+        branch_label = branch_name.strip() if branch_name else salon_name
+        salon_branch = Salon(
+            tenant_id=tenant_id,
+            name=branch_label,
+            address={"text": address} if address else {},
+            latitude=latitude,
+            longitude=longitude,
+            attendance_radius=attendance_radius,
+        )
+        await salon_branch.insert()
 
         owner = User(
             email=email,

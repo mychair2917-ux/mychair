@@ -1,8 +1,13 @@
 import React from 'react';
 
+import Button from '../Button';
+import Loader from '../Loader';
+import ModalBody from './ModalBody';
 import ModalContent from './ModalContent';
 import { ModalContext } from './ModalContext';
-import { ModalProps } from './Types';
+import ModalFooter from './ModalFooter';
+import ModalHeader from './ModalHeader';
+import { CommonModalProps, ModalProps } from './Types';
 import { useModal } from './useModal';
 
 /**
@@ -41,4 +46,67 @@ const Modal = React.forwardRef<HTMLDivElement, ModalProps>(function Modal(
 
 Modal.displayName = 'Modal';
 
+const CommonModal: React.FC<CommonModalProps> = ({
+  open,
+  title,
+  subtitle,
+  children,
+  onClose,
+  footer,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  onConfirm,
+  isLoading = false,
+  mode = 'default',
+  size = mode === 'form' ? 'lg' : 'md',
+  confirmVariant = mode === 'confirmation' ? 'danger' : 'primary',
+  className,
+}) => (
+  <Modal
+    open={open}
+    onClose={onClose}
+    size={size}
+    isShowIcon
+    className={`rounded-3xl border border-[var(--color-border-soft)] shadow-card ${className ?? ''}`}
+  >
+    <ModalHeader className="flex-col gap-1 pr-14">
+      <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">{title}</h2>
+      {subtitle && <p className="text-sm font-normal text-[var(--color-text-secondary)]">{subtitle}</p>}
+    </ModalHeader>
+    <ModalBody className="pt-2">
+      {isLoading ? (
+        <div className="min-h-36">
+          <Loader />
+        </div>
+      ) : (
+        children
+      )}
+    </ModalBody>
+    {(footer || onConfirm || onClose) && (
+      <ModalFooter className="justify-end pt-2">
+        {footer ?? (
+          <>
+            {onClose && (
+              <Button type="button" variant="secondary" onClick={onClose}>
+                {cancelLabel}
+              </Button>
+            )}
+            {onConfirm && (
+              <Button
+                type="button"
+                variant={confirmVariant}
+                onClick={onConfirm}
+                isLoading={isLoading}
+              >
+                {confirmLabel}
+              </Button>
+            )}
+          </>
+        )}
+      </ModalFooter>
+    )}
+  </Modal>
+);
+
 export default Modal;
+export { CommonModal, Modal, ModalBody, ModalFooter, ModalHeader };

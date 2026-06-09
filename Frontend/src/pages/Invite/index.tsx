@@ -20,13 +20,46 @@ import { CreateInviteRequest } from '../../redux/slices/invitations/Types';
 import { canUserInvite } from '../../utils/invitePermissions';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 
+const PAGE_SIZE = 10;
+
 const Invite: React.FC = () => {
   const user = useAppSelector((state) => state.auth.user);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  const { data: listData, isLoading: isLoadingList } = useListInvitesQuery();
+  // Pagination state for each table
+  const [pendingPage, setPendingPage] = useState(1);
+  const [acceptedPage, setAcceptedPage] = useState(1);
+  const [pendingSearch, setPendingSearch] = useState('');
+  const [acceptedSearch, setAcceptedSearch] = useState('');
+
+  const {
+    data: pendingData,
+    isLoading: isLoadingPending,
+    isFetching: isFetchingPending,
+    isError: isPendingError,
+    refetch: refetchPending,
+  } = useListInvitesQuery({
+    status: INVITE_STATUS.PENDING,
+    page: pendingPage,
+    limit: PAGE_SIZE,
+    search: pendingSearch || undefined,
+  });
+
+  const {
+    data: acceptedData,
+    isLoading: isLoadingAccepted,
+    isFetching: isFetchingAccepted,
+    isError: isAcceptedError,
+    refetch: refetchAccepted,
+  } = useListInvitesQuery({
+    status: INVITE_STATUS.ACCEPTED,
+    page: acceptedPage,
+    limit: PAGE_SIZE,
+    search: acceptedSearch || undefined,
+  });
+
   const { data: formOptionsData, isLoading: isLoadingOptions } =
     useGetInvitationFormOptionsQuery(undefined, { skip: !isModalOpen });
 
@@ -34,28 +67,31 @@ const Invite: React.FC = () => {
   const [resendInvitation] = useResendInvitationMutation();
   const [cancelInvitation] = useCancelInvitationMutation();
 
-  const allInvites = listData?.data ?? [];
+  const pendingInvites = pendingData?.data?.items ?? [];
+  const pendingTotal = pendingData?.data?.total ?? 0;
+  const pendingPages = pendingData?.data?.pages ?? 1;
 
-  const pendingInvites = useMemo(
-    () => allInvites.filter((i) => i.status === INVITE_STATUS.PENDING),
-    [allInvites]
-  );
+  const acceptedInvites = acceptedData?.data?.items ?? [];
+  const acceptedTotal = acceptedData?.data?.total ?? 0;
+  const acceptedPages = acceptedData?.data?.pages ?? 1;
 
-  const acceptedInvites = useMemo(
-    () => allInvites.filter((i) => i.status === INVITE_STATUS.ACCEPTED),
-    [allInvites]
-  );
+  const hasAnyPending = pendingTotal > 0;
+  const hasAnyAccepted = acceptedTotal > 0;
 
   if (!canUserInvite(user?.role)) {
     return <Navigate to={`/${ROUTE_PATHS.NOT_FOUND}`} replace />;
   }
 
   const handleCreate = async (payload: CreateInviteRequest) => {
-    const response = await createInvitation(payload).unwrap();
-    return {
-      success: response.success,
-      message: response.message,
-    };
+    try {
+      const response = await createInvitation(payload).unwrap();
+      return {
+        success: response.success ?? true,
+        message: response.message,
+      };
+    } catch (err: unknown) {
+      throw err;
+    }
   };
 
   const handleResend = async (inviteId: string) => {
@@ -86,7 +122,13 @@ const Invite: React.FC = () => {
     }
   };
 
-  const hasAnyInvites = allInvites.length > 0;
+  const isInitialEmpty =
+    !isLoadingPending &&
+    !isLoadingAccepted &&
+    !hasAnyPending &&
+    !hasAnyAccepted &&
+    !pendingSearch &&
+    !acceptedSearch;
 
   return (
     <div className="p-6 md:p-8">
@@ -96,8 +138,7 @@ const Invite: React.FC = () => {
             Invite Users
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Invite salon owners by email, or create manager/staff accounts with a login
-            password (no email required for your team).
+            Invite salon owners via email, or add managers and staff with email and password.
           </p>
         </div>
         <Button
@@ -110,7 +151,7 @@ const Invite: React.FC = () => {
         </Button>
       </div>
 
-      {!hasAnyInvites && !isLoadingList && (
+      {isInitialEmpty && (
         <div className="mb-8 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-brand-gold)]/10">
@@ -118,8 +159,9 @@ const Invite: React.FC = () => {
             </div>
             <h2 className="text-lg font-semibold text-gray-800">No invitations yet</h2>
             <p className="mt-2 max-w-md text-sm text-gray-500">
-              Invite salon owners, managers, or staff. They will receive an email to set their
-              password and activate their account.
+              Invite salon owners, managers, or staff. Salon owners receive an email to set their
+              password. Managers and staff get an account created immediately with the password you
+              provide.
             </p>
           </div>
         </div>
@@ -127,27 +169,88 @@ const Invite: React.FC = () => {
 
       <div className="space-y-8">
         <section>
-          <h2 className="mb-4 text-lg font-semibold text-gray-800">Pending Invitations</h2>
-          {pendingInvites.length > 0 || isLoadingList ? (
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            Pending Invitations
+            {pendingTotal > 0 && (
+              <span className="ml-2 rounded-full bg-amber-100 px-2.5 py-0.5 text-sm font-medium text-amber-800">
+                {pendingTotal}
+              </span>
+            )}
+          </h2>
+          {isPendingError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              Failed to load pending invitations.{' '}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => refetchPending()}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!isPendingError && (
             <InvitesTable
               invites={pendingInvites}
-              isLoading={isLoadingList}
+              isLoading={isLoadingPending}
+              isFetching={isFetchingPending}
               onResend={handleResend}
               onCancel={handleCancel}
               resendingId={resendingId}
               cancellingId={cancellingId}
+              page={pendingPage}
+              totalPages={pendingPages}
+              total={pendingTotal}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPendingPage}
+              search={pendingSearch}
+              onSearchChange={(val) => {
+                setPendingSearch(val);
+                setPendingPage(1);
+              }}
+              emptyMessage="No pending invitations."
             />
-          ) : (
-            <p className="text-sm text-gray-500">No pending invitations.</p>
           )}
         </section>
 
         <section>
-          <h2 className="mb-4 text-lg font-semibold text-gray-800">Accepted Invitations</h2>
-          {acceptedInvites.length > 0 || isLoadingList ? (
-            <InvitesTable invites={acceptedInvites} isLoading={isLoadingList} />
-          ) : (
-            <p className="text-sm text-gray-500">No accepted invitations yet.</p>
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            Accepted Invitations
+            {acceptedTotal > 0 && (
+              <span className="ml-2 rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
+                {acceptedTotal}
+              </span>
+            )}
+          </h2>
+          {isAcceptedError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              Failed to load accepted invitations.{' '}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => refetchAccepted()}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!isAcceptedError && (
+            <InvitesTable
+              invites={acceptedInvites}
+              isLoading={isLoadingAccepted}
+              isFetching={isFetchingAccepted}
+              page={acceptedPage}
+              totalPages={acceptedPages}
+              total={acceptedTotal}
+              pageSize={PAGE_SIZE}
+              onPageChange={setAcceptedPage}
+              search={acceptedSearch}
+              onSearchChange={(val) => {
+                setAcceptedSearch(val);
+                setAcceptedPage(1);
+              }}
+              emptyMessage="No accepted invitations yet."
+            />
           )}
         </section>
       </div>

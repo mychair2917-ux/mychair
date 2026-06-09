@@ -53,14 +53,12 @@ def assert_can_invite_role(actor_role: str, target_role: str) -> None:
 
 def uses_direct_password_provisioning(actor_role: str, target_role: str) -> bool:
     """
-    Salon owner/admin/manager set password when inviting manager or staff.
-    No invitation email — account is active immediately.
+    Manager and staff are always created with a password — no invitation email.
+    Salon owner invitations still use the email flow.
     """
     if target_role not in ROLES_DIRECT_PASSWORD_SETUP:
         return False
-    if actor_role == "super_admin":
-        return False
-    return actor_role in TENANT_INVITER_ROLES
+    return actor_role in {"super_admin", *TENANT_INVITER_ROLES}
 
 
 def resolve_tenant_id_for_invite(

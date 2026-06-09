@@ -1,7 +1,7 @@
 import React from 'react';
 import { Form, Formik } from 'formik';
 import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Scissors } from 'lucide-react';
 
 import { Button, FormField, Input } from '../../components/common';
@@ -15,8 +15,10 @@ import { SalonOwnerLoginSchema } from '../../validations/InvitationSchema';
 
 const SalonOwnerLogin: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const [salonOwnerLogin, { isLoading }] = useSalonOwnerLoginMutation();
+  const logoutState = location.state as { loggedOut?: boolean; logoutFailed?: boolean } | null;
 
   const handleSubmit = async (
     values: SalonOwnerLoginRequest,
@@ -25,13 +27,35 @@ const SalonOwnerLogin: React.FC = () => {
     try {
       const response = await salonOwnerLogin(values).unwrap();
       if (response.success && response.data) {
-        const { access_token, refresh_token, role, salon_id, email, username } = response.data;
+        const { access_token, refresh_token, role, salon_id, email, username, id } = response.data;
         dispatch(
           setCredentials({
-            user: { email, username, role },
+            user: {
+              id,
+              email,
+              username,
+              role,
+              first_name: response.data.first_name,
+              last_name: response.data.last_name,
+              phone: response.data.phone,
+              alternate_phone: response.data.alternate_phone,
+              avatar: response.data.avatar,
+              employee_id: response.data.employee_id,
+              employee_code: response.data.employee_code,
+              branch_name: response.data.branch_name,
+              branch_id: response.data.branch_id,
+              salon_name: response.data.salon_name,
+              department: response.data.department,
+              designation: response.data.designation,
+              shift: response.data.shift,
+              status: response.data.status,
+              joining_date: response.data.joining_date,
+              last_login: response.data.last_login,
+            },
             token: access_token,
             refreshToken: refresh_token,
             orgId: salon_id,
+            permissions: response.data.permissions ?? undefined,
           })
         );
         showToast('success', response.message || 'Login successful');
@@ -56,6 +80,18 @@ const SalonOwnerLogin: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">MyChair</h1>
           <p className="mt-1 text-sm text-gray-500">Salon Owner Login</p>
         </div>
+
+        {logoutState?.loggedOut && (
+          <div
+            className={`mb-4 rounded-xl px-4 py-3 text-sm ${
+              logoutState.logoutFailed ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+            }`}
+          >
+            {logoutState.logoutFailed
+              ? 'You have been logged out locally. Server session may already be expired.'
+              : 'You have been logged out.'}
+          </div>
+        )}
 
         <Formik
           initialValues={{ email: '', password: '' }}

@@ -29,7 +29,11 @@ class TenantMiddleware(BaseHTTPMiddleware):
                 # Decode the JWT claim
                 payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
                 user_id = payload.get("sub")
-                tenant_id = payload.get("tenant_id")
+                token_tenant_id = payload.get("tenant_id")
+                if token_tenant_id == "system" and custom_tenant:
+                    tenant_id = custom_tenant.strip() or token_tenant_id
+                else:
+                    tenant_id = token_tenant_id
             except jwt.JWTError:
                 # We do not raise an HTTP exception here as some routes are public.
                 # Route dependencies will enforce authorization where required.

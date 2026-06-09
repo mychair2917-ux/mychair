@@ -1,4 +1,4 @@
-from fastapi import Depends, Security
+from fastapi import Depends, Security, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from beanie import PydanticObjectId
 from jose import jwt
@@ -27,7 +27,10 @@ async def get_current_user_claims(credentials: HTTPAuthorizationCredentials = Se
     except jwt.JWTError:
         raise AuthException("Could not validate credentials")
 
-async def get_current_user(claims: dict = Depends(get_current_user_claims)) -> User:
+async def get_current_user(
+    request: Request,
+    claims: dict = Depends(get_current_user_claims),
+) -> User:
     """
     Retrieves the User object from the database associated with the active token claims.
     Injects context bindings.
@@ -43,8 +46,13 @@ async def get_current_user(claims: dict = Depends(get_current_user_claims)) -> U
     except Exception:
         raise AuthException("Invalid user ID in token")
 
+    selected_tenant = request.headers.get("X-Tenant-ID")
+    effective_tenant_id = tenant_id
+    if tenant_id == "system" and selected_tenant:
+        effective_tenant_id = selected_tenant.strip() or tenant_id
+
     # Enforce active context just in case dependencies run out of middleware order
-    tenant_context.set_tenant_id(tenant_id)
+    tenant_context.set_tenant_id(effective_tenant_id)
     tenant_context.set_user_id(user_id)
 
     if tenant_id == "system":

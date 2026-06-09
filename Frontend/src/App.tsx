@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router';
 
 import { ErrorBoundary } from './components/common';
+import PermissionsBootstrap from './components/permissions/PermissionsBootstrap';
 import { Header, Sidebar } from './components/layout';
 import ScrollToTop from './components/layout/ScrollToTop';
 import { isSuperAdmin, isTenantScopedRole } from './config/rbac';
@@ -26,11 +27,12 @@ function App() {
         (isOrgRoute || isSalonOwnerInviteRoute || location.pathname === `/${ROUTE_PATHS.SALON_OWNER_DASHBOARD}`));
 
   return (
-    <div className="flex min-h-screen bg-[var(--color-surface-bg)] text-[var(--color-text-primary)] font-['Outfit']">
+    <div className="flex min-h-screen bg-[var(--color-surface-bg)] text-[var(--color-text-primary)]">
       <ScrollToTop />
+      <PermissionsBootstrap />
       {showLayout && <Sidebar />}
 
-      <div className="flex flex-col flex-1 w-full overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col w-full overflow-hidden">
         {showLayout && <Header />}
 
         <main

@@ -1,0 +1,561 @@
+# MyChair - Master Engineering Rules
+
+# 1. Project Overview
+
+Project:
+MyChair - Multi Tenant Salon ERP SaaS
+
+Purpose:
+Enterprise-grade salon management platform supporting:
+
+* multi-tenant salons
+* employee management
+* appointments
+* services
+* billing
+* analytics
+* onboarding
+* notifications
+
+Architecture Goals:
+
+* scalable
+* reusable
+* maintainable
+* production-ready
+* modular
+* tenant-isolated
+* RBAC protected
+
+---
+
+# 2. Frontend Rules
+
+Frontend Stack:
+
+* React
+* TypeScript
+* Tailwind CSS
+* Redux Toolkit
+* RTK Query
+* Formik
+
+Frontend Architecture:
+
+* Keep existing pages-based architecture
+* Reuse current project structure
+* Do not migrate architecture unless explicitly requested
+
+Current Structure:
+src/
+
+* assets/
+* components/
+* constants/
+* context/
+* hooks/
+* pages/
+* redux/
+* routes/
+* utils/
+
+---
+
+# 3. Common Component Rules
+
+IMPORTANT:
+Before creating any UI component:
+
+1. Check components/common first
+2. Reuse existing common component
+3. Extend existing reusable component if needed
+4. Create new component only if reusable version does not exist
+
+Never duplicate:
+
+* tables
+* buttons
+* modals
+* dropdowns
+* search bars
+* loaders
+* tooltips
+* chips
+* pagination
+* cards
+* toaster logic
+
+Common Components Location:
+src/components/common/
+
+Mandatory Shared Components:
+
+* CommonTable
+* CommonPagination
+* CommonModal
+* CommonButton
+* CommonDropdown
+* CommonSearch
+* CommonLoader
+* CommonTooltip
+* CommonStatusChip
+* CommonCard
+* CommonToaster
+
+---
+
+# 4. UI/UX Rules
+
+Application Theme:
+
+* modern salon SaaS ERP
+* premium but simple
+* user friendly for non-technical salon users
+* soft elegant UI
+* minimal confusion
+* clean layouts
+* smooth rounded corners
+* soft shadows
+* mobile responsive
+
+UI Standards:
+
+* maintain consistent spacing
+* maintain consistent typography
+* avoid duplicated Tailwind styles
+* use consistent icons
+* keep interactions simple
+* large clickable areas
+* visually clean tables/forms
+
+Always:
+
+* use loading states
+* use empty states
+* use error states
+* use responsive layouts
+
+---
+
+# 5. Common Table Rules
+
+All tables must use CommonTable.
+
+Table Requirements:
+
+* pagination
+* sorting
+* sortable icons
+* per-column search
+* global search
+* filters
+* row hover
+* loading state
+* skeleton loading
+* empty state
+* responsive design
+* action column
+* reusable row actions
+
+Action Icons:
+Use reusable common icons only:
+
+* edit
+* delete
+* view
+* more
+
+Pagination:
+
+* clean UI
+* page numbers
+* previous/next
+* rows per page selector
+
+Empty State:
+
+* friendly UI
+* salon themed
+* visually engaging
+
+---
+
+# 6. Common Button Rules
+
+All buttons must use CommonButton.
+
+Support:
+
+* primary
+* secondary
+* outline
+* danger
+* ghost
+* success
+
+Features:
+
+* loading state
+* disabled state
+* icon support
+* smooth animations
+* consistent sizing
+
+---
+
+# 7. Common Modal Rules
+
+All modals must use CommonModal.
+
+Support:
+
+* title
+* subtitle
+* close button
+* loading state
+* confirmation mode
+* form mode
+* responsive design
+
+---
+
+# 8. Backend Rules
+
+Backend Stack:
+
+* FastAPI
+* MongoDB
+* Beanie ODM
+* JWT Authentication
+* REST APIs
+
+Architecture:
+
+* Modular Monolith
+* Service Layer Architecture
+* RBAC authorization
+* Tenant isolation
+
+Backend Standards:
+
+* keep routes/controllers thin
+* business logic inside services
+* reusable utilities
+* centralized exception handling
+* reusable validators
+* scalable architecture
+
+---
+
+# 9. Multi-Tenant Rules
+
+Every salon is a tenant.
+
+Tenant Rules:
+
+* every business entity must contain tenant_id
+* APIs must automatically filter by tenant_id
+* cross-tenant access prohibited
+* super_admin bypasses tenant filtering
+* super_admin tenant_id must be null
+
+Tenant Scoped Entities:
+
+* users
+* employees
+* services
+* appointments
+* clients
+* inventory
+* notifications
+* subscriptions
+* analytics
+
+---
+
+# 10. RBAC Rules
+
+Roles:
+
+* super_admin
+* salon_owner
+* salon_manager
+* salon_admin
+* employee
+
+Authorization Rules:
+
+* RBAC enforced at API and service layer
+* users cannot manage higher roles
+* users cannot access outside tenant
+* unauthorized access must return proper errors
+
+---
+
+# 11. Authentication Rules
+
+Authentication:
+
+* JWT access token
+* refresh token
+* bcrypt password hashing
+* multi-session support
+
+Password Rules:
+
+* minimum 8 characters
+* uppercase
+* lowercase
+* number
+* special character
+
+Security:
+
+* never store raw passwords
+* never expose password hashes
+
+---
+
+# 12. API Rules
+
+API Versioning:
+Use:
+/api/v1/
+
+All APIs must support:
+
+* pagination
+* filtering
+* sorting
+* searching
+* validation
+* error handling
+
+Standard API Response:
+{
+"success": true,
+"data": {},
+"message": "",
+"error": null
+}
+
+---
+
+# 13. Database Rules
+
+Database:
+
+* MongoDB
+* Beanie ODM
+
+All entities should include:
+
+* id
+* tenant_id
+* created_at
+* updated_at
+* created_by
+* updated_by
+* is_deleted
+* deleted_at
+
+Soft Delete Rules:
+Use soft delete for:
+
+* users
+* salons
+* services
+* appointments
+* employees
+* clients
+
+Never permanently delete production data.
+
+---
+
+# 14. Audit Logging Rules
+
+Track:
+
+* login activity
+* role changes
+* appointment changes
+* invitation actions
+* billing changes
+* employee changes
+
+Audit Log Fields:
+
+* actor_id
+* tenant_id
+* entity_type
+* entity_id
+* old_value
+* new_value
+* timestamp
+* action_type
+
+Audit logs:
+
+* immutable
+* never editable
+* never deletable
+
+---
+
+# 15. Invitation Rules
+
+Invitation Flow:
+
+1. invitation created
+2. email sent
+3. invitation accepted
+4. password setup
+5. onboarding completed
+
+Invitation Rules:
+
+* secure signed tokens
+* expires after 7 days
+* single-use token
+* resend invalidates old token
+
+---
+
+# 16. Appointment Rules
+
+Validate before booking:
+
+* employee availability
+* leave conflicts
+* overlapping appointments
+* valid time slot
+* service availability
+
+Appointment Statuses:
+
+* pending
+* confirmed
+* in_progress
+* completed
+* cancelled
+* no_show
+* rescheduled
+
+Prevent double booking.
+
+---
+
+# 17. Notification Rules
+
+Supported Channels:
+
+* email
+* in-app
+* websocket realtime
+
+Provider:
+
+* Resend
+
+Track:
+
+* delivery status
+* provider response
+* failure reason
+
+---
+
+# 18. Security Rules
+
+Use:
+
+* JWT auth
+* HTTPS
+* CORS protection
+* rate limiting
+* input validation
+* RBAC authorization
+* tenant validation
+
+Store secrets in environment variables only.
+
+---
+
+# 19. Performance Rules
+
+Use Redis caching for:
+
+* sessions
+* tenant configs
+* appointment slots
+* employee availability
+
+Performance Standards:
+
+* pagination for large datasets
+* optimized queries
+* async email sending
+* async notification processing
+
+---
+
+# 20. Timezone Rules
+
+* database stores UTC only
+* backend returns UTC
+* frontend handles timezone conversion
+* all calculations use UTC internally
+
+---
+
+# 21. Future Scalability Rules
+
+Architecture must support:
+
+* WhatsApp integrations
+* payment gateways
+* Google calendar
+* Outlook calendar
+* analytics
+* PWA
+* mobile apps
+* AI features
+* queue systems
+* microservice extraction
+
+---
+
+# 22. AI Generation Rules
+
+Before generating code:
+
+1. check existing architecture
+2. reuse existing components
+3. reuse existing services/hooks/utils
+4. avoid duplicate logic
+5. keep code modular
+6. maintain UI consistency
+7. maintain RBAC rules
+8. maintain tenant isolation
+
+When creating new UI:
+
+* always use common components
+* always reuse existing tables/modals/buttons
+* create reusable versions only if needed
+
+When creating APIs:
+
+* always validate tenant access
+* always validate RBAC
+* always use pagination/filter/search
+* always return standard response format
+
+Code generated must always be:
+
+* production-ready
+* scalable
+* reusable
+* maintainable
+* ERP-ready

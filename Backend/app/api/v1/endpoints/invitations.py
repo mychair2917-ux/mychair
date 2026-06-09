@@ -37,14 +37,27 @@ async def list_invites(
         default=None,
         description="Filter by status: pending, accepted, expired, cancelled",
     ),
+    page: int = Query(default=1, ge=1, description="Page number"),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
+    search: Optional[str] = Query(default=None, description="Search by name or email"),
+    sort_by: str = Query(default="created_at", description="Field to sort by"),
+    sort_order: str = Query(default="desc", description="asc or desc"),
     actor: User = Depends(get_invite_actor),
 ):
     """
-    List invitations visible to the current user.
+    List invitations visible to the current user with pagination, search, and sorting.
     super_admin sees all; salon owner/admin sees their salon;
     manager sees staff invites for their salon.
     """
-    data = await invite_service.list_invites(actor, status=status)
+    data = await invite_service.list_invites(
+        actor,
+        status=status,
+        page=page,
+        limit=limit,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
     return success_response("Invitations retrieved successfully", data=data)
 
 

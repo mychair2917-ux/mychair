@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 from app.core.security import verify_password, create_access_token, create_refresh_token
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.services.permission_service import PermissionService
 from app.utils.timezone import now_utc
 
 
@@ -49,13 +50,32 @@ class SalonOwnerAuthService:
             role=self.SALON_OWNER_ROLE,
         )
 
+        permissions = await PermissionService().get_merged_permissions(user)
+
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "role": user.role,
             "salon_id": tenant_id,
             "email": user.email,
+            "id": user_id,
             "username": user.username or "",
+            "first_name": user.first_name or "",
+            "last_name": user.last_name or "",
+            "phone": user.phone or "",
+            "alternate_phone": user.alternate_phone or "",
+            "avatar": user.avatar,
+            "employee_id": user.employee_id or "",
+            "employee_code": user.employee_code or "",
+            "branch_name": user.branch_name or "",
+            "branch_id": user.branch_id or "",
+            "salon_name": user.salon_name or "",
+            "department": user.department or "",
+            "designation": user.designation or "",
+            "status": user.status,
+            "joining_date": user.joining_date.isoformat() if user.joining_date else None,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+            "permissions": permissions,
         }, None
 
     async def get_profile(self, owner_id: str) -> Tuple[Optional[dict], Optional[str]]:

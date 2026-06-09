@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from app.api.dependencies.auth import get_current_user
 from app.core.exceptions import AuthException
 from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token
 from app.models.tenant import Tenant
@@ -125,3 +126,23 @@ async def salon_owner_login(payload: SalonOwnerLoginRequest):
     if error_message:
         return error_response(error_message, status_code=401)
     return success_response("Login successful", data=data)
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str = ""
+
+
+@router.post("/logout")
+async def logout(
+    payload: LogoutRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Logs out the current user by incrementing refresh_token_version,
+    which invalidates all existing refresh tokens for this account.
+    The client must also clear its local auth storage after calling this.
+    """
+    current_user.refresh_token_version = (current_user.refresh_token_version or 0) + 1
+    current_user.last_login = now_utc()
+    await current_user.save()
+    return success_response("Logged out successfully")

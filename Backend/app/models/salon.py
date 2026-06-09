@@ -15,6 +15,11 @@ class Salon(BaseTenantDocument):
     timezone: str = Field(default="UTC")
     is_active: bool = Field(default=True)
 
+    # Attendance geofencing
+    latitude: Optional[float] = Field(default=None)
+    longitude: Optional[float] = Field(default=None)
+    attendance_radius: int = Field(default=100, ge=10, le=5000)
+
     class Settings:
         name = "salons"
         indexes = [

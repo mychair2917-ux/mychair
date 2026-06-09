@@ -8,8 +8,26 @@ export interface SalonOwnerLoginResponseData {
   refresh_token: string;
   role: string;
   salon_id: string;
+  id?: string;
   email: string;
   username: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  alternate_phone?: string;
+  avatar?: string | null;
+  employee_id?: string;
+  employee_code?: string;
+  branch_name?: string;
+  branch_id?: string;
+  salon_name?: string;
+  department?: string;
+  designation?: string;
+  shift?: string;
+  status?: string;
+  joining_date?: string | null;
+  last_login?: string | null;
+  permissions?: Record<string, boolean>;
 }
 
 export interface SalonOwnerProfileData {

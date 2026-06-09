@@ -1,7 +1,7 @@
 import re
 import secrets
 from datetime import timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.auth.invitation_rbac import (
     ROLE_EMPLOYEE,
@@ -57,8 +57,8 @@ class InviteService:
         payload: CreateInviteRequest,
     ) -> Optional[dict]:
         errors: dict = {}
-        if not payload.phone or not payload.phone.strip():
-            errors["phone"] = ["Phone is required for manager and staff"]
+        if not payload.email:
+            errors["email"] = ["Email is required"]
         if not payload.password:
             errors["password"] = ["Password is required"]
         if not payload.confirm_password:
@@ -75,6 +75,26 @@ class InviteService:
         if len(parts) == 1:
             return parts[0], ""
         return parts[0], parts[1]
+
+    @staticmethod
+    def _salary_fields(payload: CreateInviteRequest) -> Dict[str, Any]:
+        """Build salary/incentive config fields persisted on the employee User."""
+        from app.constants.payroll_options import DEFAULT_SALARY_TYPE
+
+        incentive_base = bool(payload.incentive_base)
+        return {
+            "salary": payload.salary or 0.0,
+            "salary_type": payload.salary_type or DEFAULT_SALARY_TYPE,
+            "joining_date": payload.joining_date,
+            "incentive_base": incentive_base,
+            "service_incentive_percent": (
+                payload.service_incentive_percent or 0.0 if incentive_base else 0.0
+            ),
+            "product_incentive_percent": (
+                payload.product_incentive_percent or 0.0 if incentive_base else 0.0
+            ),
+            "weekly_off": payload.weekly_off or [],
+        }
 
     @staticmethod
     def _invitable_roles_for(actor_role: str) -> List[dict]:
@@ -173,80 +193,9 @@ class InviteService:
                 actor, payload, tenant_id, tenant.name
             )
 
-        if not payload.email:
-            return None, {"email": ["Email is required for this invitation"]}
-
-        existing_user = await User.find_one(
-            User.email == payload.email,
-            User.tenant_id == tenant_id,
-            User.is_deleted == False,
-        )
-        if existing_user:
-            return None, {"email": ["This email is already registered in this salon"]}
-
-        pending = await self._pending_invite_for_email(str(payload.email))
-        if pending:
-            return None, {"email": ["A pending invitation already exists for this email"]}
-
-        if payload.reporting_manager_id:
-            manager = await User.get(payload.reporting_manager_id)
-            if (
-                not manager
-                or manager.tenant_id != tenant_id
-                or manager.role != ROLE_SALON_MANAGER
-            ):
-                return None, {"reporting_manager_id": ["Invalid reporting manager"]}
-
-        first_name, last_name = self._split_full_name(payload.full_name)
-        token_value = self._generate_token()
-        invitation_link = f"{settings.FRONTEND_URL}/create-password?token={token_value}"
-
-        email_sent, email_error = await send_team_invitation_email(
-            to_email=str(payload.email),
-            invitee_name=payload.full_name,
-            role_label=ROLE_LABELS.get(payload.role, payload.role),
-            salon_name=tenant.name,
-            invitation_link=invitation_link,
-        )
-        if not email_sent:
-            return None, {
-                "email": [email_error or "Failed to send invitation email. Please try again."]
-            }
-
-        user = User(
-            email=str(payload.email),
-            phone=payload.phone or None,
-            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
-            first_name=first_name,
-            last_name=last_name,
-            role=payload.role,
-            is_active=False,
-            status="INACTIVE",
-            tenant_id=tenant_id,
-            branch_name=payload.branch_name or None,
-            created_by=str(actor.id),
-        )
-        await user.insert()
-
-        expires_at = now_utc() + timedelta(hours=settings.INVITATION_TOKEN_EXPIRE_HOURS)
-        invite = Invite(
-            invited_by=str(actor.id),
-            invited_email=str(payload.email),
-            role=payload.role,
-            full_name=payload.full_name,
-            phone=payload.phone or None,
-            salon_id=tenant_id,
-            branch_id=payload.branch_id,
-            branch_name=payload.branch_name or None,
-            reporting_manager_id=payload.reporting_manager_id,
-            token=token_value,
-            expires_at=expires_at,
-            status="pending",
-            user_id=str(user.id),
-        )
-        await invite.insert()
-
-        return self._invite_response(invite, tenant.name), None
+        return None, {
+            "role": ["Manager and staff must be created with a password. Email invitations are only for salon owners."]
+        }
 
     async def _create_team_member_direct(
         self,
@@ -255,26 +204,14 @@ class InviteService:
         tenant_id: str,
         tenant_name: str,
     ) -> Tuple[Optional[dict], Optional[dict]]:
-        """Salon owner/admin/manager creates manager or staff with a login password (no email)."""
+        """Salon owner/admin/manager creates manager or staff with email+password immediately."""
         field_errors = self._validate_direct_provision_payload(payload)
         if field_errors:
             return None, field_errors
 
-        phone = payload.phone.strip()
-        email = (
-            str(payload.email)
-            if payload.email
-            else self._internal_email_for_phone(phone, tenant_id)
-        )
+        email = str(payload.email)
+        phone = payload.phone.strip() if payload.phone and payload.phone.strip() else None
         username = payload.username.strip() if payload.username else None
-
-        existing_phone = await User.find_one(
-            User.phone == phone,
-            User.tenant_id == tenant_id,
-            User.is_deleted == False,
-        )
-        if existing_phone:
-            return None, {"phone": ["This phone number is already registered in this salon"]}
 
         existing_email = await User.find_one(
             User.email == email,
@@ -282,9 +219,16 @@ class InviteService:
             User.is_deleted == False,
         )
         if existing_email:
-            return None, {
-                "phone": ["A user with this phone or contact already exists in this salon"]
-            }
+            return None, {"email": ["This email is already registered in this salon"]}
+
+        if phone:
+            existing_phone = await User.find_one(
+                User.phone == phone,
+                User.tenant_id == tenant_id,
+                User.is_deleted == False,
+            )
+            if existing_phone:
+                return None, {"phone": ["This phone number is already registered in this salon"]}
 
         if username:
             existing_username = await User.find_one(
@@ -318,6 +262,7 @@ class InviteService:
             tenant_id=tenant_id,
             branch_name=payload.branch_name or None,
             created_by=str(actor.id),
+            **self._salary_fields(payload),
         )
         await user.insert()
 
@@ -342,7 +287,7 @@ class InviteService:
 
         response = self._invite_response(invite, tenant_name)
         response["provisioned"] = True
-        response["login_phone"] = phone
+        response["login_email"] = email
         response["invitation_sent"] = False
         return response, None
 
@@ -364,6 +309,10 @@ class InviteService:
             subscription_plan=payload.subscription_plan or "",
             slug=payload.slug,
             username=payload.username,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            attendance_radius=payload.attendance_radius,
+            shift_start=payload.shift_start or "09:00",
         )
         if errors:
             return None, errors
@@ -407,15 +356,22 @@ class InviteService:
         }
 
     async def list_invites(
-        self, actor: User, status: Optional[str] = None
-    ) -> List[dict]:
+        self,
+        actor: User,
+        status: Optional[str] = None,
+        page: int = 1,
+        limit: int = 20,
+        search: Optional[str] = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> Dict[str, Any]:
         """
-        List invitations scoped by actor role (see rbac_config.invite_list_*).
+        List invitations scoped by actor role with pagination, search, and sorting.
         super_admin: all; others: tenant + inviter scope + visible target roles.
         """
         role_filter = invite_list_roles_visible(actor.role)
         if role_filter is not None and not role_filter:
-            return []
+            return {"items": [], "total": 0, "page": page, "limit": limit, "pages": 0}
 
         query: Dict[str, Any] = {}
         if status:
@@ -423,21 +379,44 @@ class InviteService:
         if role_filter is not None:
             query["role"] = {"$in": list(role_filter)}
 
+        if search and search.strip():
+            term = search.strip()
+            query["$or"] = [
+                {"full_name": {"$regex": term, "$options": "i"}},
+                {"invited_email": {"$regex": term, "$options": "i"}},
+            ]
+
         normalized = normalize_role(actor.role)
         scope_to_inviter = invite_list_scoped_to_inviter(actor.role)
 
         if normalized == "super_admin":
-            invites = await Invite.find(query).sort("-created_at").to_list()
+            pass
         elif actor.tenant_id:
             query["salon_id"] = actor.tenant_id
             if scope_to_inviter:
                 query["invited_by"] = str(actor.id)
-            invites = await Invite.find(query).sort("-created_at").to_list()
         else:
             query["invited_by"] = str(actor.id)
-            invites = await Invite.find(query).sort("-created_at").to_list()
 
-        return [await self._serialize_invite(inv) for inv in invites]
+        allowed_sort_fields = {"created_at", "full_name", "invited_email", "role", "status"}
+        sort_field = sort_by if sort_by in allowed_sort_fields else "created_at"
+        sort_prefix = "-" if sort_order.lower() == "desc" else "+"
+        sort_expr = f"{sort_prefix}{sort_field}"
+
+        total = await Invite.find(query).count()
+        skip = (page - 1) * limit
+        invites = await Invite.find(query).sort(sort_expr).skip(skip).limit(limit).to_list()
+
+        items = [await self._serialize_invite(inv) for inv in invites]
+        pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": pages,
+        }
 
     async def _serialize_invite(self, invite: Invite) -> dict:
         salon_name = invite.salon_name
@@ -533,13 +512,7 @@ class InviteService:
                 invitation_link=invitation_link,
             )
         else:
-            email_sent, email_error = await send_team_invitation_email(
-                to_email=invite.invited_email,
-                invitee_name=invite.full_name,
-                role_label=ROLE_LABELS.get(invite.role, invite.role),
-                salon_name=salon_name,
-                invitation_link=invitation_link,
-            )
+            return None, "Only salon owner invitations can be resent by email"
 
         if not email_sent:
             return None, email_error or "Failed to resend invitation email"
