@@ -1,4 +1,4 @@
-import { canAccessModule, MODULES, normalizeRole } from '../config/rbac';
+import { canAccessModule, MODULES } from '../config/rbac';
 import { INVITE_ROLES } from '../constants/invitation';
 import { ROLES } from '../constants';
 

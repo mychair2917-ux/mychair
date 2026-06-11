@@ -77,6 +77,16 @@ export const ROUTE_PATHS = {
   CREATE_PASSWORD: 'create-password',
   SALON_OWNER_LOGIN: 'salon-owner/login',
   SALON_OWNER_DASHBOARD: 'salon-owner/dashboard',
+
+  // Footer/common routes
+  HOME: 'home',
+  ABOUT: 'about',
+  FAQS: 'faqs',
+  SEGMENTATION: 'segmentation',
+  TERMS: 'terms',
+  TROUBLESHOOTING: 'troubleshooting',
+  CONTACT_US: 'contact-us',
+  PRIVACY_POLICY: 'privacy-policy',
 };
 
 export const TOAST_TYPES = {
@@ -85,6 +95,14 @@ export const TOAST_TYPES = {
   ERROR: 'error',
   WARNING: 'warning',
   INFO: 'info',
+  OUTLINED_SUCCESS: 'outlined_success',
+  OUTLINED_ERROR: 'outlined_error',
+  OUTLINED_WARNING: 'outlined_warning',
+  OUTLINED_NOTICE: 'outlined_notice',
+  OUTLINED_INFO: 'outlined_info',
+  NOTIFICATION: 'notification',
+  NOTIFICATION_SUCCESS: 'notification_success',
+  NOTIFICATION_ERROR: 'notification_error',
 } as const;
 
 export const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml'];

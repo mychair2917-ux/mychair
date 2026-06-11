@@ -143,10 +143,6 @@ function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
 const STATUS_LABELS: Record<string, string> = {
   BOOKED: 'Booked',
   CHECKED_IN: 'Checked In',

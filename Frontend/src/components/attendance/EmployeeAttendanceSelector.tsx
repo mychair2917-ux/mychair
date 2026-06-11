@@ -33,7 +33,7 @@ const EmployeeAttendanceSelector: React.FC<EmployeeAttendanceSelectorProps> = ({
   const tenantId = resolveEmployeeListTenantId(
     auth.user?.role,
     undefined,
-    auth.selectedSalonId ?? auth.user?.tenant_id
+    auth.selectedSalonId ?? auth.orgId
   );
 
   const { data, isLoading } = useListEmployeesQuery({

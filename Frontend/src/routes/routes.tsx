@@ -1,6 +1,6 @@
 import React, { lazy } from 'react';
 import { RouteObject } from 'react-router';
-import { Users, CreditCard, UserCheck, Bell } from 'lucide-react';
+import { Users, UserCheck, Bell } from 'lucide-react';
 
 import App from '../App';
 import { MODULES } from '../config/rbac';

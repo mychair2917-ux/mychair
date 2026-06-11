@@ -205,5 +205,5 @@ export function buildInviteValidationSchema(
     });
   }
 
-  return Yup.object(base);
+  return Yup.object(base) as unknown as Yup.ObjectSchema<InviteFormValues>;
 }

@@ -2,7 +2,6 @@ import React from 'react';
 
 import Modal from '../common/Modal';
 import ModalBody from '../common/Modal/ModalBody';
-import ModalContent from '../common/Modal/ModalContent';
 import ModalHeader from '../common/Modal/ModalHeader';
 import { EmployeeListItem } from '../../redux/slices/employees/Types';
 import { EMPLOYEE_ROLE_LABELS } from '../../constants/employees';
