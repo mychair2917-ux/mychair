@@ -529,9 +529,21 @@ const paymentStatusLabel: Record<string, string> = {
   PARTIALLY_PAID: 'Partially Paid',
 };
 
+const whatsappStatusTone: Record<string, StatusTone> = {
+  sent: 'approved',
+  failed: 'danger',
+  pending: 'pending',
+};
+
+const whatsappStatusLabel: Record<string, string> = {
+  sent: 'Sent',
+  failed: 'Failed',
+  pending: 'Pending',
+};
+
 const BillsSkeletonRow: React.FC = () => (
   <tr>
-    {Array.from({ length: 11 }).map((_, i) => (
+    {Array.from({ length: 12 }).map((_, i) => (
       <td key={i} className="px-4 py-4">
         <div className="h-4 animate-pulse rounded bg-gray-200" />
       </td>
@@ -836,6 +848,7 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
                 <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Staff</th>
                 <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Method</th>
                 <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Status</th>
+                <th className="whitespace-nowrap px-4 py-3 text-left font-bold">WhatsApp</th>
                 <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Total</th>
                 <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Paid</th>
                 <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Remaining</th>
@@ -850,19 +863,19 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
                 Array.from({ length: 6 }).map((_, i) => <BillsSkeletonRow key={i} />)
               ) : isError ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-red-500">
+                  <td colSpan={12} className="px-4 py-12 text-center text-sm text-red-500">
                     Failed to load bills. Please try again.
                   </td>
                 </tr>
               ) : !salonId ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-amber-700">
+                  <td colSpan={12} className="px-4 py-12 text-center text-sm text-amber-700">
                     Select a salon to view bills.
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-16 text-center">
+                  <td colSpan={12} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <ReceiptText className="h-10 w-10 text-gray-300" />
                       <p className="text-sm font-medium text-gray-500">No bills found</p>
@@ -875,6 +888,8 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
               ) : (
                 items.map((bill) => {
                   const statusTone = paymentStatusTone[bill.payment_status] ?? 'neutral';
+                  const whatsappStatus = bill.whatsapp_status || 'pending';
+                  const whatsappTone = whatsappStatusTone[whatsappStatus] ?? 'neutral';
                   return (
                     <tr
                       key={bill.id}
@@ -904,6 +919,12 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
                         <StatusBadge
                           status={statusTone}
                           label={paymentStatusLabel[bill.payment_status] ?? bill.payment_status}
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <StatusBadge
+                          status={whatsappTone}
+                          label={whatsappStatusLabel[whatsappStatus] ?? whatsappStatus}
                         />
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">

@@ -54,11 +54,7 @@ class Module(str, Enum):
 # Module access per normalized role (super_admin uses platform admin routes separately)
 ROLE_MODULE_ACCESS: dict[str, FrozenSet[Module]] = {
     ROLE_SUPER_ADMIN: frozenset(Module),
-    ROLE_SALON_OWNER: frozenset(
-        m
-        for m in Module
-        if m != Module.SUBSCRIPTION_MANAGEMENT
-    ),
+    ROLE_SALON_OWNER: frozenset(Module),
     ROLE_SALON_ADMIN: frozenset(
         m
         for m in Module

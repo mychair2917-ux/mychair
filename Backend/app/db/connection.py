@@ -22,6 +22,8 @@ from app.models.inventory import InventoryItem, InventoryTransaction, ProductInv
 from app.models.attendance import Attendance
 from app.models.attendance_log import AttendanceLog
 from app.models.subscription import Subscription
+from app.models.system_settings import SystemSettings
+from app.models.subscription_email_log import SubscriptionEmailLog
 from app.models.notification import Notification
 from app.models.audit import AuditLog
 from app.models.analytics import DailyRevenueStats, StaffPerformanceStats, ServicePopularityStats
@@ -33,6 +35,7 @@ from app.models.reward_settings import RewardSettings, RewardSegment
 from app.models.customer_reward_transaction import CustomerRewardTransaction
 from app.models.expense import Expense
 from app.models.user_permission import PermissionRecord
+from app.models.whatsapp_message import WhatsAppMessageLog
 
 logger = logging.getLogger("db")
 
@@ -77,6 +80,8 @@ async def init_db() -> None:
             Attendance,
             AttendanceLog,
             Subscription,
+            SystemSettings,
+            SubscriptionEmailLog,
             Notification,
             AuditLog,
             DailyRevenueStats,
@@ -91,6 +96,7 @@ async def init_db() -> None:
             CustomerRewardTransaction,
             Expense,
             PermissionRecord,
+            WhatsAppMessageLog,
         ]
     
         await init_beanie(

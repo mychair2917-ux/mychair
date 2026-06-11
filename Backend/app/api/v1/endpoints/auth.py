@@ -9,6 +9,7 @@ from app.schemas.invitation import SalonOwnerLoginRequest, TeamLoginRequest
 from app.services.auth_login_service import AuthLoginService
 from app.services.salon_owner_auth_service import SalonOwnerAuthService
 from app.services.team_auth_service import TeamAuthService
+from app.services.auth_refresh_service import AuthRefreshService
 from app.utils.api_response import success_response, error_response
 from app.core import tenant_context
 from pydantic import BaseModel, EmailStr
@@ -18,6 +19,7 @@ router = APIRouter()
 auth_login_service = AuthLoginService()
 salon_owner_auth_service = SalonOwnerAuthService()
 team_auth_service = TeamAuthService()
+auth_refresh_service = AuthRefreshService()
 
 class BootstrapTenantRequest(BaseModel):
     tenant_name: str
@@ -78,7 +80,10 @@ async def bootstrap_tenant(payload: BootstrapTenantRequest) -> dict:
         subject=user_id_str, tenant_id=tenant_id_str, role="salon_admin"
     )
     refresh_token = create_refresh_token(
-        subject=user_id_str, tenant_id=tenant_id_str, role="salon_admin"
+        subject=user_id_str,
+        tenant_id=tenant_id_str,
+        role="salon_admin",
+        token_version=0,
     )
     
     return {
@@ -130,6 +135,20 @@ async def salon_owner_login(payload: SalonOwnerLoginRequest):
 
 class LogoutRequest(BaseModel):
     refresh_token: str = ""
+
+
+@router.post("/refresh")
+async def refresh_access_token(payload: RefreshRequest):
+    """Issue a new access token when the refresh token is valid and subscription is active."""
+    data, error_message = await auth_refresh_service.refresh(payload.refresh_token)
+    if error_message == AuthRefreshService.SUBSCRIPTION_EXPIRED:
+        return error_response(
+            AuthRefreshService.SUBSCRIPTION_EXPIRED,
+            status_code=403,
+        )
+    if error_message:
+        return error_response(error_message, status_code=401)
+    return success_response("Token refreshed", data=data)
 
 
 @router.post("/logout")

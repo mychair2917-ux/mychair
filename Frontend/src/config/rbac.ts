@@ -1,3 +1,4 @@
+import type { ElementType } from 'react';
 import {
   Bell,
   CalendarDays,
@@ -12,7 +13,6 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
-import type { ElementType } from 'react';
 
 import { ROLES, ROUTE_PATHS } from '../constants';
 
@@ -59,7 +59,7 @@ const ROLE_ALIASES: Record<string, string> = {
 /** Module access per role (mirrors backend ROLE_MODULE_ACCESS). */
 const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
   [ROLES.SUPER_ADMIN]: ALL_MODULES,
-  [ROLES.SALON_OWNER]: ALL_MODULES.filter((m) => m !== MODULES.SUBSCRIPTION_MANAGEMENT),
+  [ROLES.SALON_OWNER]: ALL_MODULES,
   [ROLES.SALON_ADMIN]: ALL_MODULES.filter(
     (m) => m !== MODULES.SUBSCRIPTION_MANAGEMENT && m !== MODULES.EMPLOYEES
   ),
@@ -77,12 +77,7 @@ const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
     MODULES.ATTENDANCE,
     MODULES.PROFILE,
   ],
-  [ROLES.EMPLOYEE]: [
-    MODULES.DASHBOARD,
-    MODULES.MY_EARNINGS,
-    MODULES.ATTENDANCE,
-    MODULES.PROFILE,
-  ],
+  [ROLES.EMPLOYEE]: [MODULES.DASHBOARD, MODULES.MY_EARNINGS, MODULES.ATTENDANCE, MODULES.PROFILE],
 };
 
 export function normalizeRole(role: string | undefined): string | undefined {
@@ -317,11 +312,7 @@ export function getSidebarNavItems(
           module: MODULES.BILLING_FINANCE,
           path: `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
           icon: Wallet,
-          children: financeChildren(
-            `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
-            role,
-            permissions
-          ),
+          children: financeChildren(`/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`, role, permissions),
         },
         {
           name: 'Customer Analytics',
@@ -335,7 +326,7 @@ export function getSidebarNavItems(
           path: `/${ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION}`,
           icon: Bell,
         },
-         {
+        {
           name: 'Profile',
           module: MODULES.PROFILE,
           path: `/${ROUTE_PATHS.ADMIN_PROFILE}`,
@@ -350,7 +341,7 @@ export function getSidebarNavItems(
             path: orgPath(orgId, ROUTE_PATHS.DASHBOARD),
             icon: LayoutDashboard,
           },
-         
+
           {
             name: 'Invite',
             module: MODULES.INVITE,
@@ -390,22 +381,7 @@ export function getSidebarNavItems(
               permissions
             ),
           },
-          {
-            name: 'User Management',
-            module: MODULES.USER_MANAGEMENT,
-            path: orgPath(orgId, ROUTE_PATHS.USER_MANAGEMENT),
-            icon: Users,
-          },
-          ...(canShowRolesPermissionsSidebar(role)
-            ? [
-                {
-                  name: 'Role & Permissions',
-                  module: MODULES.ROLES_PERMISSIONS,
-                  path: orgPath(orgId, ROUTE_PATHS.ROLES_PERMISSIONS),
-                  icon: Shield,
-                },
-              ]
-            : []),
+
           {
             name: 'Subscription Management',
             module: MODULES.SUBSCRIPTION_MANAGEMENT,
@@ -417,7 +393,7 @@ export function getSidebarNavItems(
             module: MODULES.BILLING_FINANCE,
             path: orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE),
             icon: Wallet,
-          children: financeChildren(
+            children: financeChildren(
               orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE),
               role,
               permissions
@@ -435,7 +411,7 @@ export function getSidebarNavItems(
             path: orgPath(orgId, ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION),
             icon: Bell,
           },
-           {
+          {
             name: 'Profile',
             module: MODULES.PROFILE,
             path: orgPath(orgId, ROUTE_PATHS.PROFILE),

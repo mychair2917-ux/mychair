@@ -22,6 +22,8 @@ services:
     container_name: mychair_api
     ports:
       - "8000:8000"
+    env_file:
+      - ./Backend/.env
     environment:
       - MONGODB_URI=mongodb://mongodb:27017
       - MONGODB_DB_NAME=Mychair
@@ -32,6 +34,7 @@ services:
       - EMAIL_FROM=${EMAIL_FROM:-MyChair <onboarding@resend.dev>}
       - RESEND_TEST_EMAIL=${RESEND_TEST_EMAIL:-my.chair2917@gmail.com}
       - INVITATION_TOKEN_EXPIRE_HOURS=72
+      - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:-http://localhost:8000}
     depends_on:
       - mongodb
       - redis

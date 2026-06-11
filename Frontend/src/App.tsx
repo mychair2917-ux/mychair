@@ -3,6 +3,8 @@ import { Outlet, useLocation } from 'react-router';
 
 import { ErrorBoundary } from './components/common';
 import PermissionsBootstrap from './components/permissions/PermissionsBootstrap';
+import SubscriptionExpiryBanner from './components/subscription/SubscriptionExpiryBanner';
+import SubscriptionGuard from './components/subscription/SubscriptionGuard';
 import { Header, Sidebar } from './components/layout';
 import ScrollToTop from './components/layout/ScrollToTop';
 import { isSuperAdmin, isTenantScopedRole } from './config/rbac';
@@ -18,9 +20,11 @@ function App() {
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isOrgRoute = location.pathname.startsWith('/orgs/');
   const isSalonOwnerInviteRoute = location.pathname === `/${ROUTE_PATHS.SALON_INVITE}`;
+  const isSubscriptionExpiredRoute = location.pathname === `/${ROUTE_PATHS.SUBSCRIPTION_EXPIRED}`;
   const showLayout =
     token &&
     !isOpenRoute &&
+    !isSubscriptionExpiredRoute &&
     (isSuperAdmin(user?.role)
       ? isAdminRoute || isOrgRoute || location.pathname === `/${ROUTE_PATHS.INVITE}` || isSalonOwnerInviteRoute
       : isTenantScopedRole(user?.role) &&
@@ -30,10 +34,12 @@ function App() {
     <div className="flex min-h-screen bg-[var(--color-surface-bg)] text-[var(--color-text-primary)]">
       <ScrollToTop />
       <PermissionsBootstrap />
+      <SubscriptionGuard />
       {showLayout && <Sidebar />}
 
       <div className="flex min-w-0 flex-1 flex-col w-full overflow-hidden">
         {showLayout && <Header />}
+        {showLayout && <SubscriptionExpiryBanner />}
 
         <main
           className={`flex-1 overflow-x-hidden overflow-y-auto custom-scrollbar ${isOpenRoute ? 'p-0' : 'bg-[var(--color-surface-bg)]'}`}

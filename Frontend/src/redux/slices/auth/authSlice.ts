@@ -42,6 +42,7 @@ export interface AuthState {
   orgId: string | null;
   selectedSalonId: string | null;
   permissions: PermissionMap | null;
+  subscriptionExpired: boolean;
 }
 
 const initialState: AuthState = {
@@ -51,6 +52,7 @@ const initialState: AuthState = {
   orgId: localStorage.getItem('orgId') || null,
   selectedSalonId: localStorage.getItem('selectedSalonId') || null,
   permissions: readStoredPermissions(),
+  subscriptionExpired: false,
 };
 
 const authSlice = createSlice({
@@ -108,6 +110,18 @@ const authSlice = createSlice({
       state.user = { ...state.user, ...action.payload };
       localStorage.setItem('user', JSON.stringify(state.user));
     },
+    setRefreshedTokens: (
+      state,
+      action: PayloadAction<{ token: string; refreshToken: string }>
+    ) => {
+      state.token = action.payload.token;
+      state.refreshToken = action.payload.refreshToken;
+      localStorage.setItem('token', action.payload.token);
+      localStorage.setItem('refresh_token', action.payload.refreshToken);
+    },
+    setSubscriptionExpired: (state, action: PayloadAction<boolean>) => {
+      state.subscriptionExpired = action.payload;
+    },
     logout: (state) => {
       state.user = null;
       state.token = null;
@@ -115,11 +129,19 @@ const authSlice = createSlice({
       state.orgId = null;
       state.selectedSalonId = null;
       state.permissions = null;
+      state.subscriptionExpired = false;
       clearAuthStorage();
     },
   },
 });
 
-export const { setCredentials, setSelectedSalonId, setPermissions, updateAuthUser, logout } =
-  authSlice.actions;
+export const {
+  setCredentials,
+  setSelectedSalonId,
+  setPermissions,
+  updateAuthUser,
+  setRefreshedTokens,
+  setSubscriptionExpired,
+  logout,
+} = authSlice.actions;
 export default authSlice.reducer;

@@ -198,7 +198,7 @@ class BillingService:
             "tax_amount": tax_amount,
             "discount_amount": discount_amount,
             "total_amount": total_amount,
-            "amount_paid": 0.0
+            "paid_amount": 0.0
         }
         
         return await self.invoice_repo.create(invoice_data)
@@ -236,7 +236,7 @@ class BillingService:
         if invoice.status in ["VOIDED", "PAID"]:
             raise ImmutableResourceException(f"Cannot apply payment to an invoice that is already {invoice.status}.")
             
-        remaining_balance = invoice.total_amount - invoice.amount_paid
+        remaining_balance = invoice.total_amount - invoice.paid_amount
         if amount > remaining_balance + 0.01:  # Allow minimal float rounding delta
             raise ImmutableResourceException(f"Payment amount ${amount} exceeds outstanding balance ${remaining_balance:.2f}.")
             
@@ -252,8 +252,8 @@ class BillingService:
         payment = await self.payment_repo.create(payment_data)
         
         # Update invoice balance
-        invoice.amount_paid += amount
-        if invoice.amount_paid >= invoice.total_amount - 0.01:
+        invoice.paid_amount += amount
+        if invoice.paid_amount >= invoice.total_amount - 0.01:
             invoice.status = "PAID"
         await invoice.save()
         
@@ -282,8 +282,8 @@ class BillingService:
         await payment.save()
         
         # Update invoice statistics
-        invoice.amount_paid -= amount
-        if invoice.status == "PAID" and invoice.amount_paid < invoice.total_amount:
+        invoice.paid_amount -= amount
+        if invoice.status == "PAID" and invoice.paid_amount < invoice.total_amount:
             invoice.status = "FINALIZED"
         await invoice.save()
         

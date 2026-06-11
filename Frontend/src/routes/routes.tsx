@@ -43,6 +43,12 @@ const ProductsInventory = lazy(() =>
 const RolesPermissions = lazy(() =>
   import('../pages').then((module) => ({ default: module.RolesPermissions }))
 );
+const SubscriptionManagement = lazy(() =>
+  import('../pages').then((module) => ({ default: module.SubscriptionManagement }))
+);
+const SubscriptionExpired = lazy(() =>
+  import('../pages').then((module) => ({ default: module.SubscriptionExpired }))
+);
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
   <ProtectedRoute module={module}>
@@ -148,12 +154,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTE_PATHS.ADMIN_SUBSCRIPTION_MANAGEMENT,
-        element: adminPlaceholder(
-          MODULES.SUBSCRIPTION_MANAGEMENT,
-          'Subscription Management',
-          'Manage SaaS subscription tiers, plan assignments, and renewals.',
-          CreditCard
-        ),
+        element: protectAdmin(MODULES.SUBSCRIPTION_MANAGEMENT, <SubscriptionManagement />),
       },
       {
         path: ROUTE_PATHS.ADMIN_BILLING_FINANCE,
@@ -241,11 +242,14 @@ export const routes: RouteObject[] = [
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.SUBSCRIPTION_MANAGEMENT}`,
-        element: orgPlaceholder(
-          MODULES.SUBSCRIPTION_MANAGEMENT,
-          'Subscription Management',
-          'Manage your SaaS subscription plans and billing details.',
-          CreditCard
+        element: protectOrg(MODULES.SUBSCRIPTION_MANAGEMENT, <SubscriptionManagement />),
+      },
+      {
+        path: ROUTE_PATHS.SUBSCRIPTION_EXPIRED,
+        element: (
+          <ProtectedRoute>
+            <SubscriptionExpired />
+          </ProtectedRoute>
         ),
       },
       {

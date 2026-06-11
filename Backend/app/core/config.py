@@ -39,4 +39,33 @@ class Settings(BaseSettings):
     # Invitation
     INVITATION_TOKEN_EXPIRE_HOURS: int = 72
 
+    # Public URLs / generated assets
+    BACKEND_PUBLIC_URL: str = Field(default="http://localhost:8000")
+    PUBLIC_ASSET_DIR: str = Field(default="public")
+
+    # WhatsApp Cloud API
+    WHATSAPP_API_VERSION: str = Field(default="v20.0")
+    WHATSAPP_PHONE_NUMBER_ID: str = Field(default="")
+    WHATSAPP_BUSINESS_ACCOUNT_ID: str = Field(default="")
+    WHATSAPP_TOKEN: str = Field(default="")
+    WHATSAPP_ACCESS_TOKEN: str = Field(default="")
+    WHATSAPP_TEST_RECIPIENT_PHONE: str = Field(default="")
+    WHATSAPP_APPOINTMENT_TEMPLATE: str = Field(
+        default="hello_world",
+        description="Meta-approved template for outbound appointment notifications",
+    )
+    WHATSAPP_TEMPLATE_MODE: str = Field(
+        default="test",
+        description="WhatsApp template mode (e.g. test or production)",
+    )
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = Field(default="mychair_whatsapp_verify")
+    WHATSAPP_APP_SECRET: str = Field(default="")
+    WHATSAPP_REVIEW_URL: str = Field(
+        default="https://www.google.com/search?sca_esv=bcc915fd4b92abab&si=AL3DRZEsmMGCryMMFSHJ3StBhOdZ2-6yYkXd_doETEE1OR-qOcJ5ezV20X7EEAKKAJz3tcNdv-Se-KF8Myz0yr_Zuj33T-BFluyiEgtq19z95gfAfUkYs7xUhtWNRWDN-k2bpl8NYOY4alNUvwo_zo5qFcJFbp8lzw%3D%3D&q=BOHO+UNISEX+SALON+Reviews&sa=X&ved=2ahUKEwi96I-6ofqUAxXnxjgGHaYfPL0Q0bkNegQILxAF&biw=1850&bih=966&dpr=1"
+    )
+
+    @property
+    def whatsapp_bearer_token(self) -> str:
+        return self.WHATSAPP_TOKEN or self.WHATSAPP_ACCESS_TOKEN
+
 settings = Settings()

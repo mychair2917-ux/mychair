@@ -97,6 +97,18 @@ const statusStyles: Record<string, string> = {
   NO_SHOW: 'bg-gray-100 text-gray-600',
 };
 
+const whatsappStatusStyles: Record<string, string> = {
+  sent: 'bg-emerald-50 text-emerald-700',
+  failed: 'bg-red-50 text-red-700',
+  pending: 'bg-amber-50 text-amber-700',
+};
+
+const whatsappStatusLabels: Record<string, string> = {
+  sent: 'Sent',
+  failed: 'Failed',
+  pending: 'Pending',
+};
+
 /* ─── helpers ────────────────────────────────────────────── */
 function createRow(): ServiceRow {
   return { id: crypto.randomUUID(), salon_service_id: '', service_id: '', staff_id: '', price: '' };
@@ -165,6 +177,16 @@ const AppointmentQueueCard: React.FC<{ appointment: AppointmentListItem }> = ({ 
     {appointment.staff_name && (
       <p className="mt-1 text-xs text-gray-400">Staff: {appointment.staff_name}</p>
     )}
+    <div className="mt-2">
+      <span
+        className={cn(
+          'inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium',
+          whatsappStatusStyles[appointment.whatsapp_status || 'pending'] ?? 'bg-gray-100 text-gray-600'
+        )}
+      >
+        WhatsApp: {whatsappStatusLabels[appointment.whatsapp_status || 'pending'] ?? appointment.whatsapp_status}
+      </span>
+    </div>
     <p className="mt-2 line-clamp-2 text-xs text-gray-500">
       {[...appointment.services.map((s) => s.name), ...appointment.products.map((p) => p.name)].join(', ') ||
         'No services or products'}

@@ -42,6 +42,7 @@ export const ROUTE_PATHS = {
   USER_MANAGEMENT: 'user-management',
   ROLES_PERMISSIONS: 'roles-permissions',
   SUBSCRIPTION_MANAGEMENT: 'subscription-management',
+  SUBSCRIPTION_EXPIRED: 'subscription-expired',
   BILLING_FINANCE: 'billing-finance',
   PRODUCTS_INVENTORY: 'products-inventory',
   STAFF_MONITORING: 'staff-monitoring',

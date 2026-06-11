@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from beanie import PydanticObjectId
@@ -21,6 +21,7 @@ from app.schemas.appointment import (
     FrontDeskAppointmentCreate,
 )
 from app.services.appointment import AppointmentService
+from app.services.whatsapp import WhatsAppService
 from app.repositories.appointment import AppointmentRepository
 from app.services.websocket import manager
 from app.utils.timezone import make_aware
@@ -29,6 +30,7 @@ from app.utils.api_response import success_response
 router = APIRouter()
 appointment_service = AppointmentService()
 appointment_repo = AppointmentRepository()
+whatsapp_service = WhatsAppService()
 
 
 def _resolve_salon_scope(current_user: User, salon_id: Optional[str]) -> str:
@@ -105,6 +107,7 @@ async def _appointment_response(appointment: Appointment) -> dict:
         "payment_type": appointment.payment_type,
         "payment_status": appointment.payment_status,
         "paid_amount": appointment.paid_amount,
+        "whatsapp_status": await whatsapp_service.latest_status_for_appointment(str(appointment.id)),
         "services": [
             {
                 "service_id": service.service_id,
@@ -407,6 +410,7 @@ async def get_frontdesk_today(
 @router.post("/frontdesk", status_code=status.HTTP_201_CREATED)
 async def create_frontdesk_booking(
     payload: FrontDeskAppointmentCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(PermissionChecker("appointments.create")),
 ):
     appt = await appointment_service.create_frontdesk_appointment(
@@ -433,6 +437,8 @@ async def create_frontdesk_booking(
             "staff_id": appt.staff_id,
         },
     )
+    # Always send WhatsApp message immediately on POS submission
+    background_tasks.add_task(whatsapp_service.send_on_appointment_submit, str(appt.id))
     return success_response("Appointment created successfully", data=await _appointment_response(appt), status_code=201)
 
 @router.get("/list")
@@ -501,6 +507,7 @@ async def list_appointments(
 @router.post("/", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_booking(
     payload: AppointmentCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(PermissionChecker("appointments.create"))
 ) -> Appointment:
     """
@@ -530,6 +537,9 @@ async def create_booking(
         }
     )
     
+    # Always trigger WhatsApp notification automatically on appointment creation
+    background_tasks.add_task(whatsapp_service.send_on_appointment_submit, str(appt.id))
+    
     return appt
 
 
@@ -537,6 +547,7 @@ async def create_booking(
 async def update_booking_status(
     id: str,
     payload: AppointmentStatusUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user)
 ) -> Appointment:
     """
@@ -565,6 +576,9 @@ async def update_booking_status(
             "status": appt.status
         }
     )
+
+    if appt.status == "COMPLETED":
+        background_tasks.add_task(whatsapp_service.send_invoice_review_after_completion, str(appt.id))
     
     return appt
 
