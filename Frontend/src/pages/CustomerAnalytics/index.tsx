@@ -12,7 +12,6 @@ import {
   TrendingUp,
   UserCheck,
   Users,
-  UserX,
   X,
 } from 'lucide-react';
 import { useFormik } from 'formik';
@@ -394,8 +393,8 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   );
 
   return (
-    <Modal isOpen={open} onClose={onClose} size="lg">
-      <ModalHeader onClose={onClose}>
+    <Modal open={open} onClose={onClose} size="lg">
+      <ModalHeader>
         {isEdit ? 'Edit Customer' : 'Add New Customer'}
       </ModalHeader>
       <form onSubmit={formik.handleSubmit}>
@@ -960,8 +959,8 @@ const SegmentFormModal: React.FC<SegmentFormProps> = ({ open, onClose, editSegme
   if (!open) return null;
 
   return (
-    <Modal isOpen={open} onClose={onClose} size="sm">
-      <ModalHeader onClose={onClose}>
+    <Modal open={open} onClose={onClose} size="sm">
+      <ModalHeader>
         {isEdit ? 'Edit Segment' : 'Add Reward Segment'}
       </ModalHeader>
       <form onSubmit={formik.handleSubmit}>

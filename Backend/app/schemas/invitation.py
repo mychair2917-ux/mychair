@@ -11,9 +11,10 @@ from app.auth.invitation_rbac import (
     ROLES_REQUIRING_SALON_SETUP,
     ROLES_REQUIRING_TENANT,
 )
-from app.constants.invitation_options import (
-    VALID_SALON_TYPE_VALUES,
+from app.constants.invitation_options import VALID_SALON_TYPE_VALUES
+from app.constants.subscription_options import (
     VALID_SUBSCRIPTION_PLAN_VALUES,
+    normalize_plan_name,
 )
 from app.constants.payroll_options import VALID_SALARY_TYPE_VALUES
 
@@ -111,7 +112,7 @@ class CreateInviteRequest(BaseModel):
     def validate_subscription_plan(cls, value: Optional[str]) -> Optional[str]:
         if value is None or not str(value).strip():
             return None
-        normalized = str(value).strip().upper()
+        normalized = normalize_plan_name(str(value))
         if normalized not in VALID_SUBSCRIPTION_PLAN_VALUES:
             raise ValueError("Please select a valid subscription plan")
         return normalized
@@ -198,7 +199,7 @@ class CreateInvitationRequest(BaseModel):
     @field_validator("subscription_plan")
     @classmethod
     def validate_subscription_plan(cls, value: str) -> str:
-        normalized = value.strip().upper()
+        normalized = normalize_plan_name(value)
         if normalized not in VALID_SUBSCRIPTION_PLAN_VALUES:
             raise ValueError("Please select a valid subscription plan")
         return normalized

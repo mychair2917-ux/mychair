@@ -1,7 +1,8 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import type { RootState } from '../../store';
-import { logout } from '../auth/authSlice';
+import { logout, setRefreshedTokens, setSubscriptionExpired } from '../auth/authSlice';
+import { API_PATHS } from './apiPaths';
 
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: import.meta.env.VITE_BASE_URL || '/api/v1',
@@ -23,10 +24,42 @@ const baseQueryWithAuthHandling: BaseQueryFn<string | FetchArgs, unknown, FetchB
   api,
   extraOptions
 ) => {
-  const result = await rawBaseQuery(args, api, extraOptions);
+  let result = await rawBaseQuery(args, api, extraOptions);
 
   if (result.error?.status === 401) {
-    api.dispatch(logout());
+    const state = api.getState() as RootState;
+    const refreshToken = state.auth.refreshToken;
+    if (refreshToken) {
+      const refreshResult = await rawBaseQuery(
+        {
+          url: API_PATHS.AUTH_REFRESH,
+          method: 'POST',
+          body: { refresh_token: refreshToken },
+        },
+        api,
+        extraOptions
+      );
+
+      const refreshData = refreshResult.data as
+        | { success?: boolean; message?: string; data?: { access_token: string; refresh_token: string } }
+        | undefined;
+
+      if (refreshData?.success && refreshData.data?.access_token) {
+        api.dispatch(
+          setRefreshedTokens({
+            token: refreshData.data.access_token,
+            refreshToken: refreshData.data.refresh_token,
+          })
+        );
+        result = await rawBaseQuery(args, api, extraOptions);
+      } else if (refreshData?.message === 'SUBSCRIPTION_EXPIRED') {
+        api.dispatch(setSubscriptionExpired(true));
+      } else {
+        api.dispatch(logout());
+      }
+    } else {
+      api.dispatch(logout());
+    }
   }
 
   return result;
@@ -58,6 +91,9 @@ export const baseApi = createApi({
     'Attendance',
     'BranchLocation',
     'Permissions',
+    'Subscriptions',
+    'SubscriptionSettings',
+    'SubscriptionStatus',
   ],
   baseQuery: baseQueryWithAuthHandling,
   endpoints: (builder) => ({

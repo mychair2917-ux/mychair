@@ -48,6 +48,7 @@ class SalonOwnerAuthService:
             subject=user_id,
             tenant_id=tenant_id,
             role=self.SALON_OWNER_ROLE,
+            token_version=user.refresh_token_version or 0,
         )
 
         permissions = await PermissionService().get_merged_permissions(user)

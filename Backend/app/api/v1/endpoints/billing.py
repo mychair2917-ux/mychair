@@ -11,10 +11,12 @@ from app.models.salon import Salon
 from app.core.exceptions import ResourceNotFoundException
 from app.schemas.billing import InvoiceCreate, PaymentCreate, RefundCreate
 from app.services.billing import BillingService
+from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import success_response
 
 router = APIRouter()
 billing_service = BillingService()
+whatsapp_service = WhatsAppService()
 
 
 def _invoice_to_dict(invoice: Invoice) -> Dict[str, Any]:
@@ -68,6 +70,7 @@ def _invoice_to_dict(invoice: Invoice) -> Dict[str, Any]:
         ],
         "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
         "finalized_at": invoice.finalized_at.isoformat() if invoice.finalized_at else None,
+        "whatsapp_status": "pending",
     }
 
 
@@ -164,7 +167,11 @@ async def list_bills(
     skip = (page - 1) * limit
     raw_invoices = await invoices_query.skip(skip).limit(limit).to_list()
 
-    items = [_invoice_to_dict(inv) for inv in raw_invoices]
+    items = []
+    for inv in raw_invoices:
+        item = _invoice_to_dict(inv)
+        item["whatsapp_status"] = await whatsapp_service.latest_status_for_invoice(str(inv.id))
+        items.append(item)
 
     pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
     return success_response(
@@ -199,6 +206,7 @@ async def get_bill_detail(
         raise ResourceNotFoundException("Invoice not found")
 
     invoice_data = _invoice_to_dict(invoice)
+    invoice_data["whatsapp_status"] = await whatsapp_service.latest_status_for_invoice(str(invoice.id))
 
     customer = None
     salon = None

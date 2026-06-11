@@ -14,6 +14,7 @@ from app.models.user import User
 from app.repositories.appointment import AppointmentRepository
 from app.services.billing import BillingService
 from app.services.bill import BillService
+from app.services.whatsapp import WhatsAppService
 from app.core.exceptions import BookingConflictException, ResourceNotFoundException
 from app.core import tenant_context
 from app.utils.timezone import make_aware
@@ -23,6 +24,7 @@ class AppointmentService:
         self.appointment_repo = AppointmentRepository()
         self.billing_service = BillingService()
         self.bill_service = BillService()
+        self.whatsapp_service = WhatsAppService()
 
     async def get_customer_for_history(
         self,
@@ -93,6 +95,7 @@ class AppointmentService:
             "booking_source": appointment.booking_source,
             "payment_type": appointment.payment_type,
             "paid_amount": appointment.paid_amount,
+            "whatsapp_status": await self.whatsapp_service.latest_status_for_appointment(str(appointment.id)),
             "services": [
                 {
                     "service_id": service.service_id,
@@ -126,7 +129,7 @@ class AppointmentService:
                 "tax_amount": invoice.tax_amount if invoice else 0.0,
                 "discount_amount": invoice.discount_amount if invoice else 0.0,
                 "total_amount": invoice.total_amount if invoice else appointment.total_price,
-                "amount_paid": invoice.amount_paid if invoice else appointment.paid_amount,
+                "amount_paid": invoice.paid_amount if invoice else appointment.paid_amount,
                 "payments": [
                     {
                         "id": str(payment.id),
@@ -500,7 +503,7 @@ class AppointmentService:
             "services": service_snapshots,
             "products": product_snapshots,
             "total_price": total_amount,
-            "status": "BOOKED",
+            "status": "COMPLETED",
             "booking_source": booking_source,
             "notes": notes,
             "payment_type": payment_type,
@@ -509,7 +512,7 @@ class AppointmentService:
         }
 
         appointment = await self.appointment_repo.create(appointment_data)
-        appointment.add_status("BOOKED", changed_by=tenant_context.get_user_id())
+        appointment.add_status("COMPLETED", changed_by=tenant_context.get_user_id())
         await appointment.save()
 
         # Fetch salon details once — used by both Invoice and Bill creation below.

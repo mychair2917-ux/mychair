@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     appointments,
+    whatsapp_webhook,
     attendance,
     auth,
     billing,
@@ -16,6 +17,7 @@ from app.api.v1.endpoints import (
     permissions,
     profile,
     reward_settings,
+    subscriptions,
     salons,
     salon_owner,
     salon_products,
@@ -50,3 +52,5 @@ api_router.include_router(websocket.router, tags=["WebSockets"])
 api_router.include_router(customers.router, prefix="/customers", tags=["Customer Management"])
 api_router.include_router(customer_analytics.router, prefix="/customer-analytics", tags=["Customer Analytics"])
 api_router.include_router(reward_settings.router, prefix="/reward-settings", tags=["Reward Settings"])
+api_router.include_router(subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
+api_router.include_router(whatsapp_webhook.router, prefix="/webhooks", tags=["Webhooks"])

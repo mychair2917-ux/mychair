@@ -17,3 +17,5 @@ export { default as CustomerAnalytics } from './CustomerAnalytics';
 export { default as Attendance } from './Attendance';
 export { default as ProductsInventory } from './ProductsInventory';
 export { default as RolesPermissions } from './RolesPermissions';
+export { default as SubscriptionManagement } from './SubscriptionManagement';
+export { default as SubscriptionExpired } from './SubscriptionExpired';

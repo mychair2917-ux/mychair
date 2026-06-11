@@ -6,13 +6,12 @@ from app.services.auth_login_service import AuthLoginService
 
 @pytest.mark.asyncio
 async def test_login_rejects_unknown_email():
+    from app.models.user import User
     service = AuthLoginService()
     with patch.object(User, "find", create=True) as mock_find:
         mock_query = MagicMock()
         mock_query.to_list = AsyncMock(return_value=[])
         mock_find.return_value = mock_query
-
-        from app.models.user import User  # noqa: F401
 
         data, error = await service.login("missing@example.com", "password")
         assert data is None
@@ -21,6 +20,7 @@ async def test_login_rejects_unknown_email():
 
 @pytest.mark.asyncio
 async def test_login_rejects_inactive_tenant_user():
+    from app.models.user import User
     service = AuthLoginService()
     user = MagicMock()
     user.email = "owner@salon.com"
@@ -37,8 +37,6 @@ async def test_login_rejects_inactive_tenant_user():
         mock_query = MagicMock()
         mock_query.to_list = AsyncMock(return_value=[user])
         mock_find.return_value = mock_query
-
-        from app.models.user import User  # noqa: F401
 
         data, error = await service.login("owner@salon.com", "password")
         assert data is None

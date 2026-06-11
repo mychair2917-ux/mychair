@@ -201,6 +201,130 @@ async def send_team_invitation_email(
         return False, f"Email service unavailable: {exc}"
 
 
+def _format_expiry_date(expiry_date) -> str:
+    from app.utils.timezone import make_aware
+
+    dt = make_aware(expiry_date)
+    return dt.strftime("%d/%m/%Y")
+
+
+def _build_subscription_expiry_email_html(
+    salon_name: str,
+    plan_label: str,
+    expiry_date_display: str,
+    days_remaining: int,
+    intended_recipient: str,
+    redirected: bool,
+) -> str:
+    redirect_banner = ""
+    if redirected:
+        redirect_banner = f"""
+              <div style="margin:0 0 20px;padding:12px 16px;background:#fff8e6;border:1px solid #f0d78c;border-radius:8px;">
+                <p style="margin:0;color:#7a5c00;font-size:13px;line-height:1.5;">
+                  <strong>Test mode:</strong> Delivered to Resend verified inbox.
+                  Intended recipient: <strong>{intended_recipient}</strong>.
+                </p>
+              </div>"""
+    day_word = "day" if days_remaining == 1 else "days"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f4f5;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:28px 36px;text-align:center;">
+            <h1 style="margin:0;color:#d4a853;font-size:26px;font-weight:700;">MyChair</h1>
+            <p style="margin:8px 0 0;color:#a0a0b0;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Subscription Reminder</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px;">
+            {redirect_banner}
+            <h2 style="margin:0 0 16px;color:#1a1a2e;font-size:20px;">Your subscription is expiring soon</h2>
+            <p style="margin:0 0 20px;color:#4a4a5a;font-size:15px;line-height:1.6;">
+              This is a reminder that your MyChair salon subscription will expire in
+              <strong>{days_remaining} {day_word}</strong>.
+            </p>
+            <table role="presentation" width="100%" style="margin:20px 0;background:#f8f8fa;border-radius:8px;border:1px solid #e8e8ec;">
+              <tr><td style="padding:20px;">
+                <p style="margin:0 0 8px;color:#6a6a7a;font-size:13px;">Salon Name</p>
+                <p style="margin:0 0 16px;color:#1a1a2e;font-size:16px;font-weight:600;">{salon_name}</p>
+                <p style="margin:0 0 8px;color:#6a6a7a;font-size:13px;">Current Plan</p>
+                <p style="margin:0 0 16px;color:#1a1a2e;font-size:16px;font-weight:600;">{plan_label}</p>
+                <p style="margin:0 0 8px;color:#6a6a7a;font-size:13px;">Expiry Date</p>
+                <p style="margin:0 0 16px;color:#1a1a2e;font-size:16px;font-weight:600;">{expiry_date_display}</p>
+                <p style="margin:0 0 8px;color:#6a6a7a;font-size:13px;">Days Remaining</p>
+                <p style="margin:0;color:#b45309;font-size:16px;font-weight:600;">{days_remaining} {day_word}</p>
+              </td></tr>
+            </table>
+            <p style="margin:0 0 24px;color:#4a4a5a;font-size:15px;line-height:1.6;">
+              To continue uninterrupted access, please contact your MyChair administrator to renew your subscription.
+            </p>
+            <p style="margin:0;color:#8a8a9a;font-size:13px;">
+              Need help? Reply to this email or contact support@mychair.com
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 36px;background:#f8f8fa;border-top:1px solid #e8e8ec;text-align:center;">
+            <p style="margin:0;color:#8a8a9a;font-size:12px;">&copy; MyChair Salon ERP</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
+async def send_subscription_expiry_email(
+    to_email: str,
+    salon_name: str,
+    plan_label: str,
+    expiry_date,
+    days_remaining: int,
+) -> Tuple[bool, Optional[str]]:
+    """Send subscription expiry reminder email."""
+    if not settings.RESEND_API_KEY:
+        return False, "RESEND_API_KEY is not configured on the server."
+
+    actual_to, redirected = _resolve_recipient(to_email)
+    html_content = _build_subscription_expiry_email_html(
+        salon_name=salon_name,
+        plan_label=plan_label,
+        expiry_date_display=_format_expiry_date(expiry_date),
+        days_remaining=days_remaining,
+        intended_recipient=to_email,
+        redirected=redirected,
+    )
+    day_word = "day" if days_remaining == 1 else "days"
+    payload = {
+        "from": settings.EMAIL_FROM,
+        "to": [actual_to],
+        "subject": f"MyChair — Subscription expires in {days_remaining} {day_word} ({salon_name})",
+        "html": html_content,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            if response.status_code in (200, 201):
+                return True, None
+            return False, _parse_resend_error(response)
+    except Exception as exc:
+        logger.error("Failed to send subscription expiry email: %s", exc)
+        return False, f"Email service unavailable: {exc}"
+
+
 async def send_invitation_email(
     to_email: str,
     salon_name: str,

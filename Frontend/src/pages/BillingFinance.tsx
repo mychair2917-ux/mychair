@@ -2,29 +2,18 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertCircle,
-  Banknote,
-  BarChart3,
-  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CreditCard,
-  Download,
   FileText,
-  Filter,
   IndianRupee,
-  MoreHorizontal,
-  PackageCheck,
-  Paperclip,
   Plus,
   Printer,
   ReceiptText,
   Search,
   Send,
   Sparkles,
-  UploadCloud,
   Users,
-  Wallet,
   X,
 } from 'lucide-react';
 
@@ -57,33 +46,7 @@ interface StatCardItem {
   icon: React.ElementType;
 }
 
-interface Column<T> {
-  key: keyof T | string;
-  header: string;
-  align?: 'left' | 'right' | 'center';
-  render?: (row: T) => React.ReactNode;
-  className?: string;
-}
 
-interface PurchaseRow {
-  id: string;
-  vendor: string;
-  products: string;
-  qty: string;
-  amount: string;
-  status: StatusTone;
-  due: string;
-}
-
-interface PaymentRow {
-  id: string;
-  invoice: string;
-  customer: string;
-  method: string;
-  amount: string;
-  status: StatusTone;
-  date: string;
-}
 
 const sectionItems: Array<{ key: SectionKey; label: string; description: string; icon: React.ElementType }> = [
   { key: 'bills', label: 'Bills', description: 'Invoices and refunds', icon: ReceiptText },
@@ -114,66 +77,6 @@ const tabsBySection: Record<SectionKey, TabItem[]> = {
   ],
 
 };
-
-const purchases: PurchaseRow[] = [
-  {
-    id: 'PO-8841',
-    vendor: 'Luxe Beauty Supply',
-    products: 'Color tubes, developer',
-    qty: '86 units',
-    amount: '₹48,600',
-    status: 'pending',
-    due: '05 Jun',
-  },
-  {
-    id: 'PO-8840',
-    vendor: 'Olaplex Partner',
-    products: 'Treatment kits',
-    qty: '24 units',
-    amount: '₹72,400',
-    status: 'paid',
-    due: 'Paid',
-  },
-  {
-    id: 'PO-8839',
-    vendor: 'Spa Essentials',
-    products: 'Towels, oils',
-    qty: '120 units',
-    amount: '₹21,300',
-    status: 'processing',
-    due: '08 Jun',
-  },
-];
-
-const payments: PaymentRow[] = [
-  {
-    id: 'PAY-5601',
-    invoice: 'INV-2408',
-    customer: 'Aarohi Mehta',
-    method: 'UPI',
-    amount: '₹6,800',
-    status: 'paid',
-    date: '02 Jun 2026',
-  },
-  {
-    id: 'PAY-5600',
-    invoice: 'INV-2407',
-    customer: 'Riya Kapoor',
-    method: 'Split',
-    amount: '₹5,000 / ₹9,400',
-    status: 'partial',
-    date: '02 Jun 2026',
-  },
-  {
-    id: 'PAY-5599',
-    invoice: 'INV-2406',
-    customer: 'Maya Shah',
-    method: 'Cash',
-    amount: '₹12,500',
-    status: 'pending',
-    date: '01 Jun 2026',
-  },
-];
 
 const statusStyles: Record<StatusTone, string> = {
   paid: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
@@ -287,179 +190,69 @@ const StatusBadge: React.FC<{ status: StatusTone; label?: string }> = ({ status,
   </span>
 );
 
-const ActionDropdown: React.FC<{ actions: string[] }> = ({ actions }) => (
-  <div className="group relative flex justify-end">
-    <button className="rounded-xl p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700">
-      <MoreHorizontal className="h-4 w-4" />
-    </button>
-    <div className="invisible absolute right-0 top-9 z-20 min-w-36 translate-y-1 rounded-2xl border border-[var(--color-border-soft)] bg-white p-1 opacity-0 shadow-card transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
-      {actions.map((action) => (
-        <button
-          key={action}
-          type="button"
-          className={cn(
-            'flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold transition hover:bg-[var(--color-surface-bg)]',
-            action === 'Refund' || action === 'Cancel' || action === 'Reject'
-              ? 'text-red-600'
-              : 'text-[var(--color-text-primary)]'
-          )}
-        >
-          {action}
-        </button>
-      ))}
-    </div>
-  </div>
-);
 
-const SearchFilterBar: React.FC<{ compact?: boolean }> = ({ compact }) => (
-  <div className="flex flex-col gap-3 rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-3 shadow-soft xl:flex-row xl:items-center">
-    <div className="relative flex-1">
-      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-      <Input
-        className="!h-10 rounded-xl border-[var(--color-border-strong)] !pl-10"
-        placeholder="Search records..."
-      />
-    </div>
-    <div className="grid gap-2 sm:grid-cols-3 xl:flex">
-      <Select
-        className="!h-10 rounded-xl border-[var(--color-border-strong)]"
-        value=""
-        onChange={() => undefined}
-        placeholder="Status"
-        options={[
-          { value: 'paid', label: 'Paid' },
-          { value: 'pending', label: 'Pending' },
-          { value: 'partial', label: 'Partial' },
-          { value: 'refunded', label: 'Refunded' },
-        ]}
-      />
-      <Input className="!h-10 rounded-xl border-[var(--color-border-strong)]" type="date" />
-      <Button variant="secondary" className="h-10 rounded-xl" icon={<Filter className="h-4 w-4" />}>
-        {compact ? 'Filters' : 'More Filters'}
-      </Button>
-    </div>
-  </div>
-);
 
-function DataTable<T extends object>({
-  columns,
-  data,
-  actions,
-}: {
-  columns: Column<T>[];
-  data: T[];
-  actions: string[];
-}) {
-  return (
-    <div className="overflow-hidden rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white shadow-soft">
-      <div className="custom-scrollbar overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              {columns.map((column) => (
-                <th
-                  key={String(column.key)}
-                  className={cn(
-                    'whitespace-nowrap px-4 py-3 font-bold',
-                    column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',
-                    column.className
-                  )}
-                >
-                  {column.header}
-                </th>
-              ))}
-              <th className="sticky right-0 bg-[var(--color-surface-bg)] px-4 py-3 text-right font-bold">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-border-soft)]">
-            {data.map((row, rowIndex) => (
-              <tr key={rowIndex} className="transition hover:bg-[var(--color-surface-bg)]/70">
-                {columns.map((column) => (
-                  <td
-                    key={String(column.key)}
-                    className={cn(
-                      'whitespace-nowrap px-4 py-4 text-[var(--color-text-secondary)]',
-                      column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',
-                      column.className
-                    )}
-                  >
-                    {column.render ? column.render(row) : String(row[column.key as keyof T] ?? '-')}
-                  </td>
-                ))}
-                <td className="sticky right-0 bg-white px-4 py-4">
-                  <ActionDropdown actions={actions} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <TablePagination />
-    </div>
-  );
-}
 
-const TablePagination: React.FC = () => (
-  <div className="flex flex-col gap-3 border-t border-[var(--color-border-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-    <p className="text-xs text-gray-500">Showing 1–4 of 42 records</p>
-    <div className="flex items-center gap-1">
-      <button className="rounded-lg p-2 text-gray-400 hover:bg-gray-100">
-        <ChevronLeft className="h-4 w-4" />
-      </button>
-      {[1, 2, 3].map((page) => (
-        <button
-          key={page}
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold transition',
-            page === 1 ? 'bg-[var(--color-brand-gold)] text-white' : 'text-gray-500 hover:bg-gray-100'
-          )}
-        >
-          {page}
-        </button>
-      ))}
-      <button className="rounded-lg p-2 text-gray-400 hover:bg-gray-100">
-        <ChevronRight className="h-4 w-4" />
-      </button>
-    </div>
-  </div>
-);
+// function DataTable<T extends object>({
+//   columns,
+//   data,
+//   actions,
+// }: {
+//   columns: Column<T>[];
+//   data: T[];
+//   actions: string[];
+// }) {
+//   return (
+//     <div className="overflow-hidden rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white shadow-soft">
+//       <div className="custom-scrollbar overflow-x-auto">
+//         <table className="min-w-full text-sm">
+//           <thead className="sticky top-0 z-10 bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
+//             <tr>
+//               {columns.map((column) => (
+//                 <th
+//                   key={String(column.key)}
+//                   className={cn(
+//                     'whitespace-nowrap px-4 py-3 font-bold',
+//                     column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',
+//                     column.className
+//                   )}
+//                 >
+//                   {column.header}
+//                 </th>
+//               ))}
+//               <th className="sticky right-0 bg-[var(--color-surface-bg)] px-4 py-3 text-right font-bold">
+//                 Actions
+//               </th>
+//             </tr>
+//           </thead>
+//           <tbody className="divide-y divide-[var(--color-border-soft)]">
+//             {data.map((row, rowIndex) => (
+//               <tr key={rowIndex} className="transition hover:bg-[var(--color-surface-bg)]/70">
+//                 {columns.map((column) => (
+//                   <td
+//                     key={String(column.key)}
+//                     className={cn(
+//                       'whitespace-nowrap px-4 py-4 text-[var(--color-text-secondary)]',
+//                       column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',
+//                       column.className
+//                     )}
+//                   >
+//                     {column.render ? column.render(row) : String(row[column.key as keyof T] ?? '-')}
+//                   </td>
+//                 ))}
+//                 <td className="sticky right-0 bg-white px-4 py-4">
+//                   <ActionDropdown actions={actions} />
+//                 </td>
+//               </tr>
+//             ))}
+//           </tbody>
+//         </table>
+//       </div>
+//       <TablePagination />
+//     </div>
+//   );
+// }
 
-const AmountCard: React.FC<{ label: string; value: string; icon: React.ElementType; tone: string }> = ({
-  label,
-  value,
-  icon: Icon,
-  tone,
-}) => (
-  <div className="rounded-2xl border border-[var(--color-border-soft)] bg-white p-4 shadow-soft">
-    <div className="flex items-center justify-between">
-      <span className="text-sm font-semibold text-gray-500">{label}</span>
-      <span className={cn('rounded-xl p-2', tone)}>
-        <Icon className="h-4 w-4" />
-      </span>
-    </div>
-    <p className="mt-3 text-2xl font-bold text-[var(--color-text-primary)]">{value}</p>
-  </div>
-);
-
-const EmptyState: React.FC<{ title: string; description: string }> = ({ title, description }) => (
-  <div className="rounded-[1.5rem] border border-dashed border-[var(--color-border-strong)] bg-white p-8 text-center shadow-soft">
-    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-brand-gold-light)]/20 text-[var(--color-brand-gold-dark)]">
-      <FileText className="h-5 w-5" />
-    </div>
-    <h3 className="mt-4 text-base font-bold text-[var(--color-text-primary)]">{title}</h3>
-    <p className="mx-auto mt-1 max-w-md text-sm text-[var(--color-text-secondary)]">{description}</p>
-  </div>
-);
-
-const UploadBox: React.FC = () => (
-  <div className="rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] p-6 text-center">
-    <UploadCloud className="mx-auto h-8 w-8 text-[var(--color-brand-gold-dark)]" />
-    <p className="mt-3 text-sm font-semibold text-[var(--color-text-primary)]">Upload receipt</p>
-    <p className="mt-1 text-xs text-gray-500">PDF, PNG, JPG up to 5 MB</p>
-  </div>
-);
 
 const SideDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
   if (!open) return null;
@@ -529,9 +322,21 @@ const paymentStatusLabel: Record<string, string> = {
   PARTIALLY_PAID: 'Partially Paid',
 };
 
+const whatsappStatusTone: Record<string, StatusTone> = {
+  sent: 'approved',
+  failed: 'danger',
+  pending: 'pending',
+};
+
+const whatsappStatusLabel: Record<string, string> = {
+  sent: 'Sent',
+  failed: 'Failed',
+  pending: 'Pending',
+};
+
 const BillsSkeletonRow: React.FC = () => (
   <tr>
-    {Array.from({ length: 11 }).map((_, i) => (
+    {Array.from({ length: 12 }).map((_, i) => (
       <td key={i} className="px-4 py-4">
         <div className="h-4 animate-pulse rounded bg-gray-200" />
       </td>
@@ -836,6 +641,7 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
                 <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Staff</th>
                 <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Method</th>
                 <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Status</th>
+                <th className="whitespace-nowrap px-4 py-3 text-left font-bold">WhatsApp</th>
                 <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Total</th>
                 <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Paid</th>
                 <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Remaining</th>
@@ -850,19 +656,19 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
                 Array.from({ length: 6 }).map((_, i) => <BillsSkeletonRow key={i} />)
               ) : isError ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-red-500">
+                  <td colSpan={12} className="px-4 py-12 text-center text-sm text-red-500">
                     Failed to load bills. Please try again.
                   </td>
                 </tr>
               ) : !salonId ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-amber-700">
+                  <td colSpan={12} className="px-4 py-12 text-center text-sm text-amber-700">
                     Select a salon to view bills.
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-16 text-center">
+                  <td colSpan={12} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <ReceiptText className="h-10 w-10 text-gray-300" />
                       <p className="text-sm font-medium text-gray-500">No bills found</p>
@@ -875,6 +681,8 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
               ) : (
                 items.map((bill) => {
                   const statusTone = paymentStatusTone[bill.payment_status] ?? 'neutral';
+                  const whatsappStatus = bill.whatsapp_status || 'pending';
+                  const whatsappTone = whatsappStatusTone[whatsappStatus] ?? 'neutral';
                   return (
                     <tr
                       key={bill.id}
@@ -904,6 +712,12 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
                         <StatusBadge
                           status={statusTone}
                           label={paymentStatusLabel[bill.payment_status] ?? bill.payment_status}
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <StatusBadge
+                          status={whatsappTone}
+                          label={whatsappStatusLabel[whatsappStatus] ?? whatsappStatus}
                         />
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
@@ -999,143 +813,6 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
   );
 };
 
-const PurchasingSection: React.FC<{ activeTab: string }> = ({ activeTab }) => {
-  const columns: Column<PurchaseRow>[] = [
-    { key: 'id', header: 'Purchase ID', render: (row) => <span className="font-mono text-xs font-bold text-gray-900">{row.id}</span> },
-    { key: 'vendor', header: 'Vendor', render: (row) => <CustomerCell name={row.vendor} subtitle="Verified supplier" /> },
-    { key: 'products', header: 'Products' },
-    { key: 'qty', header: 'Quantity' },
-    { key: 'amount', header: 'Amount', align: 'right', render: (row) => <b className="text-gray-900">{row.amount}</b> },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-    { key: 'due', header: 'Due Date' },
-  ];
-
-  if (activeTab === 'vendors') {
-    return (
-      <div className="grid gap-4 lg:grid-cols-3">
-        {purchases.map((purchase) => (
-          <div key={purchase.id} className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
-            <div className="flex items-center justify-between">
-              <Building2 className="h-8 w-8 text-[var(--color-brand-gold-dark)]" />
-              <StatusBadge status={purchase.status} />
-            </div>
-            <h3 className="mt-4 text-lg font-bold text-[var(--color-text-primary)]">{purchase.vendor}</h3>
-            <p className="mt-1 text-sm text-gray-500">+91 98765 43210 · billing@vendor.com</p>
-            <div className="mt-4 rounded-2xl bg-[var(--color-surface-bg)] p-3">
-              <p className="text-xs text-gray-500">Due amount</p>
-              <p className="text-xl font-bold text-gray-900">{purchase.status === 'paid' ? '₹0' : purchase.amount}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <SectionStack>
-      <SearchFilterBar />
-      <DataTable
-        columns={columns}
-        data={purchases}
-        actions={activeTab === 'history' ? ['Download Invoice', 'View'] : ['View', 'Payment', 'Download Invoice']}
-      />
-    </SectionStack>
-  );
-};
-
-const PaymentsSection: React.FC = () => {
-  const columns: Column<PaymentRow>[] = [
-    { key: 'id', header: 'Payment ID', render: (row) => <span className="font-mono text-xs font-bold text-gray-900">{row.id}</span> },
-    { key: 'invoice', header: 'Invoice' },
-    { key: 'customer', header: 'Customer', render: (row) => <CustomerCell name={row.customer} /> },
-    { key: 'method', header: 'Method' },
-    { key: 'amount', header: 'Amount', align: 'right', render: (row) => <b className="text-gray-900">{row.amount}</b> },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-    { key: 'date', header: 'Date' },
-  ];
-
-  return (
-    <SectionStack>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <AmountCard label="Cash" value={formatCurrency(284000)} icon={Banknote} tone="bg-emerald-50 text-emerald-700" />
-        <AmountCard label="UPI" value={formatCurrency(542000)} icon={Wallet} tone="bg-blue-50 text-blue-700" />
-        <AmountCard label="Card" value={formatCurrency(318000)} icon={CreditCard} tone="bg-violet-50 text-violet-700" />
-        <AmountCard label="Wallet" value={formatCurrency(74800)} icon={IndianRupee} tone="bg-amber-50 text-amber-700" />
-      </div>
-      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
-        <DataTable columns={columns} data={payments} actions={['Payment Detail', 'Collect Payment', 'Print']} />
-        <div className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
-          <h3 className="font-bold text-[var(--color-text-primary)]">Split payment</h3>
-          <p className="mt-1 text-sm text-gray-500">Collect mixed tender payments without leaving the desk.</p>
-          <div className="mt-4 space-y-3">
-            <FormInput label="Cash" placeholder="₹2,000" />
-            <FormInput label="UPI" placeholder="₹3,000" />
-            <FormInput label="Card" placeholder="₹4,400" />
-            <Button fullWidth className="rounded-2xl" icon={<CheckCircle2 className="h-4 w-4" />}>
-              Collect Payment
-            </Button>
-          </div>
-        </div>
-      </div>
-    </SectionStack>
-  );
-};
-
-const ReportsSection: React.FC<{ activeTab: string }> = ({ activeTab }) => (
-  <SectionStack>
-    <SummaryCards
-      items={[
-        { label: 'Revenue', value: formatCurrency(1842000), helper: 'Sales reports', tone: 'bg-emerald-50 text-emerald-700', icon: IndianRupee },
-        { label: 'Expenses', value: formatCurrency(618000), helper: 'Expense reports', tone: 'bg-red-50 text-red-700', icon: FileText },
-        { label: 'Payroll', value: formatCurrency(920000), helper: 'Salary + incentives', tone: 'bg-blue-50 text-blue-700', icon: Users },
-        { label: 'Net Profit', value: formatCurrency(304000), helper: 'Profit reports', tone: 'bg-violet-50 text-violet-700', icon: BarChart3 },
-      ]}
-    />
-    <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
-      <div className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-[var(--color-text-primary)]">
-              {activeTab === 'profit' ? 'Revenue vs expenses' : 'Monthly performance'}
-            </h3>
-            <p className="text-sm text-gray-500">Clean visual reporting for salon owners.</p>
-          </div>
-          <Button variant="secondary" size="sm" className="rounded-xl" icon={<Download className="h-4 w-4" />}>
-            Export
-          </Button>
-        </div>
-        <div className="mt-6 flex h-64 items-end gap-3 rounded-2xl bg-[var(--color-surface-bg)] p-4">
-          {[42, 58, 46, 74, 66, 88, 72, 94].map((height, index) => (
-            <div key={index} className="flex flex-1 flex-col justify-end gap-2">
-              <div
-                className="rounded-t-2xl bg-gradient-to-t from-[var(--color-brand-gold)] to-[var(--color-brand-gold-light)]"
-                style={{ height: `${height}%` }}
-              />
-              <span className="text-center text-[10px] font-semibold text-gray-400">
-                {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'][index]}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-4">
-        {(activeTab === 'sales' ? ['Top services', 'Top staff', 'Retail product sales'] : activeTab === 'expenses' ? ['Category spend', 'Monthly comparison', 'Approval delays'] : activeTab === 'payroll' ? ['Salary totals', 'Incentive totals', 'Deductions'] : ['Gross margin', 'Net profit', 'Cash flow']).map((item, index) => (
-          <div key={item} className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-4 shadow-soft">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-bold text-[var(--color-text-primary)]">{item}</p>
-                <p className="text-sm text-gray-500">{index + 1} insight ready for review</p>
-              </div>
-              <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
-                +{8 + index * 3}%
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </SectionStack>
-);
 
 const CustomerCell: React.FC<{ name: string; subtitle?: string }> = ({ name, subtitle }) => (
   <div className="flex items-center gap-3">

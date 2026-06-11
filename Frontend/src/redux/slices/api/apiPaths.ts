@@ -111,6 +111,16 @@ export const API_PATHS = {
     MANUAL_UPDATE: '/attendance/manual-update',
     BRANCH_LOCATION: '/attendance/branch-location',
   },
+  SUBSCRIPTIONS: {
+    DASHBOARD: '/subscriptions/dashboard',
+    LIST: '/subscriptions',
+    DEFAULT_DAYS: '/subscriptions/settings/default-days',
+    PLANS: '/subscriptions/plans',
+    ME: '/subscriptions/me',
+    ME_STATUS: '/subscriptions/me/status',
+    DETAIL: (id: string) => `/subscriptions/${id}`,
+  },
+  AUTH_REFRESH: '/auth/refresh',
   CUSTOMER_ANALYTICS: {
     OVERVIEW: '/customer-analytics/overview',
     CUSTOMERS: '/customers',

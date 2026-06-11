@@ -1,4 +1,4 @@
-# Discover UI
+# MyChair UI
 
 A modern web application built with React 19, TypeScript, and Tailwind CSS.
 
@@ -25,7 +25,6 @@ A modern web application built with React 19, TypeScript, and Tailwind CSS.
 
 ```bash
 git clone <repository-url>
-cd discover-ui
 ```
 
 2. Install dependencies:

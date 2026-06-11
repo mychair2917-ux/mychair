@@ -17,9 +17,12 @@ class TestRbacConfig:
     def test_super_admin_has_all_modules(self):
         assert can_access_module("super_admin", Module.SUBSCRIPTION_MANAGEMENT)
 
-    def test_salon_owner_no_subscription(self):
-        assert not can_access_module("salon_owner", Module.SUBSCRIPTION_MANAGEMENT)
+    def test_salon_owner_has_subscription(self):
+        assert can_access_module("salon_owner", Module.SUBSCRIPTION_MANAGEMENT)
         assert can_access_module("salon_owner", Module.SALON_MANAGEMENT)
+
+    def test_salon_manager_no_subscription(self):
+        assert not can_access_module("salon_manager", Module.SUBSCRIPTION_MANAGEMENT)
 
     def test_salon_manager_limited_modules(self):
         assert can_access_module("salon_manager", Module.INVITE)

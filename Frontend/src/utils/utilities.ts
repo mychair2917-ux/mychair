@@ -1,9 +1,44 @@
 import moment from 'moment-timezone';
 
-import { MainOption, NestedOption } from '../components/common/CommentsPanel/NestedDropdown/types';
-import { Chips } from '../components/common/Filter/Types';
-import { CommentsApiResponse, DashboardQueryParams } from '../redux/slices/dashboard/Types';
-import { SentimentQueryParams } from '../redux/slices/sentiment/Types';
+export interface MainOption {
+  id: string;
+  label: string;
+  dataType?: string;
+  hasNested?: boolean;
+  nested?: NestedOption[];
+}
+
+export interface NestedOption {
+  id: string;
+  label: string;
+  dataType?: string;
+}
+
+export interface Chips {
+  id: string;
+  label: string;
+}
+
+export interface CommentsApiResponse {
+  default: Array<{
+    columnKey: string;
+    column: string;
+    dataType?: string;
+  }>;
+  others: Array<{
+    columnKey: string;
+    column: string;
+    dataType?: string;
+  }>;
+}
+
+export interface DashboardQueryParams {
+  [key: string]: any;
+}
+
+export interface SentimentQueryParams {
+  [key: string]: any;
+}
 
 /**
 Converts a UTC timestamp to the user's local timezone with flexible formatting options.
@@ -728,7 +763,7 @@ export function formatPercent(num: number, decimals: number = 2): string {
 export function transformData(data: CommentsApiResponse): MainOption[] {
   const item: MainOption[] = [];
   const expandedOptions: NestedOption[] = [];
-  data?.default.map((singleOption) => {
+  data?.default.map((singleOption: any) => {
     const newItem: MainOption = {
       id: singleOption.columnKey,
       label: singleOption.column,
@@ -737,7 +772,7 @@ export function transformData(data: CommentsApiResponse): MainOption[] {
     };
     item.push(newItem);
   });
-  data?.others.map((expandItem) => {
+  data?.others.map((expandItem: any) => {
     const newItem: NestedOption = {
       id: expandItem.columnKey,
       label: expandItem.column,

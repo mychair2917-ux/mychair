@@ -37,6 +37,7 @@ export interface BillListItem {
   items: BillItem[];
   created_at?: string | null;
   finalized_at?: string | null;
+  whatsapp_status?: 'sent' | 'failed' | 'pending' | string;
 }
 
 export interface BillListParams {

@@ -1,5 +1,11 @@
-import { WebSocketNotificationResponse } from '../hooks/useNotificationWebSocket/notificationTypes';
 import { WS_BASE_URL } from './config';
+
+export interface WebSocketNotificationResponse {
+  id?: string;
+  type?: string;
+  message?: string;
+  payload?: any;
+}
 
 type WebSocketCallback = (data: WebSocketNotificationResponse) => void;
 type WebSocketErrorCallback = (error: Event) => void;

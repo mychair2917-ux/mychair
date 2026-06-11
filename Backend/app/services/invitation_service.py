@@ -5,9 +5,12 @@ from typing import Optional, Tuple
 
 from app.constants.invitation_options import (
     SALON_TYPES,
-    SUBSCRIPTION_PLANS,
     VALID_SALON_TYPE_VALUES,
+)
+from app.constants.subscription_options import (
+    SUBSCRIPTION_PLANS,
     VALID_SUBSCRIPTION_PLAN_VALUES,
+    normalize_plan_name,
 )
 from app.core.config import settings
 from app.core.security import get_password_hash
@@ -17,6 +20,7 @@ from app.models.salon import Salon
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.email_service import send_invitation_email
+from app.services.subscription_service import SubscriptionService
 from app.utils.timezone import now_utc, make_aware
 
 
@@ -24,6 +28,9 @@ class InvitationService:
     """Business logic for salon owner invitation lifecycle."""
 
     SALON_OWNER_ROLE = "salon_owner"
+
+    def __init__(self) -> None:
+        self._subscription_service = SubscriptionService()
 
     @staticmethod
     def get_form_options() -> dict:
@@ -188,7 +195,7 @@ class InvitationService:
         """
         salon_name = " ".join((salon_name or "").strip().split())
         salon_type = salon_type.strip().lower()
-        subscription_plan = subscription_plan.strip().upper()
+        subscription_plan = normalize_plan_name(subscription_plan)
 
         field_errors: dict = {}
         if not salon_name:
@@ -289,22 +296,12 @@ class InvitationService:
         )
         await invitation.insert()
 
-        plan_amounts = {
-            "FREE": 0.0,
-            "BASIC": 29.0,
-            "PREMIUM": 79.0,
-            "ENTERPRISE": 199.0,
-        }
-        subscription_end = now_utc() + timedelta(days=30)
-        await Subscription(
+        await self._subscription_service.create_for_salon(
             tenant_id=tenant_id,
+            salon_id=str(salon_branch.id),
             plan_name=subscription_plan,
-            status="ACTIVE",
-            amount=plan_amounts.get(subscription_plan, 0.0),
-            start_date=now_utc(),
-            end_date=subscription_end,
-            next_billing_date=subscription_end,
-        ).insert()
+            created_by=owner_id,
+        )
 
         return {
             "salon_id": tenant_id,

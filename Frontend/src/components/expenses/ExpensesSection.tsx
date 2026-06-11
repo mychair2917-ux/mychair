@@ -10,7 +10,6 @@ import {
   Search,
   Trash2,
   UploadCloud,
-  X,
 } from 'lucide-react';
 
 import { Button, Input, Select } from '../common';

@@ -84,6 +84,7 @@ export interface AppointmentListItem {
   payment_type?: string | null;
   payment_status: string;
   paid_amount: number;
+  whatsapp_status?: 'sent' | 'failed' | 'pending' | string;
   services: AppointmentServiceSnapshot[];
   products: AppointmentProductSnapshot[];
   billing_details?: AppointmentBillingDetails;
