@@ -1,25 +1,46 @@
+import logging
+
 from arq.connections import RedisSettings
-from app.core.config import settings
-from app.workers.tasks import send_notification_task, process_appointment_booked_workflow
+
+from app.core.config import Settings, settings
+from app.workers.tasks import process_appointment_booked_workflow, send_notification_task
+
+logger = logging.getLogger("worker")
+
 
 async def startup(ctx) -> None:
     """Triggered when background worker starts up."""
-    from app.db.connection import init_db
-    await init_db()
+    logger.info("Worker starting...")
+    logger.info("Environment: %s", settings.ENV)
+    logger.info("JWT fingerprint: %s", Settings.secret_fingerprint(settings.SECRET_KEY))
+    logger.info("Redis URI: %s", Settings.mask_uri(settings.REDIS_URI))
+
+    from app.db.connection import init_db, is_db_initialized
+
+    if not is_db_initialized():
+        logger.info("Connecting to MongoDB...")
+        await init_db()
+        logger.info("Mongo connected")
+    else:
+        logger.info("MongoDB already initialized")
+
+    logger.info("Worker started OK")
+
 
 async def shutdown(ctx) -> None:
     """Triggered when worker terminates."""
-    pass
+    logger.info("Worker shutting down...")
+
 
 class WorkerSettings:
     """ARQ Worker execution parameters configuration."""
+
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URI)
-    
-    # Register tasks
+
     functions = [
         send_notification_task,
-        process_appointment_booked_workflow
+        process_appointment_booked_workflow,
     ]
-    
+
     on_startup = startup
     on_shutdown = shutdown
