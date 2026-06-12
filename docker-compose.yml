@@ -25,12 +25,14 @@ services:
     env_file:
       - ./Backend/.env
     environment:
+      - ENV=development
       - MONGODB_URI=mongodb://mongodb:27017
       - MONGODB_DB_NAME=Mychair
       - REDIS_URI=redis://redis:6379/0
       - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
-      - RESEND_API_KEY=${RESEND_API_KEY:-re_8i9vR9LA_3nPaLPHApEa2nqfyHqD7s5du}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8082}
+      - BACKEND_CORS_ORIGINS=["http://localhost:5173","http://localhost:8082","https://mychair-one.vercel.app"]
       - EMAIL_FROM=${EMAIL_FROM:-MyChair <onboarding@resend.dev>}
       - RESEND_TEST_EMAIL=${RESEND_TEST_EMAIL:-my.chair2917@gmail.com}
       - INVITATION_TOKEN_EXPIRE_HOURS=72
@@ -47,11 +49,13 @@ services:
       context: ./Backend
       dockerfile: Dockerfile
     container_name: mychair_worker
-    command: arq app.workers.arq_worker.WorkerSettings
+    command: python -m app.workers.run_worker
     environment:
+      - ENV=development
       - MONGODB_URI=mongodb://mongodb:27017
       - MONGODB_DB_NAME=Mychair
       - REDIS_URI=redis://redis:6379/0
+      - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
     depends_on:
       - mongodb
       - redis
@@ -71,7 +75,7 @@ services:
       - mychair_network
 
   redis:
-    image: redis:7.0-alpine
+    image: redis:alpine
     container_name: mychair_redis
     ports:
       - "6379:6379"

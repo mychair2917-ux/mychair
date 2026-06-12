@@ -58,7 +58,7 @@ def uses_direct_password_provisioning(actor_role: str, target_role: str) -> bool
     """
     if target_role not in ROLES_DIRECT_PASSWORD_SETUP:
         return False
-    return actor_role in {"super_admin", *TENANT_INVITER_ROLES}
+    return actor_role in TENANT_INVITER_ROLES
 
 
 def resolve_tenant_id_for_invite(

@@ -21,7 +21,7 @@ class AuthLoginService:
 
         candidates = await User.find(
             {"email": {"$regex": f"^{re.escape(normalized_email)}$", "$options": "i"}},
-            User.is_deleted == False,
+            {"is_deleted": False},
         ).to_list()
 
         if not candidates:

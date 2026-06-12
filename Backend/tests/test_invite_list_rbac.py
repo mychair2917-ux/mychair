@@ -29,12 +29,14 @@ class TestListInvitesScope:
         service = InviteService()
 
         mock_find = MagicMock()
-        mock_find.sort.return_value.to_list = AsyncMock(return_value=[])
+        mock_find.count = AsyncMock(return_value=0)
+        mock_find.sort.return_value.skip.return_value.limit.return_value.to_list = AsyncMock(return_value=[])
 
         with patch("app.services.invite_service.Invite.find", return_value=mock_find) as find_mock:
             await service.list_invites(actor)
 
-        find_mock.assert_called_once_with(
+        assert find_mock.call_count == 2
+        find_mock.assert_any_call(
             {
                 "role": {"$in": [ROLE_EMPLOYEE]},
                 "salon_id": "tenant-abc",
@@ -46,4 +48,4 @@ class TestListInvitesScope:
         actor = make_user("employee")
         service = InviteService()
         result = await service.list_invites(actor)
-        assert result == []
+        assert result == {"items": [], "total": 0, "page": 1, "limit": 20, "pages": 0}

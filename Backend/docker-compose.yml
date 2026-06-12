@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   api:
@@ -6,10 +6,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URI=mongodb+srv://pavan747803_db_user:CcCd4ZbrzVKQ6adi@my-chair.m4vrsb1.mongodb.net/?appName=My-Chair
-      - MONGODB_DB_NAME=my-chair
+      - ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=Mychair
       - REDIS_URI=redis://redis:6379/0
       - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
+      - BACKEND_CORS_ORIGINS=["http://localhost:5173","http://localhost:8082","https://mychair-one.vercel.app"]
     depends_on:
       - mongodb
       - redis
@@ -17,11 +19,13 @@ services:
 
   worker:
     build: .
-    command: arq app.workers.arq_worker.WorkerSettings
+    command: python -m app.workers.run_worker
     environment:
+      - ENV=development
       - MONGODB_URI=mongodb://mongodb:27017
-      - MONGODB_DB_NAME=salon_erp_prod
+      - MONGODB_DB_NAME=Mychair
       - REDIS_URI=redis://redis:6379/0
+      - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
     depends_on:
       - mongodb
       - redis
@@ -36,7 +40,7 @@ services:
     restart: always
 
   redis:
-    image: redis:7.0-alpine
+    image: redis:alpine
     ports:
       - "6379:6379"
     volumes:
