@@ -13,6 +13,7 @@ from app.models.salon import Salon
 from app.models.subscription import BillingHistoryEntry, Subscription
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.services.notifications import notification_service
 from app.services.system_settings_service import SystemSettingsService
 from app.utils.timezone import make_aware, now_utc
 
@@ -235,6 +236,9 @@ class SubscriptionService:
         if not subscription:
             return None, {"subscription": ["Subscription not found"]}
 
+        previous_plan = subscription.plan_name
+        previous_status = subscription.status
+        previous_amount = PLAN_AMOUNTS.get(previous_plan, subscription.amount)
         field_errors: dict = {}
         notes_parts: List[str] = []
 
@@ -314,11 +318,56 @@ class SubscriptionService:
 
         await subscription.save()
         await self.sync_tenant_subscription_fields(subscription.tenant_id, subscription)
+        await self._create_subscription_change_notification(
+            subscription,
+            previous_plan=previous_plan,
+            previous_status=previous_status,
+            previous_amount=previous_amount,
+        )
 
         tenant = await Tenant.get(subscription.tenant_id)
         salon_name = tenant.name if tenant else ""
         owner_email = tenant.owner_email if tenant else ""
         return self._serialize_subscription(subscription, salon_name, owner_email), None
+
+    async def _create_subscription_change_notification(
+        self,
+        subscription: Subscription,
+        *,
+        previous_plan: str,
+        previous_status: str,
+        previous_amount: float,
+    ) -> None:
+        current_amount = PLAN_AMOUNTS.get(subscription.plan_name, subscription.amount)
+        if subscription.plan_name != previous_plan:
+            event_type = "PLAN_UPGRADED" if current_amount > previous_amount else "PLAN_DOWNGRADED"
+            await notification_service.create_subscription_notification(
+                tenant_id=subscription.tenant_id,
+                salon_id=subscription.salon_id or subscription.tenant_id,
+                subscription_id=str(subscription.id),
+                event_type=event_type,
+                title="Plan upgraded" if event_type == "PLAN_UPGRADED" else "Plan downgraded",
+                message=f"Subscription plan changed from {plan_label(previous_plan)} to {plan_label(subscription.plan_name)}.",
+            )
+        if subscription.status != previous_status:
+            if subscription.status == "EXPIRED":
+                await notification_service.create_subscription_notification(
+                    tenant_id=subscription.tenant_id,
+                    salon_id=subscription.salon_id or subscription.tenant_id,
+                    subscription_id=str(subscription.id),
+                    event_type="SUBSCRIPTION_EXPIRED",
+                    title="Subscription expired",
+                    message="The salon subscription has expired.",
+                )
+            elif subscription.status == "ACTIVE" and previous_status in {"EXPIRED", "SUSPENDED"}:
+                await notification_service.create_subscription_notification(
+                    tenant_id=subscription.tenant_id,
+                    salon_id=subscription.salon_id or subscription.tenant_id,
+                    subscription_id=str(subscription.id),
+                    event_type="PAYMENT_SUCCESS",
+                    title="Payment successful",
+                    message="Subscription access is active again.",
+                )
 
     async def get_owner_subscription_view(self, tenant_id: str) -> Optional[dict]:
         subscription = await self.get_active_for_tenant(tenant_id)

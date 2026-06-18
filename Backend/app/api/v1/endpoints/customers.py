@@ -15,6 +15,7 @@ from app.models.billing import Invoice
 from app.models.appointment import Appointment
 from app.models.customer_reward_transaction import CustomerRewardTransaction
 from app.models.user import User
+from app.services.notifications import notification_service
 from app.utils.api_response import success_response, error_response
 from app.utils.timezone import now_utc
 from pydantic import BaseModel, EmailStr, Field
@@ -268,6 +269,22 @@ async def create_customer(
         tenant_id=tenant_id,
     )
     await customer.insert()
+    recipients = await notification_service._tenant_users_for_roles(
+        tenant_id,
+        tenant_id,
+        ["salon_owner", "salon_admin", "salon_manager"],
+    )
+    await notification_service.create_event_notifications(
+        tenant_id=tenant_id,
+        salon_id=tenant_id,
+        recipients=recipients,
+        title="New customer created",
+        body=f"{customer.full_name.strip()} was added as a customer.",
+        category="CUSTOMER",
+        notification_type="CUSTOMER_CREATED",
+        source_event="CUSTOMER_CREATED",
+        metadata={"customer_id": str(customer.id)},
+    )
     return success_response(
         "Customer created successfully", data=_customer_dict(customer), status_code=201
     )

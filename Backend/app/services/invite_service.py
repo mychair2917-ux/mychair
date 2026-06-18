@@ -29,6 +29,7 @@ from app.models.user import User
 from app.schemas.invitation import CreateInviteRequest
 from app.services.email_service import send_invitation_email, send_team_invitation_email
 from app.services.invitation_service import InvitationService
+from app.services.notifications import notification_service
 from app.utils.timezone import make_aware, now_utc
 
 RESEND_MAX = 5
@@ -265,6 +266,22 @@ class InviteService:
             **self._salary_fields(payload),
         )
         await user.insert()
+        recipients = await notification_service._tenant_users_for_roles(
+            tenant_id,
+            tenant_id,
+            ["salon_owner", "salon_admin", "salon_manager"],
+        )
+        await notification_service.create_event_notifications(
+            tenant_id=tenant_id,
+            salon_id=tenant_id,
+            recipients=recipients,
+            title="New staff account created",
+            body=f"{payload.full_name} was added as {ROLE_LABELS.get(payload.role, payload.role)}.",
+            category="STAFF",
+            notification_type="STAFF_CREATED",
+            source_event="STAFF_CREATED",
+            metadata={"user_id": str(user.id), "role": payload.role},
+        )
 
         now = now_utc()
         invite = Invite(
@@ -625,6 +642,22 @@ class InviteService:
         user.is_active = True
         user.status = "ACTIVE"
         await user.save()
+        recipients = await notification_service._tenant_users_for_roles(
+            user.tenant_id,
+            user.tenant_id,
+            ["salon_owner", "salon_admin", "salon_manager"],
+        )
+        await notification_service.create_event_notifications(
+            tenant_id=user.tenant_id,
+            salon_id=user.tenant_id,
+            recipients=recipients,
+            title="New staff account activated",
+            body=f"{invite.full_name} activated their {ROLE_LABELS.get(user.role, user.role)} account.",
+            category="STAFF",
+            notification_type="STAFF_CREATED",
+            source_event="STAFF_CREATED",
+            metadata={"user_id": str(user.id), "invite_id": str(invite.id), "role": user.role},
+        )
 
         invite.status = "accepted"
         invite.accepted_at = now_utc()

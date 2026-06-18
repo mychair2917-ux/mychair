@@ -35,6 +35,7 @@ class Attendance(BaseTenantDocument):
     distance_from_branch: Optional[float] = Field(default=None)
 
     attendance_method: str = Field(default=ATTENDANCE_METHOD_LOCATION)
+    source: Optional[str] = Field(default=None, index=True)
     notes: Optional[str] = Field(default=None)
 
     class Settings:

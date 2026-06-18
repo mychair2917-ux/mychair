@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarCheck, CalendarX, Clock3, Palmtree, UserCheck } from 'lucide-react';
+import { CalendarCheck, CalendarX, Clock3, Palmtree, Plane, UserCheck } from 'lucide-react';
 
 import { AttendanceSummary } from '../../redux/slices/attendance/attendanceApi';
 import { CommonCard } from '../common';
@@ -13,13 +13,14 @@ const cards = [
   { key: 'present_count', label: 'Present', icon: UserCheck, tone: 'text-emerald-600 bg-emerald-50' },
   { key: 'late_count', label: 'Late', icon: Clock3, tone: 'text-amber-600 bg-amber-50' },
   { key: 'absent_count', label: 'Absent', icon: CalendarX, tone: 'text-rose-600 bg-rose-50' },
+  { key: 'leave_count', label: 'Leave', icon: Plane, tone: 'text-violet-600 bg-violet-50' },
   { key: 'week_off_count', label: 'Week Off', icon: Palmtree, tone: 'text-sky-600 bg-sky-50' },
 ] as const;
 
 const AttendanceSummaryCards: React.FC<AttendanceSummaryCardsProps> = ({ summary, loading }) => {
   if (loading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
           <div key={card.key} className="h-24 animate-pulse rounded-3xl bg-[var(--color-surface-muted)]" />
         ))}
@@ -29,7 +30,7 @@ const AttendanceSummaryCards: React.FC<AttendanceSummaryCardsProps> = ({ summary
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => {
           const Icon = card.icon;
           const value = summary?.[card.key] ?? 0;

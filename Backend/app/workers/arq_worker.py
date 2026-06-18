@@ -1,9 +1,10 @@
 import logging
 
 from arq.connections import RedisSettings
+from arq.cron import cron
 
 from app.core.config import Settings, settings
-from app.workers.tasks import process_appointment_booked_workflow, send_notification_task
+from app.workers.tasks import process_appointment_booked_workflow, process_scheduled_campaigns, send_notification_task
 
 logger = logging.getLogger("worker")
 
@@ -40,6 +41,11 @@ class WorkerSettings:
     functions = [
         send_notification_task,
         process_appointment_booked_workflow,
+        process_scheduled_campaigns,
+    ]
+
+    cron_jobs = [
+        cron(process_scheduled_campaigns, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
     ]
 
     on_startup = startup

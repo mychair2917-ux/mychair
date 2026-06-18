@@ -77,6 +77,7 @@ export interface AttendanceSummary {
   present_count: number;
   late_count: number;
   absent_count: number;
+  leave_count: number;
   week_off_count: number;
   half_day_count: number;
   total_records: number;

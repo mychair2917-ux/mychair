@@ -27,6 +27,7 @@ ALL_PERMISSION_KEYS: tuple[str, ...] = (
     Module.PRODUCTS_INVENTORY.value,
     Module.STAFF_MONITORING.value,
     Module.ATTENDANCE.value,
+    Module.LEAVE.value,
     Module.CUSTOMER_ANALYTICS.value,
     Module.NOTIFICATIONS_COMMUNICATION.value,
     Module.PROFILE.value,
@@ -42,6 +43,7 @@ PERMISSION_REGISTRY: List[Dict[str, Any]] = [
     {"key": Module.APPOINTMENTS.value, "label": "Appointments", "group": "Core"},
     {"key": Module.MY_EARNINGS.value, "label": "My Earnings", "group": "Core"},
     {"key": Module.ATTENDANCE.value, "label": "Attendance", "group": "Core"},
+    {"key": Module.LEAVE.value, "label": "Leave", "group": "Core"},
     {"key": Module.PROFILE.value, "label": "Profile", "group": "Core"},
     {"key": Module.SETTINGS.value, "label": "Settings", "group": "Core"},
     {

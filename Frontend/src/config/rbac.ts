@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LineChart,
   MailPlus,
+  Palmtree,
   Shield,
   Store,
   Users,
@@ -32,6 +33,7 @@ export const MODULES = {
   PRODUCTS_INVENTORY: 'products_inventory',
   STAFF_MONITORING: 'staff_monitoring',
   ATTENDANCE: 'attendance',
+  LEAVE: 'leave',
   CUSTOMER_ANALYTICS: 'customer_analytics',
   NOTIFICATIONS_COMMUNICATION: 'notifications_communication',
   PROFILE: 'profile',
@@ -75,9 +77,17 @@ const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
     MODULES.CUSTOMER_ANALYTICS,
     MODULES.NOTIFICATIONS_COMMUNICATION,
     MODULES.ATTENDANCE,
+    MODULES.LEAVE,
     MODULES.PROFILE,
   ],
-  [ROLES.EMPLOYEE]: [MODULES.DASHBOARD, MODULES.MY_EARNINGS, MODULES.ATTENDANCE, MODULES.PROFILE],
+  [ROLES.EMPLOYEE]: [
+    MODULES.DASHBOARD,
+    MODULES.MY_EARNINGS,
+    MODULES.ATTENDANCE,
+    MODULES.LEAVE,
+    MODULES.NOTIFICATIONS_COMMUNICATION,
+    MODULES.PROFILE,
+  ],
 };
 
 export function normalizeRole(role: string | undefined): string | undefined {
@@ -142,6 +152,19 @@ export function canAccessTenant(
   if (!routeOrgId) return true;
   if (isSuperAdmin(role)) return true;
   return Boolean(userTenantId && userTenantId === routeOrgId);
+}
+
+export function canApproveLeave(role: string | undefined): boolean {
+  const normalized = normalizeRole(role);
+  return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
+}
+
+export function resolveLeaveHistoryScope(role: string | undefined): 'my' | 'team' | 'salon' | 'all' {
+  const normalized = normalizeRole(role);
+  if (normalized === ROLES.SUPER_ADMIN) return 'all';
+  if (normalized === ROLES.SALON_OWNER || normalized === ROLES.SALON_ADMIN) return 'salon';
+  if (normalized === ROLES.SALON_MANAGER) return 'team';
+  return 'my';
 }
 
 export function showSalonBranchSelector(role: string | undefined): boolean {
@@ -280,6 +303,12 @@ export function getSidebarNavItems(
           icon: ClipboardCheck,
         },
         {
+          name: 'Leave',
+          module: MODULES.LEAVE,
+          path: `/${ROUTE_PATHS.ADMIN_LEAVE}`,
+          icon: Palmtree,
+        },
+        {
           name: 'Salon Management',
           module: MODULES.SALON_MANAGEMENT,
           icon: Store,
@@ -368,6 +397,12 @@ export function getSidebarNavItems(
             module: MODULES.ATTENDANCE,
             path: orgPath(orgId, ROUTE_PATHS.ATTENDANCE),
             icon: ClipboardCheck,
+          },
+          {
+            name: 'Leave',
+            module: MODULES.LEAVE,
+            path: orgPath(orgId, ROUTE_PATHS.LEAVE),
+            icon: Palmtree,
           },
           {
             name: 'Salon Management',
@@ -460,6 +495,7 @@ export const ORG_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.PRODUCTS_INVENTORY]: MODULES.PRODUCTS_INVENTORY,
   [ROUTE_PATHS.STAFF_MONITORING]: MODULES.STAFF_MONITORING,
   [ROUTE_PATHS.ATTENDANCE]: MODULES.ATTENDANCE,
+  [ROUTE_PATHS.LEAVE]: MODULES.LEAVE,
   [ROUTE_PATHS.CUSTOMER_ANALYTICS]: MODULES.CUSTOMER_ANALYTICS,
   [ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION]: MODULES.NOTIFICATIONS_COMMUNICATION,
 };
@@ -482,6 +518,7 @@ export const ADMIN_ROUTE_MODULE: Record<string, ModuleKey> = {
   [ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY]: MODULES.PRODUCTS_INVENTORY,
   [ROUTE_PATHS.ADMIN_STAFF_MONITORING]: MODULES.STAFF_MONITORING,
   [ROUTE_PATHS.ADMIN_ATTENDANCE]: MODULES.ATTENDANCE,
+  [ROUTE_PATHS.ADMIN_LEAVE]: MODULES.LEAVE,
   [ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS]: MODULES.CUSTOMER_ANALYTICS,
   [ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION]: MODULES.NOTIFICATIONS_COMMUNICATION,
 };

@@ -3,9 +3,11 @@ import logging
 from app.constants.subscription_options import EXPIRY_REMINDER_DAYS
 from app.models.subscription import Subscription
 from app.models.subscription_email_log import SubscriptionEmailLog
+from app.models.notification_communication import SubscriptionNotification
 from app.models.tenant import Tenant
 from app.constants.subscription_options import plan_label
 from app.services.email_service import send_subscription_expiry_email
+from app.services.notifications import notification_service
 from app.services.subscription_service import SubscriptionService
 from app.utils.timezone import now_utc
 
@@ -54,6 +56,23 @@ class SubscriptionExpiryService:
                     tenant_id=subscription.tenant_id,
                     days_before_expiry=days_remaining,
                 ).insert()
+                event_type = f"SUBSCRIPTION_EXPIRING_{days_remaining}_DAYS"
+                notification_exists = await SubscriptionNotification.find_one(
+                    {
+                        "subscription_id": str(subscription.id),
+                        "event_type": event_type,
+                        "is_deleted": False,
+                    }
+                )
+                if not notification_exists:
+                    await notification_service.create_subscription_notification(
+                        tenant_id=subscription.tenant_id,
+                        salon_id=subscription.tenant_id,
+                        subscription_id=str(subscription.id),
+                        event_type=event_type,
+                        title=f"Subscription expiring in {days_remaining} days",
+                        message=f"{tenant.name} subscription will expire in {days_remaining} days.",
+                    )
                 sent_count += 1
                 logger.info(
                     "Sent subscription expiry reminder (%s days) to tenant %s",

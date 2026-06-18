@@ -1,4 +1,4 @@
-from typing import Dict, List, Set
+from typing import Dict, Optional, Set
 from fastapi import WebSocket
 
 class WebSocketConnectionManager:
@@ -10,8 +10,15 @@ class WebSocketConnectionManager:
     def __init__(self) -> None:
         # Structure: { tenant_id: { salon_id: [websocket1, websocket2] } }
         self.active_connections: Dict[str, Dict[str, Set[WebSocket]]] = {}
+        self.user_connections: Dict[str, Dict[str, Dict[str, Set[WebSocket]]]] = {}
 
-    async def connect(self, websocket: WebSocket, tenant_id: str, salon_id: str) -> None:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        tenant_id: str,
+        salon_id: str,
+        user_id: Optional[str] = None,
+    ) -> None:
         """Accepts the websocket connection and registers it in the matching tenant/branch pool."""
         await websocket.accept()
         
@@ -22,8 +29,18 @@ class WebSocketConnectionManager:
             self.active_connections[tenant_id][salon_id] = set()
             
         self.active_connections[tenant_id][salon_id].add(websocket)
+        if user_id:
+            self.user_connections.setdefault(tenant_id, {}).setdefault(salon_id, {}).setdefault(
+                user_id, set()
+            ).add(websocket)
 
-    def disconnect(self, websocket: WebSocket, tenant_id: str, salon_id: str) -> None:
+    def disconnect(
+        self,
+        websocket: WebSocket,
+        tenant_id: str,
+        salon_id: str,
+        user_id: Optional[str] = None,
+    ) -> None:
         """Removes the connection safely from registry pools on socket termination."""
         if tenant_id in self.active_connections:
             if salon_id in self.active_connections[tenant_id]:
@@ -34,6 +51,16 @@ class WebSocketConnectionManager:
                     del self.active_connections[tenant_id][salon_id]
             if not self.active_connections[tenant_id]:
                 del self.active_connections[tenant_id]
+        if user_id and tenant_id in self.user_connections:
+            salon_connections = self.user_connections[tenant_id].get(salon_id)
+            if salon_connections and user_id in salon_connections:
+                salon_connections[user_id].discard(websocket)
+                if not salon_connections[user_id]:
+                    del salon_connections[user_id]
+                if not salon_connections:
+                    del self.user_connections[tenant_id][salon_id]
+                if not self.user_connections[tenant_id]:
+                    del self.user_connections[tenant_id]
 
     async def broadcast_to_salon(self, tenant_id: str, salon_id: str, message: dict) -> None:
         """Dispatches real-time broadcast payload to all receptionists/stylists in a single salon branch."""
@@ -55,6 +82,28 @@ class WebSocketConnectionManager:
         if tenant_id in self.active_connections:
             for salon_id in list(self.active_connections[tenant_id].keys()):
                 await self.broadcast_to_salon(tenant_id, salon_id, message)
+
+    async def broadcast_to_user(
+        self,
+        tenant_id: str,
+        salon_id: str,
+        user_id: str,
+        message: dict,
+    ) -> None:
+        """Dispatch a message to all browser sessions for one authenticated user."""
+        connections = (
+            self.user_connections.get(tenant_id, {})
+            .get(salon_id, {})
+            .get(user_id, set())
+        )
+        dead_sockets = set()
+        for connection in connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                dead_sockets.add(connection)
+        for dead in dead_sockets:
+            self.disconnect(dead, tenant_id, salon_id, user_id)
 
 # Single global manager instance for route importing
 manager = WebSocketConnectionManager()

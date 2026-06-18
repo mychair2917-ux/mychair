@@ -10,6 +10,7 @@ from app.models.appointment import Appointment
 from app.models.bill import Bill
 from app.models.billing import Invoice
 from app.models.customer_reward_transaction import CustomerRewardTransaction
+from app.models.notification_communication import CommunicationLog
 from app.models.whatsapp_message import WhatsAppMessageLog
 from app.services.invoice_pdf import InvoicePDFService
 from app.utils.timezone import now_utc
@@ -225,6 +226,13 @@ class WhatsAppService:
                         {"wamid": wamid, "is_deleted": False}
                     )
                     if not log:
+                        campaign_log = await CommunicationLog.find_one(
+                            {"provider_message_id": wamid, "channel": "WHATSAPP", "is_deleted": False}
+                        )
+                        if campaign_log:
+                            await self._update_campaign_whatsapp_log(campaign_log, status_value, status_item)
+                            updated += 1
+                            continue
                         logger.warning("No log found for wamid=%s status=%s", wamid, status_value)
                         continue
 
@@ -255,6 +263,44 @@ class WhatsAppService:
                         status_item.get("recipient_id"),
                     )
         return updated
+
+    async def _update_campaign_whatsapp_log(
+        self,
+        log: CommunicationLog,
+        status_value: str,
+        status_item: Dict[str, Any],
+    ) -> None:
+        now = now_utc()
+        if status_value == "failed":
+            log.status = "FAILED"
+            log.failed_at = now
+            errors = status_item.get("errors") or []
+            if errors:
+                log.error_message = str(errors[0])
+        elif status_value in {"delivered", "read"}:
+            log.status = "DELIVERED"
+            log.delivered_at = log.delivered_at or now
+        elif status_value == "sent":
+            log.status = "SENT"
+            log.sent_at = log.sent_at or now
+        await log.save()
+
+        if log.recipient_id:
+            from app.services.notifications import notification_service
+            await notification_service._refresh_recipient_status(log.recipient_id)
+        if log.campaign_id:
+            from app.models.notification_communication import CommunicationCampaign
+            campaign = await CommunicationCampaign.get(PydanticObjectId(log.campaign_id))
+            if campaign:
+                from app.services.notifications import notification_service
+                await notification_service._refresh_campaign_totals(campaign, completed=True)
+
+        logger.info(
+            "WhatsApp campaign delivery update wamid=%s status=%s recipient=%s",
+            log.provider_message_id,
+            status_value,
+            status_item.get("recipient_id"),
+        )
 
     async def _get_appointment(self, appointment_id: str) -> Optional[Appointment]:
         try:

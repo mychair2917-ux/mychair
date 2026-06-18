@@ -23,6 +23,7 @@ from app.constants.attendance_options import (
     ATTENDANCE_STATUS_ABSENT,
     ATTENDANCE_STATUS_HALF_DAY,
     ATTENDANCE_STATUS_LATE,
+    ATTENDANCE_STATUS_LEAVE,
     ATTENDANCE_STATUS_PRESENT,
     ATTENDANCE_STATUS_WEEK_OFF,
     DEFAULT_ATTENDANCE_RADIUS_METERS,
@@ -43,6 +44,7 @@ from app.models.salon import Salon
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.repositories.attendance import AttendanceRepository
+from app.services.leave import AttendanceReconciliationService, LeaveService
 from app.schemas.attendance import (
     AttendanceItem,
     AttendanceSummary,
@@ -69,6 +71,16 @@ class AttendanceService:
     def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
         self.repo = AttendanceRepository()
+        self.reconciliation_service = AttendanceReconciliationService()
+        self.leave_service = LeaveService()
+
+    async def _ensure_reconciled(
+        self, actor: User, salon_id: Optional[str] = None
+    ) -> None:
+        try:
+            await self.reconciliation_service.reconcile_for_actor(actor, salon_id=salon_id)
+        except Exception as exc:
+            self.logger.warning("Previous-day attendance reconciliation skipped: %s", exc)
 
     # ------------------------------------------------------------------ #
     # Scope helpers
@@ -375,6 +387,7 @@ class AttendanceService:
         self, actor: User, latitude: Optional[float], longitude: Optional[float]
     ) -> AttendanceItem:
         salon_id = self._resolve_salon_id(actor)
+        await self._ensure_reconciled(actor, salon_id=salon_id)
         today = self._today_date()
         staff_id = str(actor.id)
 
@@ -382,6 +395,12 @@ class AttendanceService:
             raise SalonERPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Today is your week off",
+            )
+
+        if await self.leave_service.has_approved_leave_on_date(salon_id, staff_id, today):
+            raise SalonERPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Today is an approved leave day",
             )
 
         existing = await self.repo.get_by_employee_and_date(salon_id, staff_id, today)
@@ -443,6 +462,7 @@ class AttendanceService:
     ) -> AttendanceItem:
         try:
             salon_id = self._resolve_salon_id(actor)
+            await self._ensure_reconciled(actor, salon_id=salon_id)
             today = self._today_date()
             staff_id = str(actor.id)
 
@@ -467,6 +487,7 @@ class AttendanceService:
             if record.total_work_minutes < HALF_DAY_THRESHOLD_MINUTES and record.status not in {
                 ATTENDANCE_STATUS_WEEK_OFF,
                 ATTENDANCE_STATUS_ABSENT,
+                ATTENDANCE_STATUS_LEAVE,
             }:
                 if record.total_work_minutes > 0:
                     record.status = ATTENDANCE_STATUS_HALF_DAY
@@ -503,6 +524,7 @@ class AttendanceService:
     # ------------------------------------------------------------------ #
     async def get_today_status(self, actor: User) -> TodayAttendanceStatus:
         salon_id = self._resolve_salon_id(actor)
+        await self._ensure_reconciled(actor, salon_id=salon_id)
         today = self._today_date()
         staff_id = str(actor.id)
 
@@ -511,9 +533,25 @@ class AttendanceService:
         )
         record = await self.repo.get_by_employee_and_date(salon_id, staff_id, today)
         is_week_off_today = is_week_off_day(actor.weekly_off or [], today)
+        on_approved_leave = await self.leave_service.has_approved_leave_on_date(
+            salon_id, staff_id, today
+        )
 
         is_checked_in = bool(record and record.clock_in)
         is_checked_out = bool(record and record.clock_out)
+
+        if on_approved_leave and not record:
+            return TodayAttendanceStatus(
+                attendance_date=today,
+                shift_timing=actor.shift or shift_start,
+                status=ATTENDANCE_STATUS_LEAVE,
+                can_check_in=False,
+                can_check_out=False,
+                is_checked_in=False,
+                is_checked_out=False,
+                location_required=False,
+                branch_configured=branch_lat is not None and branch_lon is not None,
+            )
 
         if is_week_off_today and not record:
             return TodayAttendanceStatus(
@@ -536,11 +574,11 @@ class AttendanceService:
             check_out_time=record.clock_out if record else None,
             total_work_minutes=record.total_work_minutes if record else 0,
             total_hours=record.working_hours if record else 0.0,
-            can_check_in=not is_checked_in and not is_week_off_today,
-            can_check_out=is_checked_in and not is_checked_out and not is_week_off_today,
+            can_check_in=not is_checked_in and not is_week_off_today and not on_approved_leave,
+            can_check_out=is_checked_in and not is_checked_out and not is_week_off_today and not on_approved_leave,
             is_checked_in=is_checked_in,
             is_checked_out=is_checked_out,
-            location_required=self._location_required(actor) and not is_week_off_today,
+            location_required=self._location_required(actor) and not is_week_off_today and not on_approved_leave,
             branch_configured=branch_lat is not None and branch_lon is not None,
         )
 
@@ -558,6 +596,8 @@ class AttendanceService:
                 summary.late_count += 1
             elif record.status == ATTENDANCE_STATUS_ABSENT:
                 summary.absent_count += 1
+            elif record.status == ATTENDANCE_STATUS_LEAVE:
+                summary.leave_count += 1
             elif record.status == ATTENDANCE_STATUS_WEEK_OFF:
                 summary.week_off_count += 1
             elif record.status == ATTENDANCE_STATUS_HALF_DAY:
@@ -574,6 +614,7 @@ class AttendanceService:
         branch_id: Optional[str] = None,
         salon_id: Optional[str] = None,
     ) -> AttendanceSummary:
+        await self._ensure_reconciled(actor, salon_id=salon_id)
         role = normalize_role(actor.role)
         filters: Dict[str, Any] = {"is_deleted": False}
 
@@ -654,6 +695,7 @@ class AttendanceService:
         employee_id: Optional[str] = None,
     ) -> PaginatedAttendance:
         salon_id = self._resolve_salon_id(actor)
+        await self._ensure_reconciled(actor, salon_id=salon_id)
         target_staff = employee_id or str(actor.id)
         if employee_id and normalize_role(actor.role) == ROLE_EMPLOYEE and employee_id != str(actor.id):
             raise PermissionDeniedException()
@@ -713,6 +755,7 @@ class AttendanceService:
             raise PermissionDeniedException()
 
         salon_id = self._resolve_salon_id(actor)
+        await self._ensure_reconciled(actor, salon_id=salon_id)
         filters: Dict[str, Any] = {"tenant_id": salon_id}
 
         if employee_id:
@@ -784,6 +827,7 @@ class AttendanceService:
         if normalize_role(actor.role) != ROLE_SUPER_ADMIN:
             raise PermissionDeniedException()
 
+        await self._ensure_reconciled(actor, salon_id=salon_id)
         filters: Dict[str, Any] = {"is_deleted": False}
         if salon_id:
             filters["tenant_id"] = salon_id

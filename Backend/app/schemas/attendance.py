@@ -92,6 +92,7 @@ class AttendanceSummary(BaseModel):
     present_count: int = 0
     late_count: int = 0
     absent_count: int = 0
+    leave_count: int = 0
     week_off_count: int = 0
     half_day_count: int = 0
     total_records: int = 0

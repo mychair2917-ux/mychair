@@ -17,8 +17,11 @@ import '../slices/customerAnalytics/customerAnalyticsApi';
 import '../slices/profile/profileApi';
 import '../slices/expenses/expensesApi';
 import '../slices/attendance/attendanceApi';
+import '../slices/leave/leaveApi';
 import '../slices/permissions/permissionsApi';
 import '../slices/subscriptions/subscriptionsApi';
+import '../slices/dashboard/dashboardApi';
+import '../slices/notifications/notificationsApi';
 
 export const store = configureStore({
   reducer: {

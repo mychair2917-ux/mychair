@@ -931,7 +931,7 @@ const Appointments: React.FC = () => {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h2 className="font-semibold text-gray-900">Services</h2>
-                  <p className="text-sm text-gray-500">Add multiple service rows with assigned staff.</p>
+                  <p className="text-sm text-gray-500">Add multiple service with assigned staff.</p>
                 </div>
                 <Button
                   type="button"
@@ -940,7 +940,7 @@ const Appointments: React.FC = () => {
                   icon={<Plus className="h-4 w-4" />}
                   onClick={() => setServiceRows((rows) => [...rows, createRow()])}
                 >
-                  Add row
+                  Add
                 </Button>
               </div>
               <div className="space-y-3">
@@ -1001,7 +1001,7 @@ const Appointments: React.FC = () => {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h2 className="font-semibold text-gray-900">Products</h2>
-                  <p className="text-sm text-gray-500">Add multiple product rows with assigned staff.</p>
+                  <p className="text-sm text-gray-500">Add multiple products with assigned staff.</p>
                 </div>
                 <Button
                   type="button"
@@ -1010,7 +1010,7 @@ const Appointments: React.FC = () => {
                   icon={<Plus className="h-4 w-4" />}
                   onClick={() => setProductRows((rows) => [...rows, createProductRow()])}
                 >
-                  Add row
+                  Add
                 </Button>
               </div>
               <div className="space-y-3">
