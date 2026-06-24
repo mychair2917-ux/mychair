@@ -1,6 +1,6 @@
 import React, { lazy } from 'react';
 import { RouteObject } from 'react-router';
-import { Users, UserCheck, Bell } from 'lucide-react';
+import { Users, UserCheck } from 'lucide-react';
 
 import App from '../App';
 import { MODULES } from '../config/rbac';
@@ -37,6 +37,9 @@ const CustomerAnalytics = lazy(() =>
 const Attendance = lazy(() =>
   import('../pages').then((module) => ({ default: module.Attendance }))
 );
+const LeaveManagement = lazy(() =>
+  import('../pages').then((module) => ({ default: module.LeaveManagement }))
+);
 const ProductsInventory = lazy(() =>
   import('../pages').then((module) => ({ default: module.ProductsInventory }))
 );
@@ -48,6 +51,9 @@ const SubscriptionManagement = lazy(() =>
 );
 const SubscriptionExpired = lazy(() =>
   import('../pages').then((module) => ({ default: module.SubscriptionExpired }))
+);
+const NotificationsCommunication = lazy(() =>
+  import('../pages').then((module) => ({ default: module.NotificationsCommunication }))
 );
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
@@ -182,17 +188,16 @@ export const routes: RouteObject[] = [
         element: protectAdmin(MODULES.ATTENDANCE, <Attendance />),
       },
       {
+        path: ROUTE_PATHS.ADMIN_LEAVE,
+        element: protectAdmin(MODULES.LEAVE, <LeaveManagement />),
+      },
+      {
         path: ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS,
         element: protectAdmin(MODULES.CUSTOMER_ANALYTICS, <CustomerAnalytics />),
       },
       {
         path: ROUTE_PATHS.ADMIN_NOTIFICATIONS_COMMUNICATION,
-        element: adminPlaceholder(
-          MODULES.NOTIFICATIONS_COMMUNICATION,
-          'Notifications & Communication',
-          'Manage platform-wide notifications, campaigns, and communication channels.',
-          Bell
-        ),
+        element: protectAdmin(MODULES.NOTIFICATIONS_COMMUNICATION, <NotificationsCommunication />),
       },
 
       {
@@ -278,17 +283,16 @@ export const routes: RouteObject[] = [
         element: protectOrg(MODULES.ATTENDANCE, <Attendance />),
       },
       {
+        path: `orgs/:orgId/${ROUTE_PATHS.LEAVE}`,
+        element: protectOrg(MODULES.LEAVE, <LeaveManagement />),
+      },
+      {
         path: `orgs/:orgId/${ROUTE_PATHS.CUSTOMER_ANALYTICS}`,
         element: protectOrg(MODULES.CUSTOMER_ANALYTICS, <CustomerAnalytics />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`,
-        element: orgPlaceholder(
-          MODULES.NOTIFICATIONS_COMMUNICATION,
-          'Notifications & Communication',
-          'Manage SMS campaigns, email alerts, and in-app notifications.',
-          Bell
-        ),
+        element: protectOrg(MODULES.NOTIFICATIONS_COMMUNICATION, <NotificationsCommunication />),
       },
 
       {

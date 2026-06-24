@@ -17,6 +17,7 @@ from app.schemas.inventory import (
 )
 from app.schemas.salon_product import SalonProductCreate
 from app.services.brand import BrandService
+from app.services.notifications import notification_service
 from app.services.salon_product import SalonProductService
 
 class InventoryService:
@@ -103,7 +104,34 @@ class InventoryService:
         inventory.stock_quantity = max(0, stock)
         inventory.total_value = round(inventory.stock_quantity * inventory.buying_price, 2)
         await inventory.save()
+        await self._create_stock_alert_if_needed(inventory)
         return inventory
+
+    async def _create_stock_alert_if_needed(self, inventory: ProductInventory) -> None:
+        status = self._stock_status(inventory.stock_quantity, inventory.min_threshold)
+        if status not in {"LOW", "CRITICAL"}:
+            return
+        display_name = self._display_name(
+            inventory.product_name_snapshot,
+            inventory.brand_name_snapshot,
+        )
+        alert_type = "OUT_OF_STOCK" if inventory.stock_quantity <= 0 else "LOW_STOCK"
+        await notification_service.create_business_alert(
+            tenant_id=inventory.tenant_id or tenant_context.get_tenant_id(),
+            salon_id=inventory.salon_id,
+            alert_type=alert_type,
+            category="INVENTORY",
+            title="Out of stock" if alert_type == "OUT_OF_STOCK" else "Low stock",
+            message=f"{display_name} has {inventory.stock_quantity} unit(s) remaining.",
+            priority="HIGH" if alert_type == "OUT_OF_STOCK" else "NORMAL",
+            source_id=str(inventory.id),
+            metadata={
+                "product_id": inventory.product_id,
+                "brand_id": inventory.brand_id,
+                "stock_quantity": inventory.stock_quantity,
+                "min_threshold": inventory.min_threshold,
+            },
+        )
 
     async def calculate_product_stock(
         self,

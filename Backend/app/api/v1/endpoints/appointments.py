@@ -21,6 +21,7 @@ from app.schemas.appointment import (
     FrontDeskAppointmentCreate,
 )
 from app.services.appointment import AppointmentService
+from app.services.notifications import notification_service
 from app.services.whatsapp import WhatsAppService
 from app.repositories.appointment import AppointmentRepository
 from app.services.websocket import manager
@@ -437,6 +438,22 @@ async def create_frontdesk_booking(
             "staff_id": appt.staff_id,
         },
     )
+    recipients = await notification_service._tenant_users_for_roles(
+        _effective_tenant_id(current_user),
+        payload.salon_id,
+        ["salon_owner", "salon_admin", "salon_manager"],
+    )
+    await notification_service.create_event_notifications(
+        tenant_id=_effective_tenant_id(current_user),
+        salon_id=payload.salon_id,
+        recipients=recipients,
+        title="New appointment created",
+        body="A new front desk appointment has been created.",
+        category="APPOINTMENT",
+        notification_type="APPOINTMENT_CREATED",
+        source_event="APPOINTMENT_CREATED",
+        metadata={"appointment_id": str(appt.id)},
+    )
     # Always send WhatsApp message immediately on POS submission
     background_tasks.add_task(whatsapp_service.send_on_appointment_submit, str(appt.id))
     return success_response("Appointment created successfully", data=await _appointment_response(appt), status_code=201)
@@ -536,6 +553,22 @@ async def create_booking(
             "staff_id": appt.staff_id
         }
     )
+    recipients = await notification_service._tenant_users_for_roles(
+        _effective_tenant_id(current_user),
+        payload.salon_id,
+        ["salon_owner", "salon_admin", "salon_manager"],
+    )
+    await notification_service.create_event_notifications(
+        tenant_id=_effective_tenant_id(current_user),
+        salon_id=payload.salon_id,
+        recipients=recipients,
+        title="New appointment created",
+        body="A new appointment has been created.",
+        category="APPOINTMENT",
+        notification_type="APPOINTMENT_CREATED",
+        source_event="APPOINTMENT_CREATED",
+        metadata={"appointment_id": str(appt.id)},
+    )
     
     # Always trigger WhatsApp notification automatically on appointment creation
     background_tasks.add_task(whatsapp_service.send_on_appointment_submit, str(appt.id))
@@ -575,6 +608,24 @@ async def update_booking_status(
             "appointment_id": str(appt.id),
             "status": appt.status
         }
+    )
+    event_name = "APPOINTMENT_CANCELLED" if appt.status == "CANCELLED" else "APPOINTMENT_STATUS_CHANGED"
+    recipients = await notification_service._tenant_users_for_roles(
+        _effective_tenant_id(current_user),
+        appt.salon_id,
+        ["salon_owner", "salon_admin", "salon_manager"],
+    )
+    await notification_service.create_event_notifications(
+        tenant_id=_effective_tenant_id(current_user),
+        salon_id=appt.salon_id,
+        recipients=recipients,
+        title="Appointment updated",
+        body=f"Appointment status changed to {appt.status}.",
+        category="APPOINTMENT",
+        notification_type=event_name,
+        source_event=event_name,
+        priority="HIGH" if appt.status == "CANCELLED" else "NORMAL",
+        metadata={"appointment_id": str(appt.id), "status": appt.status},
     )
 
     if appt.status == "COMPLETED":

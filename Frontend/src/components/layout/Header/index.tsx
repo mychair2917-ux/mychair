@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import NotificationDrawer from '../../notifications/NotificationDrawer';
 import { showSalonBranchSelector } from '../../../config/rbac';
 import { CommonDropdown } from '../../common';
 import { useAppDispatch, useAppSelector } from '../../../redux/hooks';
@@ -16,6 +17,7 @@ import {
 import { formatDateDMY } from '../../../utils/utilities';
 import { getProfilePath, getSettingsPath } from '../../../redux/slices/auth/authSession';
 import { useAuthActions } from '../../../hooks/useAuthActions';
+import { useGetUnreadNotificationCountQuery } from '../../../redux/slices/notifications/notificationsApi';
 
 const Header: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -26,8 +28,13 @@ const Header: React.FC = () => {
   const showBranchSelector = showSalonBranchSelector(user?.role);
   const [time, setTime] = useState(new Date());
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
   const { isLoggingOut, logoutUser } = useAuthActions();
+  const { data: unreadData } = useGetUnreadNotificationCountQuery({
+    salon_id: selectedSalonId || undefined,
+  });
   const { data: salonsData, isLoading: isLoadingSalons } = useGetSalonsListQuery(undefined, {
     skip: !showBranchSelector,
   });
@@ -45,6 +52,9 @@ const Header: React.FC = () => {
     const handleOutsideClick = (event: MouseEvent) => {
       if (!profileMenuRef.current?.contains(event.target as Node)) {
         setIsProfileMenuOpen(false);
+      }
+      if (!notificationMenuRef.current?.contains(event.target as Node)) {
+        setIsNotificationDrawerOpen(false);
       }
     };
 
@@ -87,10 +97,7 @@ const Header: React.FC = () => {
         )}
 
         <div className="hidden w-3/5 flex-1 md:block">
-          <div className="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)] px-4 py-3 shadow-sm">
-            <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
-              Premium salon operations    </p>
-          </div>
+         
         </div>
       </div>
 
@@ -104,14 +111,23 @@ const Header: React.FC = () => {
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div ref={notificationMenuRef} className="relative flex items-center gap-3">
           <button
             type="button"
+            onClick={() => setIsNotificationDrawerOpen((current) => !current)}
             className="relative rounded-full p-2 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-bg)] hover:text-[var(--color-text-primary)]"
+            aria-label="Open notifications"
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-white bg-red-500"></span>
+            {(unreadData?.data.unread_count ?? 0) > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-[10px] font-bold text-white">
+                {Math.min(unreadData?.data.unread_count ?? 0, 99)}
+              </span>
+            )}
           </button>
+          {isNotificationDrawerOpen && (
+            <NotificationDrawer onClose={() => setIsNotificationDrawerOpen(false)} />
+          )}
         </div>
 
         <div ref={profileMenuRef} className="relative border-l border-[var(--color-border-soft)] pl-3 sm:pl-4">

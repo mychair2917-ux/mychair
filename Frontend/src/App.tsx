@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router';
 
 import { ErrorBoundary } from './components/common';
 import PermissionsBootstrap from './components/permissions/PermissionsBootstrap';
+import NotificationRealtimeBridge from './components/notifications/NotificationRealtimeBridge';
 import SubscriptionExpiryBanner from './components/subscription/SubscriptionExpiryBanner';
 import SubscriptionGuard from './components/subscription/SubscriptionGuard';
 import { Header, Sidebar } from './components/layout';
@@ -31,18 +32,21 @@ function App() {
         (isOrgRoute || isSalonOwnerInviteRoute || location.pathname === `/${ROUTE_PATHS.SALON_OWNER_DASHBOARD}`));
 
   return (
-    <div className="flex min-h-screen bg-[var(--color-surface-bg)] text-[var(--color-text-primary)]">
+    <div className="app-shell min-h-dvh bg-[var(--color-surface-bg)] text-[var(--color-text-primary)]">
       <ScrollToTop />
       <PermissionsBootstrap />
+      <NotificationRealtimeBridge />
       <SubscriptionGuard />
       {showLayout && <Sidebar />}
 
-      <div className="flex min-w-0 flex-1 flex-col w-full overflow-hidden">
+      <div
+        className={`flex min-h-dvh min-w-0 flex-col ${showLayout ? 'pl-72' : 'w-full'}`}
+      >
         {showLayout && <Header />}
         {showLayout && <SubscriptionExpiryBanner />}
 
         <main
-          className={`flex-1 overflow-x-hidden overflow-y-auto custom-scrollbar ${isOpenRoute ? 'p-0' : 'bg-[var(--color-surface-bg)]'}`}
+          className={`flex-1 overflow-x-hidden ${isOpenRoute ? 'p-0' : 'bg-[var(--color-surface-bg)]'}`}
         >
           <Suspense
             fallback={

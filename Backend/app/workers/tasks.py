@@ -94,3 +94,18 @@ async def process_appointment_booked_workflow(ctx: Dict[str, Any], appointment_i
     # In a full ARQ setup: await ctx['redis'].enqueue_job('send_notification_task', str(email_notification.id))
     # We will trigger the local task synchronously here or log it
     logger.info(f"Queued email notification ID {email_notification.id} for dispatch.")
+
+
+async def process_scheduled_campaigns(ctx: Dict[str, Any]) -> int:
+    """Dispatch due communication campaigns through the real provider integrations."""
+    from app.db.connection import init_db
+    from app.services.notifications import notification_service
+
+    try:
+        await init_db()
+    except Exception:
+        pass
+
+    sent_count = await notification_service.send_due_scheduled_campaigns()
+    logger.info("Processed %s scheduled communication campaigns.", sent_count)
+    return sent_count

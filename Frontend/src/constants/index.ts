@@ -47,6 +47,7 @@ export const ROUTE_PATHS = {
   PRODUCTS_INVENTORY: 'products-inventory',
   STAFF_MONITORING: 'staff-monitoring',
   ATTENDANCE: 'attendance',
+  LEAVE: 'leave',
   CUSTOMER_ANALYTICS: 'customer-analytics',
   NOTIFICATIONS_COMMUNICATION: 'notifications-communication',
 
@@ -69,6 +70,7 @@ export const ROUTE_PATHS = {
   ADMIN_PRODUCTS_INVENTORY: 'admin/products-inventory',
   ADMIN_STAFF_MONITORING: 'admin/staff-monitoring',
   ADMIN_ATTENDANCE: 'admin/attendance',
+  ADMIN_LEAVE: 'admin/leave',
   ADMIN_CUSTOMER_ANALYTICS: 'admin/customer-analytics',
   ADMIN_NOTIFICATIONS_COMMUNICATION: 'admin/notifications-communication',
 

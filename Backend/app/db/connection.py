@@ -24,10 +24,21 @@ from app.models.billing import Invoice, Payment
 from app.models.inventory import InventoryItem, InventoryTransaction, ProductInventory
 from app.models.attendance import Attendance
 from app.models.attendance_log import AttendanceLog
+from app.models.leave_log import LeaveLog
+from app.models.leave_request import LeaveRequest
 from app.models.subscription import Subscription
 from app.models.system_settings import SystemSettings
 from app.models.subscription_email_log import SubscriptionEmailLog
 from app.models.notification import Notification
+from app.models.notification_communication import (
+    BusinessAlert,
+    CommunicationCampaign,
+    CommunicationLog,
+    CommunicationRecipient,
+    NotificationPreference,
+    NotificationTemplate,
+    SubscriptionNotification,
+)
 from app.models.audit import AuditLog
 from app.models.analytics import DailyRevenueStats, StaffPerformanceStats, ServicePopularityStats
 from app.models.invitation_token import InvitationToken
@@ -67,10 +78,19 @@ BEANIE_MODELS = [
     InventoryTransaction,
     Attendance,
     AttendanceLog,
+    LeaveRequest,
+    LeaveLog,
     Subscription,
     SystemSettings,
     SubscriptionEmailLog,
     Notification,
+    NotificationPreference,
+    NotificationTemplate,
+    CommunicationCampaign,
+    CommunicationRecipient,
+    CommunicationLog,
+    SubscriptionNotification,
+    BusinessAlert,
     AuditLog,
     DailyRevenueStats,
     StaffPerformanceStats,

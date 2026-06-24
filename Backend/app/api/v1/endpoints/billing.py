@@ -11,6 +11,7 @@ from app.models.salon import Salon
 from app.core.exceptions import ResourceNotFoundException
 from app.schemas.billing import InvoiceCreate, PaymentCreate, RefundCreate
 from app.services.billing import BillingService
+from app.services.notifications import notification_service
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import success_response
 
@@ -333,12 +334,33 @@ async def record_invoice_payment(
     Applies split payments (Cash, Card, UPI) to a finalized Invoice.
     Automatically closes invoice to PAID state on full settlement.
     """
-    return await billing_service.record_payment(
+    payment = await billing_service.record_payment(
         invoice_id=id,
         amount=payload.amount,
         payment_method=payload.payment_method,
         transaction_reference=payload.transaction_reference
     )
+    invoice = await Invoice.get(id)
+    if invoice:
+        tenant_id = tenant_context.get_tenant_id() or current_user.tenant_id
+        recipients = await notification_service._tenant_users_for_roles(
+            tenant_id,
+            invoice.salon_id,
+            ["salon_owner", "salon_admin", "salon_manager"],
+        )
+        await notification_service.create_event_notifications(
+            tenant_id=tenant_id,
+            salon_id=invoice.salon_id,
+            recipients=recipients,
+            title="Payment successful",
+            body=f"Payment of {payment.amount:.2f} received for invoice {invoice.invoice_number}.",
+            category="PAYMENT",
+            notification_type="PAYMENT_SUCCESS",
+            priority="HIGH",
+            source_event="PAYMENT_SUCCESS",
+            metadata={"invoice_id": id, "payment_id": str(payment.id)},
+        )
+    return payment
 
 
 @router.post("/payments/{id}/refund", response_model=Payment)

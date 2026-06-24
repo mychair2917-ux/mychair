@@ -5,6 +5,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from beanie import PydanticObjectId
 
 from app.auth.rbac_config import EMPLOYEE_TABLE_ROLES, normalize_role, ROLE_SUPER_ADMIN
+from app.constants.attendance_options import (
+    ATTENDANCE_STATUS_ABSENT,
+    ATTENDANCE_STATUS_HALF_DAY,
+)
 from app.constants.payroll_options import (
     DEFAULT_SALARY_TYPE,
     PAYMENT_STATUS_PAID,
@@ -17,6 +21,7 @@ from app.core.exceptions import (
     ResourceNotFoundException,
 )
 from app.models.appointment import Appointment
+from app.models.attendance import Attendance
 from app.models.billing import Invoice, Payment
 from app.models.payroll import Payroll
 from app.models.tenant import Tenant
@@ -28,6 +33,7 @@ from app.schemas.payroll import (
     SalaryStructureItem,
     SalaryStructureUpdate,
 )
+from app.services.leave import AttendanceReconciliationService
 from app.utils.timezone import now_utc
 
 
@@ -36,6 +42,7 @@ class PayrollService:
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
+        self.reconciliation_service = AttendanceReconciliationService()
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -241,6 +248,46 @@ class PayrollService:
                     bucket["product"] += line_total
         return totals
 
+    async def _attendance_deduction(
+        self,
+        salon_id: str,
+        employee_id: str,
+        month: int,
+        year: int,
+        base_salary: float,
+    ) -> float:
+        """Deduct pro-rated salary for absent and half-day records; leave/week-off excluded."""
+        if base_salary <= 0:
+            return 0.0
+
+        from calendar import monthrange
+
+        last_day = monthrange(year, month)[1]
+        start_date = f"{year:04d}-{month:02d}-01"
+        end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+
+        records = await Attendance.find(
+            {
+                "tenant_id": salon_id,
+                "staff_id": employee_id,
+                "date": {"$gte": start_date, "$lte": end_date},
+                "is_deleted": False,
+            }
+        ).to_list()
+
+        absent_units = 0.0
+        for record in records:
+            if record.status == ATTENDANCE_STATUS_ABSENT:
+                absent_units += 1.0
+            elif record.status == ATTENDANCE_STATUS_HALF_DAY:
+                absent_units += 0.5
+
+        if absent_units <= 0:
+            return 0.0
+
+        per_day = base_salary / last_day
+        return round(per_day * absent_units, 2)
+
     # ------------------------------------------------------------------ #
     # Monthly Salary (Tab 2)
     # ------------------------------------------------------------------ #
@@ -248,6 +295,7 @@ class PayrollService:
         self, actor: User, month: int, year: int
     ) -> List[PayrollItem]:
         salon_id = self._resolve_salon_id(actor)
+        await self.reconciliation_service.reconcile_for_actor(actor, salon_id=salon_id)
 
         employees = await self._list_employee_users(salon_id, active_only=True)
         if not employees:
@@ -292,7 +340,9 @@ class PayrollService:
             )
             base_salary = round(emp.salary or 0.0, 2)
             bonus = 0.0
-            deduction = 0.0
+            deduction = await self._attendance_deduction(
+                salon_id, emp_id, month, year, base_salary
+            )
             final_salary = round(
                 base_salary + service_incentive + product_incentive + bonus - deduction, 2
             )

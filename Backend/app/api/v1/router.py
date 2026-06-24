@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     attendance,
     auth,
     billing,
+    dashboard,
     brands,
     customer_analytics,
     customers,
@@ -12,7 +13,9 @@ from app.api.v1.endpoints import (
     employees,
     invitations,
     inventory,
+    leave,
     my_earnings,
+    notifications,
     payroll,
     permissions,
     profile,
@@ -30,6 +33,7 @@ api_router = APIRouter()
 
 # Registering endpoints
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(invitations.router, prefix="/invites", tags=["Invitations"])
 api_router.include_router(invitations.router, prefix="/invitations", tags=["Invitations (legacy)"])
 api_router.include_router(salon_owner.router, prefix="/salon-owner", tags=["Salon Owner"])
@@ -44,6 +48,8 @@ api_router.include_router(inventory.router, prefix="/inventory", tags=["Inventor
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing & Payments"])
 api_router.include_router(payroll.router, prefix="/payroll", tags=["Payroll"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
+api_router.include_router(leave.router, prefix="/leave", tags=["Leave Management"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications & Communication"])
 api_router.include_router(expenses.router, prefix="/expenses", tags=["Expenses"])
 api_router.include_router(my_earnings.router, prefix="/my-earnings", tags=["My Earnings"])
 api_router.include_router(profile.router, prefix="/profile", tags=["Profile"])

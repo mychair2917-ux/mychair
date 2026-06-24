@@ -1,26 +1,30 @@
 @import 'tailwindcss';
 
-html,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
 body {
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  min-height: 100%;
+  overflow-x: hidden;
   background-color: var(--color-surface-bg);
   color: var(--color-text-primary);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
   letter-spacing: var(--letter-spacing-body);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-body {
   font-weight: var(--font-weight-body);
 }
 
 #root {
-  min-height: 100vh;
+  min-height: 100%;
 }
 
 @theme {
@@ -80,6 +84,10 @@ body {
 }
 
 @layer utilities {
+  .app-shell {
+    min-height: 100dvh;
+  }
+
   .custom-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
