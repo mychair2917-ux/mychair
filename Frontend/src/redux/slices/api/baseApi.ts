@@ -1,11 +1,12 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import type { RootState } from '../../store';
+import { API_BASE_URL } from '../../../config/api';
 import { logout, setRefreshedTokens, setSubscriptionExpired } from '../auth/authSlice';
 import { API_PATHS } from './apiPaths';
 
 const rawBaseQuery = fetchBaseQuery({
-  baseUrl: import.meta.env.VITE_BASE_URL || '/api/v1',
+  baseUrl: API_BASE_URL,
   prepareHeaders: (headers, { getState }) => {
     const state = (getState() as RootState).auth;
     const token = state.token;

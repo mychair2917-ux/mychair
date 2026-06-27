@@ -6,13 +6,14 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.core.config import Settings, settings
 from app.core.exceptions import SalonERPException
 from app.db.connection import close_db, init_db, ping_db
+from app.db.seed_super_admin import ensure_super_admin
 from app.db.redis import redis_client
 from app.middleware.tenant import TenantMiddleware
 from app.services.salon_product import SalonProductService
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Connecting to MongoDB...")
     await init_db()
+    await ensure_super_admin()
 
     await salon_service_service.seed_master_services()
     await salon_product_service.seed_master_products()
@@ -139,3 +141,24 @@ async def root() -> dict:
         "status": "healthy",
         "documentation": "/docs",
     }
+
+
+def _frontend_redirect(path: str) -> RedirectResponse:
+    """Send browser traffic on the API host to the SPA login routes."""
+    base = settings.FRONTEND_URL.rstrip("/")
+    return RedirectResponse(url=f"{base}{path}", status_code=307)
+
+
+@app.get("/auth/login")
+async def redirect_auth_login() -> RedirectResponse:
+    return _frontend_redirect("/auth/login")
+
+
+@app.get("/login")
+async def redirect_login() -> RedirectResponse:
+    return _frontend_redirect("/auth/login")
+
+
+@app.get("/auth/salon-owner/login")
+async def redirect_salon_owner_login() -> RedirectResponse:
+    return _frontend_redirect("/salon-owner/login")

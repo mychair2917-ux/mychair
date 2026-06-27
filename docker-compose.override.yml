@@ -18,9 +18,9 @@ services:
       - ./Frontend:/app
       # Exclude node_modules so local and container packages don't conflict
       - /app/node_modules
+    env_file:
+      - ./Frontend/.env.development
     environment:
       - NODE_ENV=development
-      - VITE_BASE_URL=/api/v1
-      - VITE_PROXY_TARGET=http://api:8000
       - VITE_USE_POLLING=true
     restart: no

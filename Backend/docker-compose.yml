@@ -11,7 +11,7 @@ services:
       - MONGODB_DB_NAME=Mychair
       - REDIS_URI=redis://redis:6379/0
       - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
-      - BACKEND_CORS_ORIGINS=["http://localhost:5173","http://localhost:8082","https://mychair-one.vercel.app"]
+      - BACKEND_CORS_ORIGINS=["http://localhost:5173","http://localhost:8082","https://mychair-3.onrender.com"]
     depends_on:
       - mongodb
       - redis

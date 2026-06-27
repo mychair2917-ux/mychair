@@ -1,5 +1,5 @@
 import React, { lazy } from 'react';
-import { RouteObject } from 'react-router';
+import { Navigate, RouteObject, useLocation } from 'react-router';
 import { Users, UserCheck } from 'lucide-react';
 
 import App from '../App';
@@ -74,6 +74,16 @@ const orgPlaceholder = (module: (typeof MODULES)[keyof typeof MODULES], title: s
 const adminPlaceholder = (module: (typeof MODULES)[keyof typeof MODULES], title: string, description: string, Icon: React.ElementType) =>
   protectAdmin(module, <Placeholder title={title} description={description} icon={Icon} />);
 
+const LegacyLoginRedirect = () => {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={{ pathname: `/${ROUTE_PATHS.LOGIN}`, search: location.search, hash: location.hash }}
+      replace
+    />
+  );
+};
+
 export const routes: RouteObject[] = [
   {
     path: ROUTE_PATHS.ROOT,
@@ -81,6 +91,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <RootRedirect /> },
 
+      { path: ROUTE_PATHS.LEGACY_LOGIN, element: <LegacyLoginRedirect /> },
       { path: ROUTE_PATHS.LOGIN, element: <Login /> },
       { path: ROUTE_PATHS.CREATE_PASSWORD, element: <CreatePassword /> },
       { path: ROUTE_PATHS.SALON_OWNER_LOGIN, element: <SalonOwnerLogin /> },

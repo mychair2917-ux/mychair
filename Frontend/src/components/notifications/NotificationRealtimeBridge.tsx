@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { API_BASE_URL } from '../../config/api';
 import { showToast } from '../common/Toast/toastService';
 import { useAppDispatch, useAppSelector } from '../../redux/hooks';
 import { baseApi } from '../../redux/slices/api/baseApi';
@@ -30,10 +31,7 @@ interface NotificationSocketPayload {
 }
 
 function resolveWsUrl(tenantId: string, salonId: string, userId: string): string {
-  const baseUrl = import.meta.env.VITE_BASE_URL || '/api/v1';
-  const origin = window.location.origin;
-  const absoluteBase = baseUrl.startsWith('http') ? baseUrl : `${origin}${baseUrl}`;
-  const url = new URL(absoluteBase);
+  const url = new URL(API_BASE_URL);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   url.pathname = `${url.pathname.replace(/\/$/, '')}/ws/${tenantId}/${salonId}`;
   url.searchParams.set('user_id', userId);

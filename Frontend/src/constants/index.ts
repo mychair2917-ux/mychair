@@ -24,7 +24,8 @@ export const THEME = {
 export const ROUTE_PATHS = {
   // Public routes
   ROOT: '',
-  LOGIN: 'login',
+  LOGIN: 'auth/login',
+  LEGACY_LOGIN: 'login',
   NOT_FOUND: '404',
   CATCH_ALL: '*',
 
@@ -111,6 +112,7 @@ export const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'ima
 
 export const PUBLIC_ROUTES = [
   `/${ROUTE_PATHS.LOGIN}`,
+  `/${ROUTE_PATHS.LEGACY_LOGIN}`,
   `/${ROUTE_PATHS.ROOT}`,
   `/${ROUTE_PATHS.CREATE_PASSWORD}`,
   `/${ROUTE_PATHS.SALON_OWNER_LOGIN}`,

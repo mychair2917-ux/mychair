@@ -1,4 +1,4 @@
-import { WS_BASE_URL } from './config';
+import { getWebSocketBaseUrl } from '../config/api';
 
 export interface WebSocketNotificationResponse {
   id?: string;
@@ -37,7 +37,7 @@ export const notificationWebSocket = (
   onMessageCallback?: WebSocketCallback,
   onErrorCallback?: WebSocketErrorCallback
 ): WebSocket => {
-  const url = `${WS_BASE_URL}ws/user/${organizationId}/${userId}`;
+  const url = `${getWebSocketBaseUrl()}ws/user/${organizationId}/${userId}`;
   const socket = new WebSocket(url);
 
   socket.onopen = () => {
