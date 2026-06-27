@@ -11,10 +11,11 @@ logger = logging.getLogger("config")
 _DEFAULT_SECRET = "SUPER_SECRET_SECURITY_KEY_FOR_SALON_ERP_CHANGEME_IN_PRODUCTION"
 _DEFAULT_REFRESH_SECRET = "SUPER_SECRET_REFRESH_SECURITY_KEY_CHANGEME_IN_PRODUCTION"
 
-# Explicit origins for local Vite dev + production Vercel frontend.
+# Local dev origins only — production origins come from FRONTEND_URL via env.
 _DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
-    "https://mychair-one.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:8082",
 ]
 
 
@@ -60,7 +61,7 @@ class Settings(BaseSettings):
 
     # Email (Resend)
     RESEND_API_KEY: str = Field(default="")
-    FRONTEND_URL: str = Field(default="https://mychair-one.vercel.app")
+    FRONTEND_URL: str = Field(default="http://localhost:8082")
     EMAIL_FROM: str = Field(default="MyChair <onboarding@resend.dev>")
     RESEND_TEST_EMAIL: str = Field(default="my.chair2917@gmail.com")
 
@@ -120,6 +121,10 @@ class Settings(BaseSettings):
             if is_production:
                 raise ValueError("REDIS_URL (or REDIS_URI) is required when ENV=production")
             self.REDIS_URI = "redis://redis:6379/0"
+
+        frontend_origin = self.FRONTEND_URL.rstrip("/")
+        if frontend_origin and frontend_origin not in self.BACKEND_CORS_ORIGINS:
+            self.BACKEND_CORS_ORIGINS = [*self.BACKEND_CORS_ORIGINS, frontend_origin]
 
         if is_production:
             if self.SECRET_KEY == _DEFAULT_SECRET:

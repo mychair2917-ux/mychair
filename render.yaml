@@ -45,9 +45,9 @@ services:
           name: mychair-redis
           property: connectionString
       - key: BACKEND_CORS_ORIGINS
-        value: '["http://localhost:5173","https://mychair-one.vercel.app"]'
+        sync: false
       - key: FRONTEND_URL
-        value: https://mychair-one.vercel.app
+        sync: false
       - key: BACKEND_PUBLIC_URL
         sync: false
       - key: RESEND_API_KEY

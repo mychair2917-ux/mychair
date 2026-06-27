@@ -29,7 +29,6 @@ services:
       - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8082}
-      - BACKEND_CORS_ORIGINS=["http://localhost:5173","http://localhost:8082","https://mychair-one.vercel.app"]
       - EMAIL_FROM=${EMAIL_FROM:-MyChair <onboarding@resend.dev>}
       - RESEND_TEST_EMAIL=${RESEND_TEST_EMAIL:-my.chair2917@gmail.com}
       - INVITATION_TOKEN_EXPIRE_HOURS=72
