@@ -58,6 +58,10 @@ services:
         value: my.chair2917@gmail.com
       - key: INVITATION_TOKEN_EXPIRE_HOURS
         value: "72"
+      - key: SYSTEM_ADMIN_EMAIL
+        value: mychair2918@gmail.com
+      - key: SYSTEM_ADMIN_PASSWORD
+        value: Tudip@123
 
   # 3. ARQ Background Worker (Worker Service) — deploy AFTER Redis + API
   - type: worker

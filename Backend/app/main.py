@@ -13,6 +13,7 @@ from app.api.v1.router import api_router
 from app.core.config import Settings, settings
 from app.core.exceptions import SalonERPException
 from app.db.connection import close_db, init_db, ping_db
+from app.db.seed_super_admin import ensure_super_admin
 from app.db.redis import redis_client
 from app.middleware.tenant import TenantMiddleware
 from app.services.salon_product import SalonProductService
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Connecting to MongoDB...")
     await init_db()
+    await ensure_super_admin()
 
     await salon_service_service.seed_master_services()
     await salon_product_service.seed_master_products()

@@ -20,6 +20,7 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
+      # Browser calls http://localhost:8082/api/v1 → Vite proxies to local API (same docker network).
       - VITE_BASE_URL=/api/v1
       - VITE_PROXY_TARGET=http://api:8000
       - VITE_USE_POLLING=true
