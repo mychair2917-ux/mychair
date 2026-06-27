@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
@@ -141,3 +141,24 @@ async def root() -> dict:
         "status": "healthy",
         "documentation": "/docs",
     }
+
+
+def _frontend_redirect(path: str) -> RedirectResponse:
+    """Send browser traffic on the API host to the SPA login routes."""
+    base = settings.FRONTEND_URL.rstrip("/")
+    return RedirectResponse(url=f"{base}{path}", status_code=307)
+
+
+@app.get("/auth/login")
+async def redirect_auth_login() -> RedirectResponse:
+    return _frontend_redirect("/auth/login")
+
+
+@app.get("/login")
+async def redirect_login() -> RedirectResponse:
+    return _frontend_redirect("/auth/login")
+
+
+@app.get("/auth/salon-owner/login")
+async def redirect_salon_owner_login() -> RedirectResponse:
+    return _frontend_redirect("/salon-owner/login")

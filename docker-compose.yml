@@ -3,9 +3,6 @@ services:
     build:
       context: ./Frontend
       dockerfile: Dockerfile
-      args:
-        - VITE_BASE_URL=/api/v1
-        - VITE_APP_NAME=MyChair Salon ERP
     container_name: mychair_frontend
     ports:
       - "127.0.0.1:8083:80"

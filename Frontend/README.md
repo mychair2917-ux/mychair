@@ -95,7 +95,7 @@ src/
 Create `.env.development` and `.env.production` files:
 
 ```env
-VITE_BASE_URL=<api-url>
+VITE_API_BASE_URL=<api-url>
 VITE_GOOGLE_CLIENT_ID=<google-client-id>
 VITE_CLIENT_SECRET=<client-secret>
 VITE_NAVIGATION_URL=<navigation-url>

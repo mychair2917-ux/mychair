@@ -6,6 +6,10 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
+  const proxyTarget =
+    env.VITE_PROXY_TARGET ||
+    (env.VITE_API_BASE_URL?.startsWith('http') ? new URL(env.VITE_API_BASE_URL).origin : undefined);
+
   return {
     plugins: [react(), tailwindcss()],
     server: {
@@ -14,14 +18,16 @@ export default defineConfig(({ mode }) => {
       watch: {
         usePolling: env.VITE_USE_POLLING === 'true',
       },
-      proxy: {
-        '/api/v1': {
-          target: env.VITE_PROXY_TARGET || 'http://localhost:8000',
-          changeOrigin: true,
-          secure: false,
-          ws: true, // Proxy websockets
-        },
-      },
+      proxy: proxyTarget
+        ? {
+            '/api/v1': {
+              target: proxyTarget,
+              changeOrigin: true,
+              secure: false,
+              ws: true,
+            },
+          }
+        : undefined,
     },
   };
 });
