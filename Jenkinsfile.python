@@ -64,18 +64,21 @@ pipeline {
             steps {
 
                 echo "========================================"
-                echo "🚀 BUILDING DOCKER IMAGE"
+                echo "🐳 BUILDING DOCKER IMAGES"
                 echo "========================================"
 
-                sh '''
+                sh """
                     docker build \
                         -t mychair-api:${BUILD_NUMBER} \
                         -t mychair-api:latest \
                         Backend
-                '''
+
+                    docker tag mychair-api:${BUILD_NUMBER} mychair-worker:${BUILD_NUMBER}
+                    docker tag mychair-api:latest mychair-worker:latest
+                """
 
                 echo "========================================"
-                echo "✅ DOCKER IMAGE CREATED"
+                echo "✅ DOCKER IMAGES CREATED"
                 echo "========================================"
             }
         }
