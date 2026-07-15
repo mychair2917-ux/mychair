@@ -79,6 +79,25 @@ pipeline {
                 echo "========================================"
             }
         }
+        stage('Deploy Backend') {
+
+            steps {
+
+                echo "========================================"
+                echo "🚀 DEPLOYING BACKEND"
+                echo "========================================"
+
+                sh '''
+                    docker compose down
+
+                    docker compose up -d mongodb redis api worker
+                '''
+
+                echo "========================================"
+                echo "✅ BACKEND DEPLOYED"
+                echo "========================================"
+            }
+        }
     }
 
     post {
