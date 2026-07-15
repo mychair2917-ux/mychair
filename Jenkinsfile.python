@@ -60,6 +60,25 @@ pipeline {
                 echo "========================================"
             }
         }
+        stage('Docker Build') {
+            steps {
+
+                echo "========================================"
+                echo "🚀 BUILDING DOCKER IMAGE"
+                echo "========================================"
+
+                sh '''
+                    docker build \
+                        -t mychair-api:${BUILD_NUMBER} \
+                        -t mychair-api:latest \
+                        Backend
+                '''
+
+                echo "========================================"
+                echo "✅ DOCKER IMAGE CREATED"
+                echo "========================================"
+            }
+        }
     }
 
     post {
