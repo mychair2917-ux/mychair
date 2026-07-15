@@ -61,7 +61,7 @@ services:
       - mychair_network
 
   mongodb:
-    image: mongo:6.0
+    image: mongo:7
     container_name: mychair_mongodb
     ports:
       - "27017:27017"
