@@ -87,17 +87,17 @@ pipeline {
                 echo "========================================"
 
                 withCredentials([
-                    file(credentialsId: 'backend-env', variable: 'BACKEND_ENV')
-                ]) {
+                        file(credentialsId: 'backend-env', variable: 'BACKEND_ENV')
+                    ]) {
 
-                    sh '''
-                        cp "$BACKEND_ENV" Backend/.env
+                        sh '''
+                            rm -f Backend/.env
 
-                        docker compose down
+                            install -m 600 "$BACKEND_ENV" Backend/.env
 
-                        docker compose up -d mongodb redis api worker
-                    '''
-                }
+                            docker compose up -d --build mongodb redis api worker
+                        '''
+                    }
 
                 echo "========================================"
                 echo "✅ BACKEND DEPLOYED"
