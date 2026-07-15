@@ -7,133 +7,57 @@ pipeline {
         timeout(time: 60, unit: 'MINUTES')
     }
 
-    environment {
-        APP_NAME = "mychair-python"
-        IMAGE_NAME = "mychair-python"
-        CONTAINER_NAME = "mychair-python"
-    }
-
     stages {
 
         stage('Checkout') {
             steps {
-                echo "========================================="
-                echo "🚀 CHECKOUT STARTED"
-                echo "========================================="
+                echo "========================================"
+                echo "🚀 CHECKOUT"
+                echo "========================================"
 
                 checkout scm
 
-                sh 'git rev-parse --short HEAD'
-
-                echo "========================================="
+                echo "========================================"
                 echo "✅ CHECKOUT SUCCESSFUL"
-                echo "========================================="
+                echo "========================================"
             }
         }
 
-        stage('Display Environment') {
+        stage('Environment') {
             steps {
-                echo "========================================="
-                echo "🚀 DISPLAY ENVIRONMENT"
-                echo "========================================="
-
                 sh '''
-                echo "Python : $(python3 --version)"
-                echo "Pip    : $(python3 -m pip --version)"
-                echo "Docker : $(docker --version)"
-                echo "Build  : ${BUILD_NUMBER}"
+                    echo "Python : $(python3 --version)"
+                    echo "Pip    : $(python3 -m pip --version)"
+                    echo "Docker : $(docker --version)"
                 '''
 
-                echo "========================================="
+                echo "========================================"
                 echo "✅ ENVIRONMENT VERIFIED"
-                echo "========================================="
+                echo "========================================"
             }
         }
 
         stage('Backend Build') {
             steps {
 
-                echo "========================================="
-                echo "🚀 BACKEND BUILD"
-                echo "========================================="
-
                 sh 'chmod +x scripts/*.sh'
+
                 sh './scripts/backend-build.sh'
 
-                echo "========================================="
+                echo "========================================"
                 echo "✅ BACKEND BUILD SUCCESSFUL"
-                echo "========================================="
+                echo "========================================"
             }
         }
 
         stage('Backend Test') {
             steps {
 
-                echo "========================================="
-                echo "🚀 BACKEND TESTS"
-                echo "========================================="
-
                 sh './scripts/backend-test.sh'
 
-                echo "========================================="
-                echo "✅ ALL TESTS PASSED"
-                echo "========================================="
-            }
-        }
-
-        stage('Build Docker Image') {
-
-            steps {
-
-                echo "========================================="
-                echo "🚀 BUILDING DOCKER IMAGE"
-                echo "========================================="
-
-                sh '''
-                docker build \
-                -t ${IMAGE_NAME}:${BUILD_NUMBER} \
-                -t ${IMAGE_NAME}:latest \
-                Backend
-                '''
-
-                echo "========================================="
-                echo "✅ DOCKER IMAGE CREATED"
-                echo "========================================="
-            }
-        }
-
-        stage('Run Docker Container') {
-
-            steps {
-
-                echo "========================================="
-                echo "🚀 STARTING CONTAINER"
-                echo "========================================="
-
-                sh '''
-                docker rm -f ${CONTAINER_NAME} || true
-
-                docker run -d \
-                  --name ${CONTAINER_NAME} \
-                  -p 5000:5000 \
-                  ${IMAGE_NAME}:latest
-                '''
-
-                echo "========================================="
-                echo "✅ CONTAINER STARTED"
-                echo "========================================="
-            }
-        }
-
-        stage('Archive Logs') {
-
-            steps {
-
-                archiveArtifacts artifacts: 'Backend/**/*.log', allowEmptyArchive: true
-
-                echo "========================================="
-                echo "✅ LOGS ARCHIVED"
-                echo "========================================="
+                echo "========================================"
+                echo "✅ BACKEND TEST SUCCESSFUL"
+                echo "========================================"
             }
         }
     }
@@ -141,23 +65,15 @@ pipeline {
     post {
 
         success {
-
-            echo "========================================="
-            echo "🎉 PYTHON PIPELINE SUCCESSFUL"
-            echo "========================================="
+            echo "========================================"
+            echo "🎉 PYTHON BUILD SUCCESSFUL"
+            echo "========================================"
         }
 
         failure {
-
-            echo "========================================="
-            echo "❌ PYTHON PIPELINE FAILED"
-            echo "========================================="
-        }
-
-        always {
-
-            sh 'docker image ls | grep mychair-python || true'
-
+            echo "========================================"
+            echo "❌ PYTHON BUILD FAILED"
+            echo "========================================"
         }
     }
 }
