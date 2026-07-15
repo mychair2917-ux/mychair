@@ -1,0 +1,14 @@
+# Root prettier ignore (frontend tool also uses Frontend/.prettierignore)
+node_modules
+dist
+build
+coverage
+Backend/.venv
+Backend/venv
+venv
+.venv
+*.min.js
+package-lock.json
+Frontend/dist
+Backend/uploads
+Backend/public

@@ -12,6 +12,7 @@ import time
 from arq import run_worker
 
 from app.core.config import Settings, settings
+from app.core.logging_config import setup_logging
 from app.db.connection import init_db, is_db_initialized
 from app.db.redis import redis_client
 from app.db.resilience import backoff_delay, retry_forever
@@ -59,7 +60,7 @@ async def _bootstrap_dependencies() -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    setup_logging()
     restart_attempt = 0
 
     while True:

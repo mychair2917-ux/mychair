@@ -1,0 +1,17 @@
+# Ruff — lint only (no auto-format in CI that would rewrite business code)
+# Run: ruff check app tests
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+  "E501",  # line length — defer to existing style
+  "E402",  # module-level imports after path setup (seed scripts)
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["F401", "F811"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

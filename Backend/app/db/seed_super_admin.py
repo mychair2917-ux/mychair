@@ -51,5 +51,7 @@ async def seed() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    from app.core.logging_config import setup_logging
+
+    setup_logging()
     asyncio.run(seed())

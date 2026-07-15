@@ -12,9 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from app.api.v1.router import api_router
 from app.core.config import Settings, settings
 from app.core.exceptions import SalonERPException
+from app.core.logging_config import setup_logging
 from app.db.connection import close_db, init_db, ping_db
 from app.db.seed_super_admin import ensure_super_admin
 from app.db.redis import redis_client
+from app.middleware.request_logging import RequestLoggingMiddleware
 from app.middleware.tenant import TenantMiddleware
 from app.services.salon_product import SalonProductService
 from app.services.salon_service import SalonServiceService
@@ -22,7 +24,7 @@ from app.services.subscription_expiry_service import run_subscription_reminder_l
 from app.services.subscription_service import SubscriptionService
 from app.services.system_settings_service import SystemSettingsService
 
-logging.basicConfig(level=logging.INFO)
+setup_logging()
 logger = logging.getLogger("main")
 salon_service_service = SalonServiceService()
 salon_product_service = SalonProductService()
@@ -34,6 +36,9 @@ async def lifespan(app: FastAPI):
     Asynchronous Startup and Shutdown lifecycles hooks.
     Registers databases and cache pools safely.
     """
+    logger.info("=====================================")
+    logger.info("BACKEND STARTUP")
+    logger.info("=====================================")
     logger.info("Backend starting...")
     logger.info("Environment: %s", settings.ENV)
     logger.info("JWT fingerprint: %s", Settings.secret_fingerprint(settings.SECRET_KEY))
@@ -57,6 +62,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    logger.info("=====================================")
+    logger.info("BACKEND SHUTDOWN")
+    logger.info("=====================================")
     reminder_task.cancel()
     try:
         await reminder_task
@@ -66,6 +74,7 @@ async def lifespan(app: FastAPI):
     logger.info("Closing persistent database/cache links...")
     await redis_client.close_redis()
     await close_db()
+    logger.info("Backend shutdown complete")
 
 
 app = FastAPI(
@@ -83,6 +92,7 @@ app.add_middleware(
 )
 
 app.add_middleware(TenantMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 Path(settings.PUBLIC_ASSET_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=settings.PUBLIC_ASSET_DIR), name="static")
