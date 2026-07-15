@@ -128,8 +128,8 @@ pipeline {
                 echo "========================================"
 
                 sh '''
-                    docker image prune -af
-                    docker builder prune -af
+                    docker image prune -f
+                    docker builder prune -f
                 '''
 
                 echo "========================================"
