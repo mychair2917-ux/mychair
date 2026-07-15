@@ -97,8 +97,8 @@ pipeline {
                             rm -f Backend/.env
 
                             install -m 600 "$BACKEND_ENV" Backend/.env
-
-                            docker compose up -d --build mongodb redis api worker
+                            docker compose up -d mongodb redis api worker
+                            
                         '''
                     }
 
@@ -126,7 +126,23 @@ pipeline {
                 '''
             }
         }
-    }
+        stage('Docker Cleanup') {
+            steps {
+
+                echo "========================================"
+                echo "🧹 CLEANING DOCKER"
+                echo "========================================"
+
+                sh '''
+                    docker image prune -af
+                    docker builder prune -af
+                '''
+
+                echo "========================================"
+                echo "✅ DOCKER CLEANUP COMPLETED"
+                echo "========================================"
+            }
+        }
 
     post {
 

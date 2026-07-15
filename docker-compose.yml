@@ -13,9 +13,7 @@ services:
       - mychair_network
 
   api:
-    build:
-      context: ./Backend
-      dockerfile: Dockerfile
+    image: mychair-api:latest
     container_name: mychair_api
     ports:
       - "8000:8000"
@@ -42,11 +40,11 @@ services:
       - mychair_network
 
   worker:
-    build:
-      context: ./Backend
-      dockerfile: Dockerfile
+    image: mychair-worker:latest
     container_name: mychair_worker
     command: python -m app.workers.run_worker
+    env_file:
+      - ./Backend/.env
     environment:
       - ENV=development
       - MONGODB_URI=mongodb://mongodb:27017
