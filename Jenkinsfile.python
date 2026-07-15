@@ -104,6 +104,25 @@ pipeline {
                 echo "========================================"
             }
         }
+        stage('Health Check') {
+            steps {
+                echo '========================================'
+                echo '🏥 HEALTH CHECK'
+                echo '========================================'
+
+                sh '''
+                    sleep 10
+
+                    echo "Checking API..."
+
+                    curl --fail http://localhost:8000/docs >/dev/null
+
+                    echo "========================================"
+                    echo "✅ API IS HEALTHY"
+                    echo "========================================"
+                '''
+            }
+        }
     }
 
     post {
