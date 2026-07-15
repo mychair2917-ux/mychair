@@ -80,18 +80,24 @@ pipeline {
             }
         }
         stage('Deploy Backend') {
-
             steps {
 
                 echo "========================================"
                 echo "🚀 DEPLOYING BACKEND"
                 echo "========================================"
 
-                sh '''
-                    docker compose down
+                withCredentials([
+                    file(credentialsId: 'backend-env', variable: 'BACKEND_ENV')
+                ]) {
 
-                    docker compose up -d mongodb redis api worker
-                '''
+                    sh '''
+                        cp "$BACKEND_ENV" Backend/.env
+
+                        docker compose down
+
+                        docker compose up -d mongodb redis api worker
+                    '''
+                }
 
                 echo "========================================"
                 echo "✅ BACKEND DEPLOYED"
