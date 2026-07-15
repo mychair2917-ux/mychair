@@ -19,12 +19,27 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+
+      // React
+      'react-refresh/only-export-components': [
+        'warn',
+        { allowConstantExport: true },
+      ],
+
+      // JavaScript
       'no-undef': 'warn',
+
+      // TypeScript
       '@typescript-eslint/no-unused-vars': [
         'warn',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
       ],
+
+      // Allow explicit any but report it as a warning
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   }
 );
