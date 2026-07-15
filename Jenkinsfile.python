@@ -1,14 +1,11 @@
 pipeline {
     agent any
-
     options {
         timestamps()
         disableConcurrentBuilds()
         timeout(time: 60, unit: 'MINUTES')
     }
-
     stages {
-
         stage('Checkout') {
             steps {
                 echo "========================================"
@@ -22,7 +19,6 @@ pipeline {
                 echo "========================================"
             }
         }
-
         stage('Environment') {
             steps {
                 sh '''
@@ -36,7 +32,6 @@ pipeline {
                 echo "========================================"
             }
         }
-
         stage('Backend Build') {
             steps {
 
@@ -49,7 +44,6 @@ pipeline {
                 echo "========================================"
             }
         }
-
         stage('Backend Test') {
             steps {
 
@@ -143,7 +137,7 @@ pipeline {
                 echo "========================================"
             }
         }
-
+    }
     post {
 
         success {
