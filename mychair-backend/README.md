@@ -80,13 +80,26 @@ UAT defaults (when unset): `mongodb://localhost:27017`, `redis://localhost:6379/
 
 ## Render deployment
 
-Blueprint: [`render.yaml`](render.yaml) — deploys the **API** only.
+Blueprint: [`render.yaml`](render.yaml) — **Docker** API on **Python 3.11**.
 
-1. Create a Render Blueprint from this directory (or point the service at this repo path).
-2. Fill `sync: false` secrets in the dashboard (`MONGODB_URI`, `REDIS_URI`, `JWT_SECRET`, CORS, URLs, email, etc.).
-3. Verify `GET /health` and `GET /health/deep`.
+### Manual service (dashboard)
 
-Dockerfile is multi-stage and listens on `$PORT`.
+| Setting | Value |
+|---------|--------|
+| **Runtime** | **Docker** (not Python) |
+| **Root Directory** | `mychair-backend` |
+| **Dockerfile Path** | `Dockerfile` |
+| **Health Check Path** | `/health` |
+
+Do **not** set a custom Start Command — the Dockerfile `CMD` runs uvicorn.
+
+Monorepo blueprint at repo root: [`../render.yaml`](../render.yaml) uses `rootDir: mychair-backend`.
+
+See also [`RENDER.md`](RENDER.md).
+
+1. Create a Render Blueprint / Docker web service with context `mychair-backend/`
+2. Fill `sync: false` secrets in the dashboard (`MONGODB_URI`, `REDIS_URI`, `JWT_SECRET`, CORS, URLs, email, etc.)
+3. Verify `GET /health` and `GET /health/deep`
 
 ## Scripts
 

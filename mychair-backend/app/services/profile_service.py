@@ -1,6 +1,5 @@
 import base64
 import binascii
-import imghdr
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -17,6 +16,7 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.profile import ChangePasswordRequest, ProfileResponse, ProfileUpdateRequest
 from app.services.permission_service import PermissionService
+from app.utils.image_type import detect_image_type
 
 
 ALLOWED_IMAGE_TYPES = {"jpeg", "png"}
@@ -189,7 +189,7 @@ class ProfileService:
             raise PermissionDeniedException(detail="Avatar image is required")
         if len(content) > MAX_AVATAR_SIZE_BYTES:
             raise PermissionDeniedException(detail="Avatar image must be 2MB or smaller")
-        image_type = imghdr.what(None, h=content)
+        image_type = detect_image_type(content)
         if image_type not in ALLOWED_IMAGE_TYPES:
             raise PermissionDeniedException(detail="Unsupported image format")
         extension = "jpg" if image_type == "jpeg" else image_type

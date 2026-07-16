@@ -1,4 +1,3 @@
-import imghdr
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +20,7 @@ from app.schemas.expense import (
     ExpenseUpdateRequest,
     PaginatedExpenseData,
 )
+from app.utils.image_type import detect_image_type
 from app.utils.timezone import now_utc
 
 ALLOWED_RECEIPT_MIME_TYPES = {
@@ -208,7 +208,7 @@ class ExpenseService:
 
         extension = "pdf"
         if content_type and content_type.startswith("image/"):
-            image_type = imghdr.what(None, h=content)
+            image_type = detect_image_type(content)
             if image_type not in ALLOWED_IMAGE_TYPES:
                 raise PermissionDeniedException(detail="Unsupported image format")
             extension = "jpg" if image_type == "jpeg" else image_type

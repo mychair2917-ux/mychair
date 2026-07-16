@@ -1,10 +1,21 @@
 # Deployment
 
-## Backend (Render)
+## Backend (Render — Docker)
 
-Use [`mychair-backend/render.yaml`](../mychair-backend/render.yaml) — **API only**.
+Use [`render.yaml`](../render.yaml) at repo root **or** [`mychair-backend/render.yaml`](../mychair-backend/render.yaml).
 
-1. Create a Render Blueprint / Docker web service with context `mychair-backend/`
+**Critical:** Runtime must be **Docker**, not native Python.
+
+| Dashboard setting | Value |
+|-------------------|--------|
+| Runtime | Docker |
+| Root Directory | `mychair-backend` |
+| Dockerfile Path | `Dockerfile` |
+| Health check | `/health` |
+
+Clear custom **Build Command** / **Start Command** so the Dockerfile `CMD` is used (Python 3.11).
+
+1. Create a Render Docker web service with root `mychair-backend/`
 2. Set production secrets in the dashboard (`MONGODB_URI`, `REDIS_URI`, `JWT_SECRET`, CORS, URLs, email)
 3. Set `ENVIRONMENT=production`
 4. Verify `GET /health` and `GET /health/deep`

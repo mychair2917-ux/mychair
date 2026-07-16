@@ -1,10 +1,14 @@
-# Render Blueprint — deploy from THIS directory (mychair-backend/)
-# For monorepo root deploys, use ../render.yaml instead (rootDir: mychair-backend).
+# Render Blueprint — MyChair monorepo (API via Docker / Python 3.11)
+# Schema: https://render.com/schema/render.yaml.json
+#
+# Deploy from repo root. rootDir points at the standalone backend package.
+# Set sync: false secrets in the Render dashboard before first production deploy.
 
 services:
   - type: web
     name: mychair-api
     runtime: docker
+    rootDir: mychair-backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
