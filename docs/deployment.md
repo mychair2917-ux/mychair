@@ -1,49 +1,37 @@
 # Deployment
 
-## Render (API + worker + Redis)
+## Backend (Render)
 
-Infrastructure is declared in [`render.yaml`](../render.yaml):
+Use [`mychair-backend/render.yaml`](../mychair-backend/render.yaml) — **API only**.
 
-| Service | Type | Notes |
-|---------|------|--------|
-| `mychair-redis` | Key Value | Deploy first |
-| `mychair-api` | Web (Docker) | `Backend/Dockerfile`, health `/health` |
-| `mychair-worker` | Worker (Docker) | `python -m app.workers.run_worker` |
+1. Create a Render Blueprint / Docker web service with context `mychair-backend/`
+2. Set production secrets in the dashboard (`MONGODB_URI`, `REDIS_URI`, `JWT_SECRET`, CORS, URLs, email)
+3. Set `ENVIRONMENT=production`
+4. Verify `GET /health` and `GET /health/deep`
 
-Shared secrets live in the `mychair-shared` env group (`MONGO_URL`, `JWT_SECRET`, `REFRESH_SECRET_KEY`).
+Local Docker Compose (`mychair-backend/docker-compose.yml`) is for **UAT only** (api, worker, mongodb, redis). Do not use compose for production.
 
-### Post-deploy checks
+### Worker (optional)
 
-1. Compare JWT fingerprint in API vs worker logs — must match
-2. `curl https://<api>/health/deep` — mongodb and redis both `ok`
-3. Confirm CORS includes the Vercel frontend origin
-
-### Rollback on Render
-
-1. Open the service → **Events** / **Deploys**
-2. Select the previous successful deploy → **Rollback**
-3. Re-verify `/health` and `/health/deep`
-
-## Vercel (Frontend)
-
-The SPA is typically deployed from `Frontend/` with:
-
-- `VITE_API_BASE_URL` pointing at the Render API (`…/api/v1`)
-
-Build command: `npm run build`  
-Output directory: `dist`
-
-## Jenkins → Render
-
-Use a **Deploy Hook** (see [`jenkins/README.md`](../jenkins/README.md)).  
-Set `RENDER_DEPLOY=true` only when you intend to ship.
-
-## Local Docker Compose
-
-From repo root:
+The ARQ worker uses the same Docker image:
 
 ```bash
-docker compose up --build
+python -m app.workers.run_worker
 ```
 
-Override for hot reload: `docker-compose.override.yml` (Vite on host port 8082).
+Provision as a separate Render worker if background jobs are required.
+
+## Frontend (Render)
+
+Use [`mychair-frontend/render.yaml`](../mychair-frontend/render.yaml) — **SPA only**.
+
+1. Docker web service with context `mychair-frontend/`
+2. Set `VITE_API_BASE_URL` to the backend API prefix (`https://…/api/v1`) at build time
+3. Deploy and confirm the SPA loads
+
+Nginx serves static files only; the browser calls the API via `VITE_API_BASE_URL`.
+
+## Rollback
+
+1. Render → service → Deploys → previous successful deploy → Rollback
+2. Re-check health / SPA

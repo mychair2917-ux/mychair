@@ -1,0 +1,65 @@
+# ============================================================
+# MyChair Backend — local Docker Compose (UAT / development only)
+# Production deploys via Render (see render.yaml) — do not use compose in prod.
+# ============================================================
+
+services:
+  api:
+    build: .
+    container_name: mychair_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=uat
+      - PORT=8000
+      # Inside the compose network use service hostnames (not localhost)
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=Mychair
+      - REDIS_URI=redis://redis:6379/0
+      - BACKEND_CORS_ORIGINS=["http://localhost:5173"]
+      - FRONTEND_URL=http://localhost:5173
+      - BACKEND_PUBLIC_URL=http://localhost:8000
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build: .
+    container_name: mychair_worker
+    command: python -m app.workers.run_worker
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=uat
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=Mychair
+      - REDIS_URI=redis://redis:6379/0
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:6.0
+    container_name: mychair_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: mychair_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  redis_data:

@@ -1,0 +1,47 @@
+# Render Blueprint — MyChair Backend API only
+# Schema: https://render.com/schema/render.yaml.json
+#
+# Set secrets in the Render dashboard (sync: false). Do not commit production values.
+# Worker / Redis may be added as separate services if needed; this file deploys the API.
+
+services:
+  - type: web
+    name: mychair-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        value: 8000
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: Mychair
+      - key: REDIS_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: REFRESH_SECRET_KEY
+        sync: false
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: BACKEND_PUBLIC_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_TEST_EMAIL
+        sync: false
+      - key: SYSTEM_ADMIN_EMAIL
+        sync: false
+      - key: SYSTEM_ADMIN_PASSWORD
+        sync: false
+      - key: INVITATION_TOKEN_EXPIRE_HOURS
+        value: "72"
