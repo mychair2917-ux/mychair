@@ -27,11 +27,7 @@ services:
       - MONGODB_DB_NAME=Mychair
       - REDIS_URI=redis://redis:6379/0
       - SECRET_KEY=PROD_SUPER_SECRET_KEY_FOR_SALON_ERP_CHANGEME
-      - RESEND_API_KEY=${RESEND_API_KEY:-}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8082}
-      - EMAIL_FROM=${EMAIL_FROM:-MyChair <onboarding@resend.dev>}
-      - RESEND_TEST_EMAIL=${RESEND_TEST_EMAIL:-my.chair2917@gmail.com}
-      - INVITATION_TOKEN_EXPIRE_HOURS=72
+      # Email (Resend) — loaded from Backend/.env via env_file above; do not override here
       - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:-http://localhost:8000}
     depends_on:
       - mongodb

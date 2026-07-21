@@ -1,13 +1,15 @@
 """
 Customer CRUD endpoints for the Customer Analytics module.
 Provides full lifecycle management: list, detail (with history), create, update, delete.
+Also supports bulk client import (CSV / XLSX / XLS) with template download.
 """
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import Response
 from beanie import PydanticObjectId
 
-from app.api.dependencies.auth import PermissionChecker, get_current_user
+from app.api.dependencies.auth import PermissionChecker
 from app.core import tenant_context
 from app.core.exceptions import ResourceNotFoundException
 from app.models.customer import Customer
@@ -16,6 +18,13 @@ from app.models.appointment import Appointment
 from app.models.customer_reward_transaction import CustomerRewardTransaction
 from app.models.user import User
 from app.services.notifications import notification_service
+from app.services.customer_import import (
+    CustomerImportError,
+    build_csv_template,
+    build_error_report_csv,
+    build_xlsx_template,
+    import_customers_from_file,
+)
 from app.utils.api_response import success_response, error_response
 from app.utils.timezone import now_utc
 from pydantic import BaseModel, EmailStr, Field
@@ -77,7 +86,69 @@ class CustomerUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-# ─────────────────────────────── endpoints ──────────────────────────────────
+# ─────────────────────────────── import ─────────────────────────────────────
+# NOTE: These routes MUST be declared before `/{customer_id}` so "import"
+# is not captured as a customer id.
+
+@router.get("/import/template")
+async def download_import_template(
+    format: str = Query(default="xlsx", pattern="^(xlsx|csv)$"),
+    current_user: User = Depends(PermissionChecker("customer_analytics.create")),
+):
+    """Download a blank client import template (Excel or CSV)."""
+    _ = current_user  # permission gate + tenant context already applied
+    if format == "csv":
+        content = build_csv_template()
+        return Response(
+            content=content,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="client_import_template.csv"'
+            },
+        )
+    content = build_xlsx_template()
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="client_import_template.xlsx"'
+        },
+    )
+
+
+@router.post("/import")
+async def import_customers(
+    file: UploadFile = File(...),
+    current_user: User = Depends(PermissionChecker("customer_analytics.create")),
+):
+    """
+    Bulk-import clients from CSV / XLSX / XLS.
+    Duplicates (by mobile within tenant) are skipped; invalid rows are reported.
+    """
+    tenant_id = _effective_tenant(current_user)
+    content = await file.read()
+    try:
+        result = await import_customers_from_file(
+            content=content,
+            filename=file.filename or "",
+            content_type=file.content_type,
+            tenant_id=tenant_id,
+            current_user=current_user,
+        )
+    except CustomerImportError as exc:
+        return error_response(exc.message, status_code=exc.status_code)
+
+    data = result.to_dict()
+    # Attach a ready-to-download error report when there are issues
+    if result.errors:
+        data["errorReportCsv"] = build_error_report_csv(result.errors).decode("utf-8")
+
+    message = (
+        f"Import complete: {result.inserted} inserted, "
+        f"{result.duplicates} skipped, {result.failed} failed."
+    )
+    return success_response(message, data=data)
+
 
 @router.get("")
 async def list_customers(

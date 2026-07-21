@@ -114,3 +114,23 @@ export interface SegmentCreatePayload {
 export interface SegmentUpdatePayload extends Partial<SegmentCreatePayload> {
   id: string;
 }
+
+export interface CustomerImportErrorItem {
+  row: number;
+  mobile?: string | null;
+  reason: string;
+  status: 'skipped' | 'failed' | string;
+  full_name?: string | null;
+  original?: Record<string, string>;
+}
+
+export interface CustomerImportResult {
+  totalRows: number;
+  inserted: number;
+  duplicates: number;
+  skipped: number;
+  failed: number;
+  errors: CustomerImportErrorItem[];
+  reasons: Record<string, number>;
+  errorReportCsv?: string;
+}

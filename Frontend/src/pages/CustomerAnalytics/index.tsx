@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import {
   Award,
+  Download,
   Gift,
   MoreVertical,
   Pencil,
@@ -10,6 +11,7 @@ import {
   Star,
   Trash2,
   TrendingUp,
+  Upload,
   UserCheck,
   Users,
   X,
@@ -20,6 +22,7 @@ import * as Yup from 'yup';
 import '../../utils/echarts-init';
 import { Button, Input, Select, showToast } from '../../components/common';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../../components/common/Modal';
+import BulkClientUploadModal from '../../components/customerAnalytics/BulkClientUploadModal';
 import { cn } from '../../utils/cn';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
@@ -30,6 +33,7 @@ import {
   useCreateCustomerMutation,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
+  useLazyDownloadCustomerImportTemplateQuery,
   useGetRewardSettingsQuery,
   useUpdateRewardSettingsMutation,
   useCreateRewardSegmentMutation,
@@ -691,11 +695,31 @@ const CustomersTab: React.FC = () => {
   const [gender, setGender] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
   const [viewId, setViewId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
 
   const [deleteCustomer, { isLoading: deleting }] = useDeleteCustomerMutation();
+  const [downloadTemplate, { isFetching: downloadingTemplate }] =
+    useLazyDownloadCustomerImportTemplateQuery();
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await downloadTemplate('xlsx').unwrap();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'client_import_template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('success', 'Template downloaded');
+    } catch {
+      showToast('error', 'Failed to download template');
+    }
+  };
 
   const { data: res, isLoading } = useGetCustomersQuery({
     page,
@@ -755,13 +779,30 @@ const CustomersTab: React.FC = () => {
               options={STATUS_OPTIONS}
             />
           </div>
-          <Button
-            variant="primary"
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => { setEditTarget(null); setFormOpen(true); }}
-          >
-            Add Customer
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              icon={<Download className="h-4 w-4" />}
+              onClick={handleDownloadTemplate}
+              isLoading={downloadingTemplate}
+            >
+              Download Template
+            </Button>
+            <Button
+              variant="outline"
+              icon={<Upload className="h-4 w-4" />}
+              onClick={() => setUploadOpen(true)}
+            >
+              Upload
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={() => { setEditTarget(null); setFormOpen(true); }}
+            >
+              Add Customer
+            </Button>
+          </div>
         </div>
       </SectionCard>
 
@@ -904,6 +945,7 @@ const CustomersTab: React.FC = () => {
         onClose={() => { setFormOpen(false); setEditTarget(null); }}
         editCustomer={editTarget}
       />
+      <BulkClientUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
       {viewId && (
         <CustomerProfile customerId={viewId} onClose={() => setViewId(null)} />
       )}
