@@ -52,16 +52,18 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
-      - key: EMAIL_FROM
-        value: MyChair <onboarding@resend.dev>
-      - key: RESEND_TEST_EMAIL
-        value: my.chair2917@gmail.com
+      # Verified domain sender — built as `{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>`
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_FROM_NAME
+        sync: false
       - key: INVITATION_TOKEN_EXPIRE_HOURS
         value: "72"
+      # Set strong credentials in Render dashboard — never commit plaintext passwords
       - key: SYSTEM_ADMIN_EMAIL
-        value: mychair2918@gmail.com
+        sync: false
       - key: SYSTEM_ADMIN_PASSWORD
-        value: Tudip@123
+        sync: false
 
   # 3. ARQ Background Worker (Worker Service) — deploy AFTER Redis + API
   - type: worker
@@ -82,3 +84,13 @@ services:
           type: keyvalue
           name: mychair-redis
           property: connectionString
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_FROM_NAME
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: INVITATION_TOKEN_EXPIRE_HOURS
+        value: "72"
