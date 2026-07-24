@@ -1,49 +1,33 @@
-# Render Infrastructure-as-Code (Blueprint) Configuration
-# Schema Reference: https://render.com/schema/render.yaml.json
+# Render Blueprint — MyChair monorepo (API via Docker / Python 3.11)
+# Schema: https://render.com/schema/render.yaml.json
 #
-# POST-DEPLOY VERIFICATION (required):
-#   1. Compare startup logs on API and worker — JWT fingerprint must MATCH.
-#   2. curl https://<api>/health/deep — both mongodb and redis must be "ok".
-#   3. MONGO_URL is set once on mychair-shared group (shared by API + worker).
-
-envVarGroups:
-  - name: mychair-shared
-    envVars:
-      - key: MONGO_URL
-        sync: false
-      - key: JWT_SECRET
-        generateValue: true
-      - key: REFRESH_SECRET_KEY
-        generateValue: true
+# Deploy from repo root. rootDir points at the standalone backend package.
+# Set sync: false secrets in the Render dashboard before first production deploy.
 
 services:
-  # 1. Managed Redis (Key Value Store) — deploy FIRST
-  - type: keyvalue
-    name: mychair-redis
-    plan: free
-    ipAllowList: []
-
-  # 2. FastAPI Backend API (Web Service)
   - type: web
     name: mychair-api
     runtime: docker
-    dockerfilePath: Backend/Dockerfile
-    dockerContext: Backend
+    rootDir: mychair-backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     healthCheckPath: /health
     envVars:
-      - key: ENV
+      - key: ENVIRONMENT
         value: production
       - key: PORT
         value: 8000
-      - fromGroup: mychair-shared
+      - key: MONGODB_URI
+        sync: false
       - key: MONGODB_DB_NAME
         value: Mychair
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: mychair-redis
-          property: connectionString
+      - key: REDIS_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: REFRESH_SECRET_KEY
+        sync: false
       - key: BACKEND_CORS_ORIGINS
         sync: false
       - key: FRONTEND_URL

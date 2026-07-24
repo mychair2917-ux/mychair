@@ -1,0 +1,41 @@
+# MyChair Backend — gitignore
+
+# Secrets
+.env
+.env.local
+.env.uat
+.env.production
+!.env.example
+!.env.uat.example
+!.env.production.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Runtime data
+uploads/
+public/
+!public/.gitkeep
+
+# Logs / IDE
+logs/
+*.log
+.vscode/
+.idea/
+.DS_Store

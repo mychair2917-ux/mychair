@@ -1,0 +1,39 @@
+# Backend Docker build context — exclude everything not needed in the image
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Tests & CI
+.pytest_cache/
+tests/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Secrets — never bake into image
+.env
+.env.*
+!.env.example
+
+# Git / tooling
+.git/
+.gitignore
+.vscode/
+.idea/
+*.sw?
+
+# Docs & misc
+docs/
+*.md
+k8s-deployment.yaml
+
+# Uploads/public (created at runtime)
+uploads/
+public/

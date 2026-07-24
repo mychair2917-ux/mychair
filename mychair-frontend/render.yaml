@@ -1,0 +1,20 @@
+# Render Blueprint — MyChair Frontend (SPA) only
+# Schema: https://render.com/schema/render.yaml.json
+#
+# Set VITE_API_BASE_URL to your backend API prefix (…/api/v1) at build time.
+# No production URLs are committed.
+
+services:
+  - type: web
+    name: mychair-frontend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_APP_NAME
+        value: MyChair
+      - key: ENVIRONMENT
+        value: production

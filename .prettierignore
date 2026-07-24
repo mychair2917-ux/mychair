@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+coverage
+mychair-backend/.venv
+mychair-backend/venv
+venv
+.venv
+*.min.js
+package-lock.json
+mychair-frontend/dist
+mychair-backend/uploads
+mychair-backend/public
