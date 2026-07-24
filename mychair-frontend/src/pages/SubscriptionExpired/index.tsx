@@ -22,9 +22,9 @@ const SubscriptionExpired = () => {
   if (isOwner) {
     return (
       <div className="min-h-screen bg-[var(--color-surface-bg)] px-4 py-10 md:px-8">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-[var(--color-border-soft)] bg-white p-8 shadow-soft">
-          <div className="mb-6 flex items-center gap-3 text-red-600">
-            <ShieldAlert className="h-8 w-8" />
+        <div className="mx-auto max-w-3xl rounded-2xl border border-[var(--color-border-soft)] bg-white p-5 shadow-soft sm:p-8">
+          <div className="mb-6 flex flex-col gap-3 text-red-600 sm:flex-row sm:items-center">
+            <ShieldAlert className="h-8 w-8 shrink-0" />
             <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
               Your subscription has expired.
             </h1>
@@ -113,7 +113,7 @@ const SubscriptionExpired = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--color-surface-bg)] px-4">
-      <div className="max-w-lg rounded-2xl border border-[var(--color-border-soft)] bg-white p-8 text-center shadow-soft">
+      <div className="max-w-lg rounded-2xl border border-[var(--color-border-soft)] bg-white p-5 text-center shadow-soft sm:p-8">
         <ShieldAlert className="mx-auto mb-4 h-12 w-12 text-red-500" />
         <h1 className="mb-3 text-2xl font-bold text-[var(--color-text-primary)]">
           Salon subscription has expired.

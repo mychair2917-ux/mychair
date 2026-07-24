@@ -1,7 +1,7 @@
 export interface MyEarningsQueryParams {
   month?: number;
   year?: number;
-  period?: 'daily' | 'weekly' | 'monthly' | 'custom';
+  period?: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
   startDate?: string;
   endDate?: string;
   employeeId?: string;

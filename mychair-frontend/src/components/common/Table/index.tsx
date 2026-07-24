@@ -245,7 +245,7 @@ const CommonTable = <T,>({
                 value={globalSearch}
                 onChange={handleGlobalSearch}
                 placeholder={globalSearchPlaceholder}
-                containerClassName="sm:min-w-72"
+                containerClassName="w-full sm:min-w-72"
               />
             )}
             {filters}

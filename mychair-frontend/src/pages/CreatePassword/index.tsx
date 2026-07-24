@@ -59,8 +59,8 @@ const CreatePassword: React.FC = () => {
 
   if (!token) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-        <div className="max-w-md rounded-xl bg-white p-8 text-center shadow-md">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 sm:p-6">
+        <div className="max-w-md rounded-xl bg-white p-5 text-center shadow-md sm:p-8">
           <p className="text-red-600">Invalid invitation link. No token provided.</p>
         </div>
       </div>
@@ -69,7 +69,7 @@ const CreatePassword: React.FC = () => {
 
   if (isValidating) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 sm:p-6">
         <p className="text-gray-600">Validating invitation...</p>
       </div>
     );
@@ -77,8 +77,8 @@ const CreatePassword: React.FC = () => {
 
   if (validationError || !salonInfo?.is_valid) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-        <div className="max-w-md rounded-xl bg-white p-8 text-center shadow-md">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 sm:p-6">
+        <div className="max-w-md rounded-xl bg-white p-5 text-center shadow-md sm:p-8">
           <p className="text-red-600">
             {(validationError as { data?: ApiErrorResponse })?.data?.message ||
               'This invitation link is invalid or has expired.'}
@@ -89,8 +89,8 @@ const CreatePassword: React.FC = () => {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-md">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 sm:p-6">
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-md sm:p-8">
         <div className="mb-6 flex flex-col items-center">
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--color-brand-gold)] to-[var(--color-brand-gold-dark)]">
             <Scissors className="h-6 w-6 text-white" />

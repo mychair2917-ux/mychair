@@ -7,17 +7,14 @@ import {
   ChevronRight,
   FileText,
   IndianRupee,
-  Plus,
   Printer,
   ReceiptText,
   Search,
-  Send,
   Sparkles,
   Users,
-  X,
 } from 'lucide-react';
 
-import { Button, Input, Select } from '../components/common';
+import { Input, Select } from '../components/common';
 import { showToast } from '../components/common/Toast/toastService';
 import ExpensesSection from '../components/expenses/ExpensesSection';
 import PayrollSection from '../components/payroll/PayrollSection';
@@ -95,8 +92,7 @@ const formatStatus = (status: StatusTone) =>
 const PageHeader: React.FC<{
   section: string;
   subtitle: string;
-  onOpenDrawer: () => void;
-}> = ({ section, subtitle, onOpenDrawer }) => (
+}> = ({ section, subtitle }) => (
   <div className="rounded-[2rem] border border-[var(--color-border-soft)] bg-white/90 p-4 shadow-soft backdrop-blur md:p-5 xl:p-6">
     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
       <div>
@@ -108,29 +104,6 @@ const PageHeader: React.FC<{
           Billing & Finance
         </h1>
         <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{section} · {subtitle}</p>
-      </div>
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative min-w-0 lg:w-80">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            className="!h-11 rounded-2xl border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] !pl-10"
-            placeholder="Search invoice, client, vendor..."
-          />
-        </div>
-        <Select
-          className="!h-11 rounded-2xl border-[var(--color-border-strong)] bg-white"
-          value="today"
-          onChange={() => undefined}
-          options={[
-            { value: 'today', label: 'Today' },
-            { value: 'week', label: 'This week' },
-            { value: 'month', label: 'This month' },
-          ]}
-        />
-        <Button className="h-11 rounded-2xl" icon={<Plus className="h-4 w-4" />} onClick={onOpenDrawer}>
-          Create Bill
-        </Button>
       </div>
     </div>
   </div>
@@ -254,61 +227,8 @@ const StatusBadge: React.FC<{ status: StatusTone; label?: string }> = ({ status,
 // }
 
 
-const SideDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-sm">
-      <div className="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-[var(--color-text-primary)]">Create quick bill</h2>
-            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-              Fast counter billing with split payment support.
-            </p>
-          </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="mt-6 space-y-4">
-          <FormInput label="Customer" placeholder="Search or add customer" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormInput label="Appointment" placeholder="Select appointment" />
-            <FormInput label="Staff" placeholder="Assign staff" />
-          </div>
-          <FormInput label="Services" placeholder="Hair spa, manicure..." />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormInput label="Amount" placeholder="₹0.00" />
-            <FormInput label="Payment Method" placeholder="Cash / UPI / Card" />
-          </div>
-          <div className="rounded-2xl bg-[var(--color-surface-bg)] p-4">
-            <p className="text-sm font-bold text-[var(--color-text-primary)]">Split payment</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <FormInput label="Cash" placeholder="₹0" />
-              <FormInput label="UPI" placeholder="₹0" />
-              <FormInput label="Card" placeholder="₹0" />
-            </div>
-          </div>
-          <Button fullWidth className="h-11 rounded-2xl" icon={<Send className="h-4 w-4" />}>
-            Save & print bill
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const FormInput: React.FC<{ label: string; placeholder: string; type?: string }> = ({ label, placeholder, type }) => (
-  <label className="block">
-    <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-gray-500">{label}</span>
-    <Input
-      type={type}
-      className="!h-11 rounded-2xl border-[var(--color-border-strong)] bg-white"
-      placeholder={placeholder}
-    />
-  </label>
-);
+// SideDrawer removed — quick-bill UI was non-functional stub (no submit/API).
+// Bills are created from Appointments checkout / existing billing flows.
 
 const paymentStatusTone: Record<string, StatusTone> = {
   PAID: 'paid',
@@ -848,7 +768,6 @@ const BillingFinance: React.FC = () => {
     payroll: 'structure',
     expenses: 'all',
   });
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const currentSection = sectionItems.find((item) => item.key === activeSection) ?? sectionItems[0];
   const tabs = tabsBySection[activeSection];
@@ -862,8 +781,6 @@ const BillingFinance: React.FC = () => {
         return <PayrollSection activeTab={activeTab} salonId={salonId} />;
       case 'expenses':
         return <ExpensesSection activeTab={activeTab} salonId={salonId} />;
-    
-     
       default:
         return null;
     }
@@ -875,7 +792,6 @@ const BillingFinance: React.FC = () => {
         <PageHeader
           section={currentSection.label}
           subtitle={currentSection.description}
-          onOpenDrawer={() => setDrawerOpen(true)}
         />
 
         <main className="min-w-0 space-y-5">
@@ -889,7 +805,6 @@ const BillingFinance: React.FC = () => {
           {content}
         </main>
       </div>
-      <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );
 };

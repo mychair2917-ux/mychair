@@ -209,11 +209,11 @@ const RolesPermissions: React.FC = () => {
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-brand-gold)] text-white">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-gold)] text-white">
           <Shield className="h-5 w-5" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
             Role & Permissions
           </h1>

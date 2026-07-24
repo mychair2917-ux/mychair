@@ -32,8 +32,8 @@ const ModalFooter = React.forwardRef<HTMLElement, React.HTMLProps<HTMLElement>>(
       <footer
         ref={ref}
         className={cn(
-          'flex flex-col gap-4 sm:flex-row',
-          'px-6 pt-6 pb-3 sm:px-10 sm:pt-9 sm:pb-6',
+          'flex flex-col gap-3 sm:flex-row sm:gap-4',
+          'px-4 pt-5 pb-4 sm:px-10 sm:pt-9 sm:pb-6',
           className
         )}
         {...others}

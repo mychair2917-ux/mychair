@@ -144,7 +144,7 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
       />
 
       <CommonCard title="Attendance Calendar" subtitle="Quick monthly overview">
-        <div className="space-y-4 p-5">
+        <div className="space-y-4">
           <div className="flex flex-wrap gap-3">
             <FormField label="Month" name="calendar_month">
               <Input
@@ -176,7 +176,7 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
       </CommonCard>
 
       <CommonCard title="Attendance History" subtitle="Day-by-day check-in and check-out details">
-        <div className="space-y-4 p-5">
+        <div className="space-y-4">
           <AttendanceTimeline records={records?.items ?? []} loading={activeQuery.isLoading} />
           {records && records.total > 0 && (
             <CommonPagination

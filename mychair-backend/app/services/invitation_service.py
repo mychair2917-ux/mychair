@@ -187,6 +187,7 @@ class InvitationService:
         longitude: Optional[float] = None,
         attendance_radius: int = 100,
         shift_start: str = "09:00",
+        inviter_name: str = "",
     ) -> Tuple[Optional[dict], Optional[dict]]:
         """
         Create tenant, salon owner user, token and send invitation email.
@@ -198,6 +199,9 @@ class InvitationService:
         subscription_plan = normalize_plan_name(subscription_plan)
 
         field_errors: dict = {}
+        preferred_email = (email or "").strip()
+        if not preferred_email:
+            field_errors["email"] = ["Preferred email is required"]
         if not salon_name:
             field_errors["salon_name"] = ["Salon name is required"]
         elif await self._salon_name_exists(salon_name):
@@ -214,23 +218,33 @@ class InvitationService:
         base_slug = slug.strip() if slug else self._slugify(salon_name)
         resolved_slug = await self._ensure_unique_slug(base_slug)
 
-        base_username = username.strip() if username else self._generate_username(owner_full_name, email)
+        base_username = (
+            username.strip()
+            if username
+            else self._generate_username(owner_full_name, preferred_email)
+        )
         resolved_username = await self._ensure_unique_username(base_username)
 
-        await self._cleanup_stale_invitation(email, resolved_slug)
+        await self._cleanup_stale_invitation(preferred_email, resolved_slug)
 
-        duplicate_errors = await self._check_duplicates(email, resolved_slug, resolved_username)
+        duplicate_errors = await self._check_duplicates(
+            preferred_email, resolved_slug, resolved_username
+        )
         if duplicate_errors:
             return None, duplicate_errors
 
         token_value = self._generate_token()
         invitation_link = f"{settings.FRONTEND_URL}/create-password?token={token_value}"
+        expiry_hours = settings.INVITATION_TOKEN_EXPIRE_HOURS
 
         email_sent, email_error = await send_invitation_email(
-            to_email=email,
+            to_email=preferred_email,
             salon_name=salon_name,
             username=resolved_username,
             invitation_link=invitation_link,
+            recipient_name=owner_full_name,
+            inviter_name=inviter_name,
+            expiry_hours=expiry_hours,
         )
 
         if not email_sent:
@@ -243,7 +257,7 @@ class InvitationService:
         tenant = Tenant(
             name=salon_name,
             slug=resolved_slug,
-            owner_email=email,
+            owner_email=preferred_email,
             subscription_plan=subscription_plan,
             subscription_tier=subscription_plan,
             subscription_status="ACTIVE",
@@ -267,7 +281,7 @@ class InvitationService:
         await salon_branch.insert()
 
         owner = User(
-            email=email,
+            email=preferred_email,
             phone=owner_phone_number or None,
             hashed_password=get_password_hash(secrets.token_urlsafe(32)),
             first_name=first_name,
@@ -287,7 +301,7 @@ class InvitationService:
         await owner.insert()
         owner_id = str(owner.id)
 
-        expires_at = now_utc() + timedelta(hours=settings.INVITATION_TOKEN_EXPIRE_HOURS)
+        expires_at = now_utc() + timedelta(hours=expiry_hours)
         invitation = InvitationToken(
             salon_id=tenant_id,
             owner_id=owner_id,
@@ -307,13 +321,10 @@ class InvitationService:
             "salon_id": tenant_id,
             "owner_id": owner_id,
             "salon_name": salon_name,
-            "email": email,
+            "email": preferred_email,
             "invitation_sent": True,
             "invitation_link": invitation_link,
-            "email_delivered_to": settings.RESEND_TEST_EMAIL
-            if email.lower() != settings.RESEND_TEST_EMAIL.lower()
-            and "resend.dev" in settings.EMAIL_FROM.lower()
-            else email,
+            "email_delivered_to": preferred_email,
         }, None
 
     async def validate_token(self, token: str) -> Tuple[Optional[dict], Optional[str]]:

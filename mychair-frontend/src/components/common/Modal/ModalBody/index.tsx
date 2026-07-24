@@ -41,7 +41,7 @@ const ModalBody = React.forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElemen
       <div
         ref={ref}
         id={bodyId}
-        className={cn('flex flex-1 flex-col px-6 pt-6 pb-3 sm:px-10 sm:pt-9 sm:pb-6', className)}
+        className={cn('flex flex-1 flex-col px-4 pt-5 pb-3 sm:px-10 sm:pt-9 sm:pb-6', className)}
         {...others}
       >
         {children}

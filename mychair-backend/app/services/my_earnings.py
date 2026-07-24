@@ -135,6 +135,11 @@ class MyEarningsService:
             start, end = self._week_range(today)
             return start, end, start.month, start.year, "weekly"
 
+        if normalized_period == "yearly":
+            start = datetime(active_year, 1, 1, tzinfo=timezone.utc)
+            end = datetime(active_year + 1, 1, 1, tzinfo=timezone.utc)
+            return start, end, active_month, active_year, "yearly"
+
         if normalized_period == "custom":
             start = self._parse_iso_date(start_date)
             end = self._parse_iso_date(end_date)

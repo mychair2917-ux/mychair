@@ -83,11 +83,11 @@ const CommonModal: React.FC<CommonModalProps> = ({
       )}
     </ModalBody>
     {(footer || onConfirm || onClose) && (
-      <ModalFooter className="justify-end pt-2">
+      <ModalFooter className="pt-2 sm:justify-end">
         {footer ?? (
           <>
             {onClose && (
-              <Button type="button" variant="secondary" onClick={onClose}>
+              <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">
                 {cancelLabel}
               </Button>
             )}
@@ -97,6 +97,7 @@ const CommonModal: React.FC<CommonModalProps> = ({
                 variant={confirmVariant}
                 onClick={onConfirm}
                 isLoading={isLoading}
+                className="w-full sm:w-auto"
               >
                 {confirmLabel}
               </Button>

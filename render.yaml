@@ -36,13 +36,45 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
-      - key: EMAIL_FROM
+      # Verified domain sender — built as `{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>`
+      - key: RESEND_FROM_EMAIL
         sync: false
-      - key: RESEND_TEST_EMAIL
+      - key: RESEND_FROM_NAME
         sync: false
+      - key: INVITATION_TOKEN_EXPIRE_HOURS
+        value: "72"
+      # Set strong credentials in Render dashboard — never commit plaintext passwords
       - key: SYSTEM_ADMIN_EMAIL
         sync: false
       - key: SYSTEM_ADMIN_PASSWORD
+        sync: false
+
+  # 3. ARQ Background Worker (Worker Service) — deploy AFTER Redis + API
+  - type: worker
+    name: mychair-worker
+    runtime: docker
+    dockerfilePath: Backend/Dockerfile
+    dockerContext: Backend
+    dockerCommand: python -m app.workers.run_worker
+    plan: starter
+    envVars:
+      - key: ENV
+        value: production
+      - fromGroup: mychair-shared
+      - key: MONGODB_DB_NAME
+        value: Mychair
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: mychair-redis
+          property: connectionString
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_FROM_NAME
+        sync: false
+      - key: FRONTEND_URL
         sync: false
       - key: INVITATION_TOKEN_EXPIRE_HOURS
         value: "72"

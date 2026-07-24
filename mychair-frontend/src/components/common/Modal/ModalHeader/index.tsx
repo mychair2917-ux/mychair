@@ -43,7 +43,7 @@ const ModalHeader = React.forwardRef<HTMLElement, React.HTMLProps<HTMLElement>>(
         id={headerId}
         className={cn(
           'flex font-bold text-gray-900',
-          'px-6 pt-6 pb-3 sm:px-10 sm:pt-9 sm:pb-6',
+          'px-4 pt-5 pb-3 sm:px-10 sm:pt-9 sm:pb-6',
           className
         )}
         {...others}

@@ -33,7 +33,7 @@ const NotificationDrawer = ({ onClose }: NotificationDrawerProps) => {
     : `/orgs/${orgId}/${ROUTE_PATHS.NOTIFICATIONS_COMMUNICATION}`;
 
   return (
-    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[360px] overflow-hidden rounded-2xl border border-[var(--color-border-soft)] bg-white shadow-card">
+    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-[var(--color-border-soft)] bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-[var(--color-border-soft)] px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-[var(--color-text-primary)]">Notifications</p>

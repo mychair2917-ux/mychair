@@ -300,7 +300,7 @@ const Profile: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="p-6 md:p-8">
+      <div className="p-4 sm:p-6 md:p-8">
         <PageLoader label="Loading your profile workspace..." />
       </div>
     );
@@ -308,7 +308,7 @@ const Profile: React.FC = () => {
 
   if (isError || !profile) {
     return (
-      <div className="p-6 md:p-8">
+      <div className="p-4 sm:p-6 md:p-8">
         <CommonCard>
           <EmptyState
             title="Unable to load profile"

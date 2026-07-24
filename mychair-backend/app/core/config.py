@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     SYSTEM_ADMIN_EMAIL: str = "admin@salonerp.com"
     SYSTEM_ADMIN_PASSWORD: str = "Admin@123456"
 
-    # Email (Resend)
+    # Email (Resend) — sender built as `{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>`
     RESEND_API_KEY: str = Field(default="")
     FRONTEND_URL: str = Field(default="")
     EMAIL_FROM: str = Field(default="MyChair <onboarding@resend.dev>")
@@ -150,18 +150,22 @@ class Settings(BaseSettings):
                 raise ValueError("REDIS_URL (or REDIS_URI) is required when ENVIRONMENT=production")
             self.REDIS_URI = _UAT_REDIS_URI
 
-        if not self.BACKEND_CORS_ORIGINS:
-            if is_production:
-                raise ValueError("BACKEND_CORS_ORIGINS is required when ENVIRONMENT=production")
-            self.BACKEND_CORS_ORIGINS = list(_UAT_CORS_ORIGINS)
+        frontend_origin = self.FRONTEND_URL.rstrip("/")
+        if frontend_origin and frontend_origin not in self.BACKEND_CORS_ORIGINS:
+            self.BACKEND_CORS_ORIGINS = [*self.BACKEND_CORS_ORIGINS, frontend_origin]
 
-        if not self.FRONTEND_URL.strip():
-            if is_production:
-                raise ValueError("FRONTEND_URL is required when ENVIRONMENT=production")
-            self.FRONTEND_URL = _UAT_FRONTEND_URL
-
-        if not self.BACKEND_PUBLIC_URL.strip():
-            if is_production:
+        if is_production:
+            if self.SECRET_KEY == _DEFAULT_SECRET:
+                raise ValueError("JWT_SECRET (or SECRET_KEY) must be set when ENV=production")
+            if self.REFRESH_SECRET_KEY == _DEFAULT_REFRESH_SECRET:
+                raise ValueError("REFRESH_SECRET_KEY must be set when ENV=production")
+            if "*" in self.BACKEND_CORS_ORIGINS:
+                raise ValueError("Wildcard CORS origins are not allowed when ENV=production")
+            if self._is_local_uri(self.MONGODB_URI):
+                raise ValueError("Local MongoDB URIs are not allowed when ENV=production")
+            if self._is_local_uri(self.REDIS_URI):
+                raise ValueError("Local Redis URIs are not allowed when ENV=production")
+            if not self.BACKEND_PUBLIC_URL.strip():
                 logger.warning(
                     "BACKEND_PUBLIC_URL is not set in production; "
                     "generated asset links (e.g. invoice PDFs) may be broken."
@@ -190,6 +194,15 @@ class Settings(BaseSettings):
     @property
     def is_uat(self) -> bool:
         return self._normalize_environment(self.ENV) == "uat"
+
+    @property
+    def resend_from(self) -> str:
+        """Resend `from` header: Display Name <email@domain>."""
+        name = (self.RESEND_FROM_NAME or "").strip()
+        email = (self.RESEND_FROM_EMAIL or "").strip()
+        if name and email:
+            return f"{name} <{email}>"
+        return email or name
 
     @property
     def whatsapp_bearer_token(self) -> str:

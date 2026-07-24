@@ -322,7 +322,7 @@ const ProductsInventory: React.FC = () => {
 
   if (!salonId && isSuperAdmin(user?.role)) {
     return (
-      <div className="p-6 md:p-8">
+      <div className="p-4 sm:p-6 md:p-8">
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
           Select a salon from the header to manage products and inventory.
         </div>
@@ -331,7 +331,7 @@ const ProductsInventory: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-8">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">
       <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--color-brand-gold)]/10 px-3 py-1 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
@@ -750,7 +750,7 @@ const ProductsInventory: React.FC = () => {
       {activeTab === 'reports' && (
         <div className="space-y-6">
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]">
               <Input type="date" value={reportStart} onChange={(event) => setReportStart(event.target.value)} />
               <Input type="date" value={reportEnd} onChange={(event) => setReportEnd(event.target.value)} />
               <Input placeholder="Category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} />

@@ -2,13 +2,21 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react-swc';
 import { defineConfig, loadEnv } from 'vite';
 
+function resolveProxyTarget(env: Record<string, string>): string | undefined {
+  if (env.VITE_PROXY_TARGET) {
+    return env.VITE_PROXY_TARGET;
+  }
+  const apiBaseUrl = env.VITE_API_BASE_URL;
+  if (apiBaseUrl?.startsWith('http')) {
+    return new URL(apiBaseUrl).origin;
+  }
+  return undefined;
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-
-  const proxyTarget =
-    env.VITE_PROXY_TARGET ||
-    (env.VITE_API_BASE_URL?.startsWith('http') ? new URL(env.VITE_API_BASE_URL).origin : undefined);
+  const proxyTarget = resolveProxyTarget(env);
 
   return {
     plugins: [react(), tailwindcss()],

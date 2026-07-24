@@ -74,6 +74,7 @@ export function useModal({
     className: cn(
       'relative box-border bg-white w-full z-50',
       'flex flex-col',
+      'max-h-[min(100dvh-1.5rem,100%)] overflow-y-auto',
       'rounded sm:rounded-md',
       '!shadow-popover !outline-0',
       modalSizeClassNameMapping[size],

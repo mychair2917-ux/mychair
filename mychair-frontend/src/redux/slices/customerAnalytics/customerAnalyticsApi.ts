@@ -8,6 +8,7 @@ import type {
   CustomerListParams,
   CustomerCreatePayload,
   CustomerUpdatePayload,
+  CustomerImportResult,
   OverviewKPIs,
   PaginatedCustomers,
   RewardSettings,
@@ -84,6 +85,28 @@ export const customerAnalyticsApi = baseApi.injectEndpoints({
       invalidatesTags: ['Customers', 'CustomerAnalytics'],
     }),
 
+    importCustomers: builder.mutation<ApiResponse<CustomerImportResult>, File>({
+      query: (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return {
+          url: API_PATHS.CUSTOMER_ANALYTICS.IMPORT,
+          method: HTTP_METHODS.POST,
+          body: formData,
+        };
+      },
+      invalidatesTags: ['Customers', 'CustomerAnalytics'],
+    }),
+
+    downloadCustomerImportTemplate: builder.query<Blob, 'xlsx' | 'csv'>({
+      query: (format) => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.IMPORT_TEMPLATE,
+        method: HTTP_METHODS.GET,
+        params: { format },
+        responseHandler: (response: Response) => response.blob(),
+      }),
+    }),
+
     // ── Reward Settings ───────────────────────────────────────────────────
     getRewardSettings: builder.query<ApiResponse<RewardSettings>, void>({
       query: () => ({
@@ -140,6 +163,8 @@ export const {
   useCreateCustomerMutation,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
+  useImportCustomersMutation,
+  useLazyDownloadCustomerImportTemplateQuery,
   useGetRewardSettingsQuery,
   useUpdateRewardSettingsMutation,
   useCreateRewardSegmentMutation,

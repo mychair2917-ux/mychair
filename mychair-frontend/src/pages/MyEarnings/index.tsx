@@ -57,6 +57,7 @@ const PERIOD_OPTIONS = [
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
   { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
   { value: 'custom', label: 'Custom Range' },
 ];
 
@@ -97,7 +98,8 @@ const MetricCard: React.FC<{
   helper: string;
   icon: React.ElementType;
   tone: string;
-}> = ({ label, value, helper, icon: Icon, tone }) => (
+  loading?: boolean;
+}> = ({ label, value, helper, icon: Icon, tone, loading }) => (
   <SectionCard>
     <div className="flex items-start justify-between gap-3">
       <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl', tone)}>
@@ -108,8 +110,10 @@ const MetricCard: React.FC<{
       </span>
     </div>
     <p className="mt-4 text-sm font-medium text-[var(--color-text-secondary)]">{label}</p>
-    <h3 className="mt-1 text-2xl font-bold text-[var(--color-text-primary)]">{value}</h3>
-    <p className="mt-2 text-xs text-gray-500">{helper}</p>
+    <h3 className="mt-1 text-2xl font-bold text-[var(--color-text-primary)]">
+      {loading ? '—' : value}
+    </h3>
+    <p className="mt-2 text-xs text-gray-500">{loading ? 'Loading…' : helper}</p>
   </SectionCard>
 );
 
@@ -148,6 +152,8 @@ const filterLabel = (period: PeriodFilter): string => {
       return 'today';
     case 'weekly':
       return 'this week';
+    case 'yearly':
+      return 'this year';
     case 'custom':
       return 'selected range';
     default:
@@ -281,6 +287,11 @@ const MyEarningsPage: React.FC = () => {
     [breakdown?.monthly_growth]
   );
 
+  const hasGrowthData = useMemo(() => {
+    const points = breakdown?.monthly_growth ?? [];
+    return points.some((item) => item.earnings > 0 || item.incentives > 0);
+  }, [breakdown?.monthly_growth]);
+
   const handleDownloadSlip = async (payrollId: string) => {
     try {
       setActiveSlipId(payrollId);
@@ -409,6 +420,7 @@ const MyEarningsPage: React.FC = () => {
                 helper="Live value for today"
                 icon={CalendarDays}
                 tone="bg-blue-50 text-blue-700"
+                loading={summaryLoading}
               />
               <MetricCard
                 label="Current Earnings"
@@ -416,6 +428,7 @@ const MyEarningsPage: React.FC = () => {
                 helper={`Running total for ${filterLabel(period)}`}
                 icon={TrendingUp}
                 tone="bg-emerald-50 text-emerald-700"
+                loading={summaryLoading}
               />
               <MetricCard
                 label="Service Incentives"
@@ -423,6 +436,7 @@ const MyEarningsPage: React.FC = () => {
                 helper="From completed services"
                 icon={HandCoins}
                 tone="bg-emerald-50 text-emerald-700"
+                loading={summaryLoading}
               />
               <MetricCard
                 label="Product Incentives"
@@ -430,6 +444,7 @@ const MyEarningsPage: React.FC = () => {
                 helper="From retail product sales"
                 icon={BarChart3}
                 tone="bg-violet-50 text-violet-700"
+                loading={summaryLoading}
               />
               <MetricCard
                 label="Pending Salary"
@@ -437,6 +452,7 @@ const MyEarningsPage: React.FC = () => {
                 helper="Not yet settled in payroll"
                 icon={CreditCard}
                 tone="bg-amber-50 text-amber-700"
+                loading={summaryLoading}
               />
               <MetricCard
                 label="Wallet Balance"
@@ -444,6 +460,7 @@ const MyEarningsPage: React.FC = () => {
                 helper="Current incentive wallet"
                 icon={Wallet}
                 tone="bg-teal-50 text-teal-700"
+                loading={summaryLoading}
               />
             </div>
 
@@ -462,7 +479,23 @@ const MyEarningsPage: React.FC = () => {
                 </div>
 
                 <div className="mt-5 rounded-2xl bg-[var(--color-surface-bg)] p-3">
-                  <ReactECharts option={growthChartOption} style={{ height: 280 }} />
+                  {breakdownLoading ? (
+                    <div className="flex h-[280px] items-center justify-center text-sm text-gray-500">
+                      Loading chart…
+                    </div>
+                  ) : hasGrowthData ? (
+                    <ReactECharts option={growthChartOption} style={{ height: 280 }} />
+                  ) : (
+                    <div className="flex h-[280px] flex-col items-center justify-center text-center">
+                      <p className="text-base font-semibold text-[var(--color-text-primary)]">
+                        No Data Available
+                      </p>
+                      <p className="mt-1 max-w-sm text-sm text-[var(--color-text-secondary)]">
+                        Earnings and incentives will appear here once completed services or product
+                        sales are billed.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </SectionCard>
 

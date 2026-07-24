@@ -263,7 +263,7 @@ const LeaveManagement: React.FC = () => {
             : 'Historical approved and rejected leave records'
         }
       >
-        <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto_auto]">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto_auto_auto]">
           <CommonSearch
             placeholder="Search history..."
             onDebouncedChange={(value) => {
