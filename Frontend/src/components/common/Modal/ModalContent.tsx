@@ -61,7 +61,7 @@ const ModalContent: React.FC<ModalContentProps> = ({ children }) => {
 
   return (
     <FloatingPortal>
-      <FloatingOverlay className="relative z-50 grid place-items-center bg-black/60" lockScroll>
+      <FloatingOverlay className="relative z-50 grid place-items-center overflow-y-auto bg-black/60 p-3 sm:p-4" lockScroll>
         <FloatingFocusManager context={context} initialFocus={refs.floating}>
           <div
             ref={handleElementRef}

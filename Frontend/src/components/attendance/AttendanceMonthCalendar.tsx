@@ -31,7 +31,7 @@ const AttendanceMonthCalendar: React.FC<AttendanceMonthCalendarProps> = ({
   });
 
   return (
-    <div className="rounded-3xl border border-[var(--color-border-soft)] bg-white p-5">
+    <div className="rounded-3xl border border-[var(--color-border-soft)] bg-white p-3 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-gray-900">
           {new Date(year, month - 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' })}
@@ -44,19 +44,19 @@ const AttendanceMonthCalendar: React.FC<AttendanceMonthCalendarProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-2 text-center text-xs font-medium text-gray-500">
+      <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-medium text-gray-500 sm:gap-2 sm:text-xs">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
           <div key={day}>{day}</div>
         ))}
       </div>
 
-      <div className="mt-2 grid grid-cols-7 gap-2">
+      <div className="mt-2 grid grid-cols-7 gap-0.5 sm:gap-2">
         {cells.map((cell, index) =>
           cell ? (
             <div
               key={cell.isoDate}
               title={cell.status ? `${formatDateDMY(cell.isoDate)} — ${statusLabel(cell.status)}` : formatDateDMY(cell.isoDate)}
-              className="flex flex-col items-center gap-1 rounded-xl border border-[var(--color-border-soft)] px-1 py-2"
+              className="flex flex-col items-center gap-1 rounded-lg border border-[var(--color-border-soft)] px-0.5 py-1.5 sm:rounded-xl sm:px-1 sm:py-2"
             >
               <span className="text-sm font-medium text-gray-800">{cell.dayNumber}</span>
               <span className={`h-2.5 w-2.5 rounded-full ${calendarDayColor(cell.status)}`} />

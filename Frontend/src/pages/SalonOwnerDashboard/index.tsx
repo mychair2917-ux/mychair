@@ -49,8 +49,8 @@ const SalonOwnerDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[var(--color-surface-bg)]">
-      <header className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
+      <header className="border-b border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
+        <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">MyChair</h1>
             <p className="text-sm text-gray-500">Salon Owner Dashboard</p>
@@ -67,7 +67,7 @@ const SalonOwnerDashboard: React.FC = () => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl p-6 md:p-8">
+      <main className="mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900">Welcome, {profile.username}</h2>
           <p className="mt-1 text-gray-500">Your salon details from the invitation</p>

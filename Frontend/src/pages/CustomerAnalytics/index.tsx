@@ -487,8 +487,8 @@ const CustomerProfile: React.FC<CustomerProfileProps> = ({ customerId, onClose }
       />
       <div className="relative z-10 flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--color-border-soft)] p-5">
-          <h2 className="text-lg font-bold text-[var(--color-text-primary)]">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border-soft)] p-4 sm:p-5">
+          <h2 className="min-w-0 pr-2 text-lg font-bold text-[var(--color-text-primary)]">
             Customer Profile
           </h2>
           <button
@@ -1107,8 +1107,8 @@ const RewardSettingsTab: React.FC = () => {
     <div className="space-y-5">
       {/* Global toggle */}
       <SectionCard>
-        <div className="flex items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h3 className="font-bold text-[var(--color-text-primary)]">Reward System</h3>
             <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
               When enabled, customers automatically earn points after every completed
@@ -1120,7 +1120,7 @@ const RewardSettingsTab: React.FC = () => {
             disabled={saving}
             onClick={() => handleToggle(!settings?.is_enabled)}
             className={cn(
-              'relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none',
+              'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none',
               settings?.is_enabled
                 ? 'bg-[var(--color-brand-gold)]'
                 : 'bg-gray-300'
@@ -1135,8 +1135,8 @@ const RewardSettingsTab: React.FC = () => {
           </button>
         </div>
         {settings?.is_enabled && (
-          <div className="mt-4 flex items-end gap-4 border-t border-[var(--color-border-soft)] pt-4">
-            <div className="flex-1 max-w-xs">
+          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--color-border-soft)] pt-4 sm:flex-row sm:items-end sm:gap-4">
+            <div className="w-full max-w-xs flex-1">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Default Points per Appointment
               </label>

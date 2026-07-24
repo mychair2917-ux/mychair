@@ -367,8 +367,8 @@ const SalaryStructureTab: React.FC = () => {
 
   return (
     <SectionStack>
-      <div className="flex items-center justify-between rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-4 shadow-soft">
-        <div>
+      <div className="flex flex-col gap-2 rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-4 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h3 className="text-base font-bold text-[var(--color-text-primary)]">
             Employee Salary Configuration
           </h3>

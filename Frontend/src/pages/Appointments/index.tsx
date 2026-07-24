@@ -250,7 +250,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 p-4">
-        <div className="relative flex-1 min-w-48">
+        <div className="relative w-full min-w-0 flex-1 sm:min-w-48">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
             placeholder="Search client name or phone..."
@@ -259,7 +259,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
             className="!pl-9"
           />
         </div>
-        <div className="w-40">
+        <div className="w-full sm:w-40">
           <Select
             value={statusFilter}
             onChange={(e) => {
@@ -409,7 +409,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
 
       {/* Pagination */}
       {!isLoading && total > 0 && (
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
+        <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-gray-500">
             Showing <span className="font-medium">{startItem}–{endItem}</span> of{' '}
             <span className="font-medium">{total}</span> appointments
@@ -760,13 +760,13 @@ const Appointments: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           {/* Tab switcher - top-right */}
-          <div className="flex items-center rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="flex w-full items-center rounded-xl border border-gray-200 bg-white p-1 shadow-sm sm:w-auto">
             <button
               type="button"
               onClick={() => setActiveTab('entry')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none sm:px-4 ${
                 activeTab === 'entry'
                   ? 'bg-[var(--color-brand-gold)] text-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
@@ -778,7 +778,7 @@ const Appointments: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveTab('list')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none sm:px-4 ${
                 activeTab === 'list'
                   ? 'bg-[var(--color-brand-gold)] text-white shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
@@ -862,20 +862,20 @@ const Appointments: React.FC = () => {
           {/* Entry form */}
           <main className="space-y-5">
             <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
                   <h2 className="font-semibold text-gray-900">Client</h2>
                   <p className="text-sm text-gray-500">Search by phone or name, then select history.</p>
                 </div>
-                <UserPlus className="h-5 w-5 text-gray-400" />
+                <UserPlus className="h-5 w-5 shrink-0 text-gray-400" />
               </div>
-              <form onSubmit={handleClientSearch} className="flex gap-2">
+              <form onSubmit={handleClientSearch} className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   placeholder="Phone number or client name"
                   value={clientSearch}
                   onChange={(event) => setClientSearch(event.target.value)}
                 />
-                <Button type="submit" isLoading={isSearchingClients} icon={<Search className="h-4 w-4" />}>
+                <Button type="submit" isLoading={isSearchingClients} icon={<Search className="h-4 w-4" />} className="w-full sm:w-auto">
                   Search
                 </Button>
               </form>
@@ -928,8 +928,8 @@ const Appointments: React.FC = () => {
             </section>
 
             <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <h2 className="font-semibold text-gray-900">Services</h2>
                   <p className="text-sm text-gray-500">Add multiple service with assigned staff.</p>
                 </div>
@@ -939,6 +939,7 @@ const Appointments: React.FC = () => {
                   size="sm"
                   icon={<Plus className="h-4 w-4" />}
                   onClick={() => setServiceRows((rows) => [...rows, createRow()])}
+                  className="w-full sm:w-auto"
                 >
                   Add
                 </Button>
@@ -998,8 +999,8 @@ const Appointments: React.FC = () => {
             </section>
 
             <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <h2 className="font-semibold text-gray-900">Products</h2>
                   <p className="text-sm text-gray-500">Add multiple products with assigned staff.</p>
                 </div>
@@ -1009,6 +1010,7 @@ const Appointments: React.FC = () => {
                   size="sm"
                   icon={<Plus className="h-4 w-4" />}
                   onClick={() => setProductRows((rows) => [...rows, createProductRow()])}
+                  className="w-full sm:w-auto"
                 >
                   Add
                 </Button>

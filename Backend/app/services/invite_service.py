@@ -330,6 +330,7 @@ class InviteService:
             longitude=payload.longitude,
             attendance_radius=payload.attendance_radius,
             shift_start=payload.shift_start or "09:00",
+            inviter_name=self._display_name(actor),
         )
         if errors:
             return None, errors
@@ -520,13 +521,22 @@ class InviteService:
 
         invitation_link = f"{settings.FRONTEND_URL}/create-password?token={invite.token}"
         if invite.role == ROLE_SALON_OWNER:
+            preferred_email = (invite.invited_email or "").strip()
+            if not preferred_email:
+                return None, "Preferred email is missing for this invitation"
             user = await User.get(invite.user_id) if invite.user_id else None
-            username = user.username if user else invite.invited_email
+            username = user.username if user else preferred_email
+            recipient_name = invite.full_name or (
+                f"{user.first_name or ''} {user.last_name or ''}".strip() if user else ""
+            )
             email_sent, email_error = await send_invitation_email(
-                to_email=invite.invited_email,
+                to_email=preferred_email,
                 salon_name=salon_name,
-                username=username or invite.invited_email,
+                username=username or preferred_email,
                 invitation_link=invitation_link,
+                recipient_name=recipient_name,
+                inviter_name=self._display_name(actor),
+                expiry_hours=settings.INVITATION_TOKEN_EXPIRE_HOURS,
             )
         else:
             return None, "Only salon owner invitations can be resent by email"

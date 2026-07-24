@@ -16,10 +16,10 @@ const SubscriptionExpiryBanner = () => {
   }
 
   return (
-    <div className="mx-4 mt-4 md:mx-8 md:mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm">
-      <div className="flex items-start gap-3">
+    <div className="mx-3 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900 shadow-sm sm:mx-4 sm:mt-4 sm:px-4 md:mx-8 md:mt-6">
+      <div className="flex min-w-0 items-start gap-3">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-        <p className="text-sm font-medium">{status.reminder_message}</p>
+        <p className="min-w-0 flex-1 break-words text-sm font-medium">{status.reminder_message}</p>
       </div>
     </div>
   );
