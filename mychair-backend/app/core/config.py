@@ -73,10 +73,13 @@ class Settings(BaseSettings):
     SYSTEM_ADMIN_EMAIL: str = "admin@salonerp.com"
     SYSTEM_ADMIN_PASSWORD: str = "Admin@123456"
 
-    # Email (Resend)
+    # Email (Resend) — sender built as `{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>`
     RESEND_API_KEY: str = Field(default="")
     FRONTEND_URL: str = Field(default="")
-    EMAIL_FROM: str = Field(default="MyChair <onboarding@resend.dev>")
+    RESEND_FROM_EMAIL: str = Field(default="")
+    RESEND_FROM_NAME: str = Field(default="")
+    # Legacy aliases (ignored by sender; kept so older env files don't crash)
+    EMAIL_FROM: str = Field(default="")
     RESEND_TEST_EMAIL: str = Field(default="")
 
     # Invitation
@@ -190,6 +193,15 @@ class Settings(BaseSettings):
     @property
     def is_uat(self) -> bool:
         return self._normalize_environment(self.ENV) == "uat"
+
+    @property
+    def resend_from(self) -> str:
+        """Resend `from` header: Display Name <email@domain>."""
+        name = (self.RESEND_FROM_NAME or "").strip()
+        email = (self.RESEND_FROM_EMAIL or "").strip()
+        if name and email:
+            return f"{name} <{email}>"
+        return email or name
 
     @property
     def whatsapp_bearer_token(self) -> str:

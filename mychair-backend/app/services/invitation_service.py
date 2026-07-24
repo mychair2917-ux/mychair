@@ -310,10 +310,7 @@ class InvitationService:
             "email": email,
             "invitation_sent": True,
             "invitation_link": invitation_link,
-            "email_delivered_to": settings.RESEND_TEST_EMAIL
-            if email.lower() != settings.RESEND_TEST_EMAIL.lower()
-            and "resend.dev" in settings.EMAIL_FROM.lower()
-            else email,
+            "email_delivered_to": email,
         }, None
 
     async def validate_token(self, token: str) -> Tuple[Optional[dict], Optional[str]]:

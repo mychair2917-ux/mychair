@@ -18,9 +18,12 @@ import { formatDateDMY } from '../../../utils/utilities';
 import { getProfilePath, getSettingsPath } from '../../../redux/slices/auth/authSession';
 import { useAuthActions } from '../../../hooks/useAuthActions';
 import { useGetUnreadNotificationCountQuery } from '../../../redux/slices/notifications/notificationsApi';
+import { useSidebar } from '../SidebarContext';
+import { cn } from '../../../utils/cn';
 
 const Header: React.FC = () => {
   const dispatch = useAppDispatch();
+  const { isSidebarOpen, isDesktop } = useSidebar();
   const user = useAppSelector((state) => state.auth.user);
   const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
   const orgId = useAppSelector((state) => state.auth.orgId);
@@ -77,7 +80,12 @@ const Header: React.FC = () => {
   ].filter(Boolean) as Array<{ label: string; to: string; icon: React.ElementType }>;
 
   return (
-    <header className="sticky top-0 z-40 flex h-[76px] items-center justify-between border-b border-[var(--color-border-soft)] bg-white/88 px-4 backdrop-blur-md transition-all duration-200 sm:px-6">
+    <header
+      className={cn(
+        'fixed top-0 right-0 z-40 flex h-[76px] items-center justify-between border-b border-[var(--color-border-soft)] bg-white/88 px-4 backdrop-blur-md transition-[left] duration-300 ease-in-out sm:px-6',
+        isSidebarOpen && isDesktop ? 'left-72' : 'left-[4.5rem]'
+      )}
+    >
       <div className="flex flex-1 items-center gap-4 md:gap-6">
         {showBranchSelector && (
           <div className="w-full max-w-sm min-w-60">

@@ -132,6 +132,8 @@ export const API_PATHS = {
     OVERVIEW: '/customer-analytics/overview',
     CUSTOMERS: '/customers',
     CUSTOMER_DETAIL: (id: string) => `/customers/${id}`,
+    IMPORT: '/customers/import',
+    IMPORT_TEMPLATE: '/customers/import/template',
     REWARD_SETTINGS: '/reward-settings',
     REWARD_SEGMENTS: '/reward-settings/segments',
     REWARD_SEGMENT_DETAIL: (id: string) => `/reward-settings/segments/${id}`,

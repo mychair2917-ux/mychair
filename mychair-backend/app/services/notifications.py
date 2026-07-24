@@ -33,7 +33,7 @@ from app.models.notification_communication import (
 )
 from app.models.user import User
 from app.schemas.notifications import NotificationOut
-from app.services.email_service import _parse_resend_error, _resolve_recipient
+from app.services.email_service import send_email
 from app.services.websocket import manager
 from app.utils.timezone import now_utc
 
@@ -752,31 +752,11 @@ class NotificationService:
         return "failed"
 
     async def _send_email(self, to_email: str, subject: str, body: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        if not settings.RESEND_API_KEY:
-            return False, "RESEND_API_KEY is not configured on the server.", None
-        actual_to, _ = _resolve_recipient(to_email)
-        payload = {
-            "from": settings.EMAIL_FROM,
-            "to": [actual_to],
-            "subject": subject,
-            "html": body.replace("\n", "<br />"),
-        }
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    "https://api.resend.com/emails",
-                    headers={
-                        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                )
-                if response.status_code in (200, 201):
-                    response_data = response.json()
-                    return True, None, response_data.get("id")
-                return False, _parse_resend_error(response), None
-        except Exception as exc:
-            return False, f"Email service unavailable: {exc}", None
+        return await send_email(
+            to_email=to_email,
+            subject=subject,
+            html=body.replace("\n", "<br />"),
+        )
 
     async def _send_whatsapp(self, phone: str, body: str) -> Tuple[bool, Optional[str], Optional[str]]:
         # Provider layer is intentionally isolated here. Free-form outbound text may require an active
