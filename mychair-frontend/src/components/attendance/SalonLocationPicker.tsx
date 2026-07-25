@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import type { Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   Check,
@@ -20,42 +20,14 @@ import {
   type ReverseGeocodedAddress,
 } from '../../utils/nominatim';
 import { getCurrentPosition } from '../../utils/geolocation';
+import {
+  LIGHT_MAP_ATTRIBUTION,
+  LIGHT_MAP_TILE_URL,
+  SALON_MAP_CONFIRM_ZOOM,
+} from '../../utils/mapGeo';
 import { cn } from '../../utils/cn';
 import { Button, showToast } from '../common';
-
-/* ── Leaflet icon fix ────────────────────────────────────────────── */
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
-
-/* ── Custom gold marker icon ─────────────────────────────────────── */
-const GOLD_PIN_SVG = `
-<svg width="36" height="48" viewBox="0 0 36 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M18 2C9.716 2 3 8.716 3 17c0 12.5 15 28 15 28s15-15.5 15-28C33 8.716 26.284 2 18 2z"
-        fill="url(#gld)" stroke="#a38242" stroke-width="1"/>
-  <circle cx="18" cy="17" r="7" fill="white" opacity=".95"/>
-  <circle cx="18" cy="17" r="3.5" fill="#c5a059"/>
-  <defs>
-    <linearGradient id="gld" x1="3" y1="2" x2="33" y2="45" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#d8ba7d"/><stop offset="1" stop-color="#a38242"/>
-    </linearGradient>
-  </defs>
-</svg>`;
-
-const goldMarkerIcon = L.divIcon({
-  html: GOLD_PIN_SVG,
-  className: '',
-  iconSize: [36, 48],
-  iconAnchor: [18, 48],
-  popupAnchor: [0, -48],
-});
+import { salonGoldMarkerIcon } from './salonMapMarker';
 
 /* ── Types ────────────────────────────────────────────────────────── */
 export interface SalonLocation {
@@ -193,7 +165,7 @@ const SalonLocationPicker: React.FC<SalonLocationPickerProps> = ({
       ? [initialLocation.latitude, initialLocation.longitude]
       : INDIA_CENTER
   );
-  const [mapZoom, setMapZoom] = useState(initialLocation ? 17 : 5);
+  const [mapZoom, setMapZoom] = useState(initialLocation ? SALON_MAP_CONFIRM_ZOOM : 5);
 
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
@@ -202,7 +174,7 @@ const SalonLocationPicker: React.FC<SalonLocationPickerProps> = ({
   /* Refs */
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const markerRef = useRef<L.Marker>(null);
+  const markerRef = useRef<LeafletMarker | null>(null);
 
   /* Close dropdown on outside click */
   useEffect(() => {
@@ -255,7 +227,7 @@ const SalonLocationPicker: React.FC<SalonLocationPickerProps> = ({
     const addr = extractAddress(place);
     setLocation(addr);
     setMapCenter([place.lat, place.lon]);
-    setMapZoom(17);
+    setMapZoom(SALON_MAP_CONFIRM_ZOOM);
     setQuery(place.display_name);
     setShowSuggestions(false);
     setSuggestions([]);
@@ -286,7 +258,7 @@ const SalonLocationPicker: React.FC<SalonLocationPickerProps> = ({
     try {
       const pos = await getCurrentPosition();
       setMapCenter([pos.latitude, pos.longitude]);
-      setMapZoom(17);
+      setMapZoom(SALON_MAP_CONFIRM_ZOOM);
 
       setIsReverseGeocoding(true);
       try {
@@ -370,7 +342,19 @@ const SalonLocationPicker: React.FC<SalonLocationPickerProps> = ({
           from { stroke-dashoffset: 24; }
           to   { stroke-dashoffset: 0; }
         }
-        .salon-picker-map .leaflet-container { border-radius: 16px; }
+        .salon-picker-map .leaflet-container {
+          border-radius: 24px;
+          background: var(--color-surface-muted);
+        }
+        .salon-picker-map .leaflet-control-attribution {
+          font-size: 10px;
+          background: rgba(253, 251, 247, 0.92);
+          color: var(--color-text-tertiary);
+        }
+        .salon-picker-map .salon-map-marker {
+          background: transparent;
+          border: none;
+        }
       `}</style>
 
       {/* Card wrapper */}
@@ -541,22 +525,22 @@ const SalonLocationPicker: React.FC<SalonLocationPickerProps> = ({
                   )}
                 </div>
 
-                <div className="salon-picker-map overflow-hidden rounded-2xl border border-[var(--color-border-soft)] shadow-soft">
+                <div className="salon-picker-map overflow-hidden rounded-3xl border border-[var(--color-border-soft)] shadow-soft">
                   <MapContainer
                     center={mapCenter}
                     zoom={mapZoom}
                     className="h-64 w-full sm:h-72"
-                    scrollWheelZoom
+                    scrollWheelZoom={false}
+                    touchZoom
+                    doubleClickZoom={false}
+                    boxZoom={false}
                     zoomControl={false}
                   >
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
+                    <TileLayer attribution={LIGHT_MAP_ATTRIBUTION} url={LIGHT_MAP_TILE_URL} />
                     <MapController center={mapCenter} zoom={mapZoom} />
                     <Marker
                       position={mapCenter}
-                      icon={goldMarkerIcon}
+                      icon={salonGoldMarkerIcon}
                       draggable={isAdjusting}
                       ref={markerRef}
                       eventHandlers={markerEvents}

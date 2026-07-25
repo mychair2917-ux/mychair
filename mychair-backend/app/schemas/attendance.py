@@ -102,6 +102,7 @@ class AttendanceSummary(BaseModel):
 class BranchLocationResponse(BaseModel):
     branch_id: Optional[str] = None
     branch_name: Optional[str] = None
+    address: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     attendance_radius: int = 100

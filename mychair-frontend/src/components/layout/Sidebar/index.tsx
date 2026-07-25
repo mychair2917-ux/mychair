@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { ChevronDown, LogOut, Menu, PanelLeftClose, Scissors } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, PanelLeftClose } from 'lucide-react';
 
 import { getSidebarNavItems } from '../../../config/rbac';
 import { useAuthActions } from '../../../hooks/useAuthActions';
@@ -161,13 +161,15 @@ const Sidebar: React.FC = () => {
                 isSidebarOpen ? 'flex-1 px-4 py-3' : 'justify-center p-2'
               )}
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--color-brand-gold)] to-[var(--color-brand-gold-dark)] shadow-lg">
-                <Scissors className="h-5 w-5 text-white" />
-              </div>
+              <img
+                src="/images/logo.png"
+                alt="MyChair"
+                className="h-10 w-10 shrink-0 rounded-xl object-cover shadow-lg"
+              />
               {isSidebarOpen && (
                 <div className="ml-3 min-w-0">
                   <h1 className="truncate text-xl font-bold tracking-[0.01em] whitespace-nowrap text-white">
-                    My Chairs
+                    MyChair
                   </h1>
                 </div>
               )}

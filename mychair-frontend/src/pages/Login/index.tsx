@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+
+import { Button } from '../../components/common';
 import { ROLES, ROUTE_PATHS } from '../../constants';
 import { setCredentials } from '../../redux/slices/auth/authSlice';
 import { useLoginMutation } from '../../redux/slices/auth/authApi';
@@ -8,6 +11,17 @@ import { useLoginMutation } from '../../redux/slices/auth/authApi';
 interface LoginProps {
   isLoggedOut?: boolean;
 }
+
+const fieldClassName = [
+  'w-full rounded-xl border border-[var(--color-border-strong)]',
+  'bg-[var(--color-surface-bg)] py-3.5 pl-11 pr-4 text-sm',
+  'text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]',
+  'transition-all duration-200',
+  'hover:border-[var(--color-brand-gold-light)]',
+  'focus:border-[var(--color-brand-gold)] focus:bg-white focus:outline-none',
+  'focus:ring-4 focus:ring-[rgba(197,160,89,0.14)]',
+  'autofill:shadow-[inset_0_0_0_1000px_var(--color-surface-bg)]',
+].join(' ');
 
 const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
   const navigate = useNavigate();
@@ -18,6 +32,7 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const logoutState = location.state as { loggedOut?: boolean; logoutFailed?: boolean } | null;
   const showLoggedOutMessage = isLoggedOut || Boolean(logoutState?.loggedOut);
 
@@ -27,7 +42,7 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
 
     try {
       const response = await login({ email, password }).unwrap();
-      
+
       // Store credentials
       dispatch(
         setCredentials({
@@ -59,7 +74,7 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
           permissions: response.permissions ?? undefined,
         })
       );
-      
+
       if (response.role === ROLES.SUPER_ADMIN) {
         navigate(`/${ROUTE_PATHS.ADMIN_DASHBOARD}`);
       } else if (response.tenant_id && response.tenant_id !== 'system') {
@@ -76,69 +91,159 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <div className="flex justify-center mb-6">
-           <h1 className="text-3xl font-bold text-gray-900">Salon ERP</h1>
+    <div className="flex min-h-screen overflow-x-hidden bg-[#f7f2ea]">
+      {/*
+        Full landscape image centered; a blurred copy fills top/bottom
+        so there are no flat beige gaps.
+      */}
+      <aside className="relative hidden min-h-screen w-[62%] overflow-hidden bg-[#ebe4d6] lg:block xl:w-[65%]">
+        <img
+          src="/images/login-salon-hero.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full scale-110 object-cover object-center blur-2xl"
+        />
+        <img
+          src="/images/login-salon-hero.png"
+          alt="MyChair — Smart Salon Management"
+          className="absolute inset-0 h-full w-full object-contain object-center"
+        />
+      </aside>
+
+      {/* Right form column */}
+      <main className="flex w-full flex-1 items-center justify-center px-5 py-10 sm:px-8 lg:min-w-[360px] lg:px-10 xl:px-14">
+        <div className="w-full max-w-[400px]">
+          {/* Mobile brand visual — full image, no crop */}
+          <div className="mb-8 overflow-hidden rounded-2xl bg-[#ebe4d6] shadow-soft lg:hidden">
+            <img
+              src="/images/login-salon-hero.png"
+              alt="MyChair — Smart Salon Management"
+              className="h-auto w-full object-contain"
+            />
+          </div>
+
+          <div className="rounded-[20px] border border-[var(--color-border-soft)] bg-white px-7 py-8 shadow-[0_12px_40px_rgba(31,31,30,0.06)] sm:px-9 sm:py-10">
+            {/* Brand + welcome — single header block */}
+            <div className="mb-8 flex flex-col items-center text-center">
+              <img
+                src="/images/logo.png"
+                alt="MyChair"
+                className="mb-5 h-12 w-12 rounded-2xl object-cover shadow-md shadow-[rgba(197,160,89,0.28)]"
+              />
+              <h1 className="text-[1.625rem] font-semibold leading-tight tracking-[-0.03em] text-[var(--color-text-primary)]">
+                Welcome back
+              </h1>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-secondary)]">
+                Sign in to continue to MyChair
+              </p>
+              <p className="mt-4 max-w-[18rem] text-xs leading-relaxed text-[var(--color-text-tertiary)]">
+                Manage appointments, staff, clients, and growth—all in one place.
+              </p>
+            </div>
+
+            {showLoggedOutMessage && (
+              <div
+                role="status"
+                className={`mb-5 rounded-xl px-4 py-3 text-center text-sm ${
+                  logoutState?.logoutFailed
+                    ? 'border border-amber-200/80 bg-amber-50 text-amber-800'
+                    : 'border border-[rgba(197,160,89,0.25)] bg-[var(--color-surface-muted)] text-[var(--color-brand-gold-dark)]'
+                }`}
+              >
+                {logoutState?.logoutFailed
+                  ? 'You have been logged out locally. Server session may already be expired.'
+                  : 'You have been logged out.'}
+              </div>
+            )}
+
+            {errorMsg && (
+              <div
+                role="alert"
+                className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-700"
+              >
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="login-email"
+                  className="text-sm font-medium tracking-[-0.01em] text-[var(--color-text-primary)]"
+                >
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-tertiary)]"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="login-email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="mychair2918@gmail.com"
+                    className={fieldClassName}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="login-password"
+                  className="text-sm font-medium tracking-[-0.01em] text-[var(--color-text-primary)]"
+                >
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-tertiary)]"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className={`${fieldClassName} pr-11`}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--color-text-tertiary)] transition-colors duration-200 hover:bg-[rgba(197,160,89,0.1)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-gold)] focus-visible:ring-offset-2"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                fullWidth
+                className="mt-2 h-12 rounded-xl text-[0.95rem] shadow-md shadow-[rgba(197,160,89,0.25)]"
+                isLoading={isLoading}
+                loadingText="Signing in..."
+              >
+                Sign In
+              </Button>
+            </form>
+          </div>
         </div>
-        <h2 className="text-xl font-semibold text-center mb-6 text-gray-700">Sign In</h2>
-        <p className="mb-4 text-center text-xs text-gray-500">
-          Super admin, salon owner, and email-based accounts. Manager/staff with phone login use
-          their phone number via team login.
-        </p>
-        
-        {showLoggedOutMessage && (
-          <div
-            className={`mb-4 rounded p-3 text-center text-sm ${
-              logoutState?.logoutFailed ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
-            }`}
-          >
-            {logoutState?.logoutFailed
-              ? 'You have been logged out locally. Server session may already be expired.'
-              : 'You have been logged out.'}
-          </div>
-        )}
-
-        {errorMsg && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded text-sm text-center">
-            {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="mychair2918@gmail.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={`w-full mt-4 text-white py-2 rounded transition-colors font-medium ${
-              isLoading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {isLoading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-      </div>
+      </main>
     </div>
   );
 };

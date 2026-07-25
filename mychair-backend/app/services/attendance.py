@@ -113,10 +113,10 @@ class AttendanceService:
 
     async def _resolve_branch(
         self, actor: User, salon_id: str
-    ) -> Tuple[Optional[str], Optional[float], Optional[float], int, str, str]:
+    ) -> Tuple[Optional[str], Optional[float], Optional[float], int, str, str, Optional[str]]:
         """
         Resolve branch coordinates and shift start.
-        Returns: branch_id, lat, lon, radius, branch_name, shift_start
+        Returns: branch_id, lat, lon, radius, branch_name, shift_start, address
         """
         branch_id = actor.branch_id
         branch_name = actor.branch_name
@@ -124,6 +124,7 @@ class AttendanceService:
         lon: Optional[float] = None
         radius = DEFAULT_ATTENDANCE_RADIUS_METERS
         shift_start = DEFAULT_SHIFT_START
+        address: Optional[str] = None
 
         tenant = await Tenant.get(salon_id)
         if tenant:
@@ -137,6 +138,7 @@ class AttendanceService:
             salon_branch = await Salon.get(branch_id)
             if salon_branch and salon_branch.tenant_id == salon_id:
                 branch_name = salon_branch.name
+                address = self._format_salon_address(salon_branch.address)
                 if salon_branch.latitude is not None and salon_branch.longitude is not None:
                     lat = salon_branch.latitude
                     lon = salon_branch.longitude
@@ -148,6 +150,7 @@ class AttendanceService:
             if default_branch:
                 branch_id = str(default_branch.id)
                 branch_name = default_branch.name
+                address = self._format_salon_address(default_branch.address)
                 if (
                     default_branch.latitude is not None
                     and default_branch.longitude is not None
@@ -156,7 +159,24 @@ class AttendanceService:
                     lon = default_branch.longitude
                     radius = default_branch.attendance_radius or DEFAULT_ATTENDANCE_RADIUS_METERS
 
-        return branch_id, lat, lon, radius, branch_name or "", shift_start
+        return branch_id, lat, lon, radius, branch_name or "", shift_start, address
+
+    @staticmethod
+    def _format_salon_address(address: Optional[dict]) -> Optional[str]:
+        if not address or not isinstance(address, dict):
+            return None
+        text = address.get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+        parts = [
+            address.get("line1") or address.get("street"),
+            address.get("line2"),
+            address.get("city"),
+            address.get("state"),
+            address.get("pincode") or address.get("postal_code"),
+        ]
+        formatted = ", ".join(str(part).strip() for part in parts if part)
+        return formatted or None
 
     def _validate_location(
         self,
@@ -407,7 +427,7 @@ class AttendanceService:
         if existing and existing.clock_in:
             raise BookingConflictException(detail="Attendance already marked today")
 
-        branch_id, branch_lat, branch_lon, radius, branch_name, shift_start = (
+        branch_id, branch_lat, branch_lon, radius, branch_name, shift_start, _ = (
             await self._resolve_branch(actor, salon_id)
         )
         distance = self._validate_location(
@@ -475,7 +495,7 @@ class AttendanceService:
             if record.clock_out:
                 raise BookingConflictException(detail="Checkout already completed")
 
-            _, branch_lat, branch_lon, radius, branch_name, _ = (
+            _, branch_lat, branch_lon, radius, branch_name, _, _ = (
                 await self._resolve_branch(actor, salon_id)
             )
             distance = self._validate_location(
@@ -528,7 +548,7 @@ class AttendanceService:
         today = self._today_date()
         staff_id = str(actor.id)
 
-        _, branch_lat, branch_lon, _, _, shift_start = await self._resolve_branch(
+        _, branch_lat, branch_lon, _, _, shift_start, _ = await self._resolve_branch(
             actor, salon_id
         )
         record = await self.repo.get_by_employee_and_date(salon_id, staff_id, today)
@@ -942,12 +962,13 @@ class AttendanceService:
     # ------------------------------------------------------------------ #
     async def get_branch_location(self, actor: User) -> BranchLocationResponse:
         salon_id = self._resolve_salon_id(actor)
-        branch_id, lat, lon, radius, branch_name, shift_start = await self._resolve_branch(
-            actor, salon_id
+        branch_id, lat, lon, radius, branch_name, shift_start, address = (
+            await self._resolve_branch(actor, salon_id)
         )
         return BranchLocationResponse(
             branch_id=branch_id,
             branch_name=branch_name or None,
+            address=address,
             latitude=lat,
             longitude=lon,
             attendance_radius=radius,
@@ -977,6 +998,7 @@ class AttendanceService:
             await branch.save()
             branch_id = str(branch.id)
             branch_name = branch.name
+            address = self._format_salon_address(branch.address)
         else:
             tenant.latitude = payload.latitude
             tenant.longitude = payload.longitude
@@ -994,13 +1016,16 @@ class AttendanceService:
                 await default_branch.save()
                 branch_id = str(default_branch.id)
                 branch_name = default_branch.name
+                address = self._format_salon_address(default_branch.address)
             else:
                 branch_id = None
                 branch_name = tenant.name
+                address = None
 
         return BranchLocationResponse(
             branch_id=branch_id,
             branch_name=branch_name,
+            address=address,
             latitude=payload.latitude,
             longitude=payload.longitude,
             attendance_radius=payload.attendance_radius,

@@ -2,8 +2,6 @@ import React from 'react';
 import { Form, Formik } from 'formik';
 import { useDispatch } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Scissors } from 'lucide-react';
-
 import { Button, FormField, Input } from '../../components/common';
 import { showToast } from '../../components/common/Toast/toastService';
 import { getApiErrorMessage } from '../../utils/apiErrors';
@@ -74,9 +72,11 @@ const SalonOwnerLogin: React.FC = () => {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
       <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-md">
         <div className="mb-6 flex flex-col items-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--color-brand-gold)] to-[var(--color-brand-gold-dark)]">
-            <Scissors className="h-6 w-6 text-white" />
-          </div>
+          <img
+            src="/images/logo.png"
+            alt="MyChair"
+            className="mb-3 h-12 w-12 rounded-xl object-cover"
+          />
           <h1 className="text-2xl font-bold text-gray-900">MyChair</h1>
           <p className="mt-1 text-sm text-gray-500">Salon Owner Login</p>
         </div>

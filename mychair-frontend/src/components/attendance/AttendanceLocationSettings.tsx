@@ -10,6 +10,8 @@ import { normalizeRole } from '../../config/rbac';
 import type { RootState } from '../../redux/store';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { getCurrentPosition } from '../../utils/geolocation';
+import { isValidLatLng } from '../../utils/mapGeo';
+import { searchLocations } from '../../utils/nominatim';
 import { Button, CommonCard, FormField, Input, showToast } from '../common';
 import LocationSetupPanel from './LocationSetupPanel';
 
@@ -34,6 +36,8 @@ const AttendanceLocationSettings: React.FC = () => {
   const [radius, setRadius] = useState(100);
   const [shiftStart, setShiftStart] = useState('09:00');
   const [searchQuery, setSearchQuery] = useState('');
+  const [address, setAddress] = useState('');
+  const [isResolvingCoords, setIsResolvingCoords] = useState(false);
 
   useEffect(() => {
     const location = data?.data;
@@ -42,7 +46,50 @@ const AttendanceLocationSettings: React.FC = () => {
     if (location.longitude != null) setLongitude(location.longitude);
     setRadius(location.attendance_radius || 100);
     setShiftStart(location.shift_start || '09:00');
+    setAddress(location.address || '');
   }, [data]);
+
+  // Geocode saved address once when stored coordinates are missing/invalid, then persist.
+  useEffect(() => {
+    const location = data?.data;
+    if (!location) return;
+    if (isValidLatLng(location.latitude, location.longitude)) return;
+
+    const savedAddress = (location.address || '').trim();
+    if (!savedAddress) return;
+
+    let cancelled = false;
+
+    const resolveFromAddress = async () => {
+      setIsResolvingCoords(true);
+      try {
+        const places = await searchLocations(savedAddress, 1);
+        if (cancelled) return;
+        const place = places[0];
+        if (!place || !isValidLatLng(place.lat, place.lon)) return;
+
+        setLatitude(place.lat);
+        setLongitude(place.lon);
+
+        await updateLocation({
+          latitude: place.lat,
+          longitude: place.lon,
+          attendance_radius: location.attendance_radius || 100,
+          shift_start: location.shift_start || '09:00',
+        }).unwrap();
+        if (!cancelled) refetch();
+      } catch {
+        // User can still set location manually via search.
+      } finally {
+        if (!cancelled) setIsResolvingCoords(false);
+      }
+    };
+
+    void resolveFromAddress();
+    return () => {
+      cancelled = true;
+    };
+  }, [data, updateLocation, refetch]);
 
   const handleUseCurrentLocation = async () => {
     try {
@@ -56,6 +103,10 @@ const AttendanceLocationSettings: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if (!isValidLatLng(latitude, longitude)) {
+      showToast('error', 'Enter a valid latitude and longitude');
+      return;
+    }
     try {
       await updateLocation({
         latitude,
@@ -74,6 +125,8 @@ const AttendanceLocationSettings: React.FC = () => {
     return null;
   }
 
+  const location = data?.data;
+
   return (
     <CommonCard
       title="Attendance Location"
@@ -88,7 +141,7 @@ const AttendanceLocationSettings: React.FC = () => {
           </Button>
         </div>
       }
-      loading={isLoading}
+      loading={isLoading || isResolvingCoords}
     >
       <div className="space-y-4 p-5">
         <FormField label="Shift Start (HH:MM)" name="shift_start">
@@ -103,6 +156,8 @@ const AttendanceLocationSettings: React.FC = () => {
           latitude={latitude}
           longitude={longitude}
           radius={radius}
+          address={address}
+          salonName={location?.branch_name}
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
           onLocationChange={(lat, lng) => {
@@ -110,6 +165,7 @@ const AttendanceLocationSettings: React.FC = () => {
             setLongitude(lng);
           }}
           onRadiusChange={setRadius}
+          onAddressChange={setAddress}
         />
       </div>
     </CommonCard>

@@ -47,6 +47,7 @@ export interface PaginatedAttendance {
 export interface BranchLocation {
   branch_id?: string | null;
   branch_name?: string | null;
+  address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   attendance_radius: number;

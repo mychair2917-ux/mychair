@@ -1,20 +1,16 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
+import {
+  isValidLatLng,
+  LIGHT_MAP_ATTRIBUTION,
+  LIGHT_MAP_TILE_URL,
+  SALON_MAP_ZOOM,
+} from '../../utils/mapGeo';
 import { FormField, Input } from '../common';
-
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
+import { salonGoldMarkerIcon } from './salonMapMarker';
 
 interface LocationMapPickerProps {
   latitude: number;
@@ -40,14 +36,27 @@ const MapClickHandler: React.FC<{
   return null;
 };
 
-const MapRecenter: React.FC<{ latitude: number; longitude: number }> = ({
-  latitude,
-  longitude,
-}) => {
+const MapPaddingView: React.FC<{
+  latitude: number;
+  longitude: number;
+  zoom: number;
+}> = ({ latitude, longitude, zoom }) => {
   const map = useMap();
+
   useEffect(() => {
-    map.setView([latitude, longitude], map.getZoom());
-  }, [latitude, longitude, map]);
+    if (!isValidLatLng(latitude, longitude)) return;
+    const delta = 0.0035;
+    const bounds = L.latLngBounds(
+      [latitude - delta, longitude - delta],
+      [latitude + delta, longitude + delta]
+    );
+    map.fitBounds(bounds, {
+      padding: [40, 40],
+      maxZoom: zoom,
+      animate: false,
+    });
+  }, [latitude, longitude, zoom, map]);
+
   return null;
 };
 
@@ -61,27 +70,61 @@ const LocationMapPicker: React.FC<LocationMapPickerProps> = ({
   hideCoordinates = false,
   compact = false,
 }) => {
-  const center = useMemo<[number, number]>(() => [latitude, longitude], [latitude, longitude]);
+  const [mapReady, setMapReady] = useState(false);
+  const center = useMemo<[number, number]>(() => {
+    if (isValidLatLng(latitude, longitude)) return [latitude, longitude];
+    return [28.6139, 77.209];
+  }, [latitude, longitude]);
 
   return (
     <div className="space-y-4">
       <div
-        className={`overflow-hidden rounded-2xl border border-[var(--color-border-soft)] ${
-          compact ? 'h-48' : 'h-72'
+        className={`location-map-picker relative overflow-hidden rounded-3xl border border-[var(--color-border-soft)] shadow-soft ${
+          compact ? 'h-52 sm:h-56 md:h-64' : 'h-64 sm:h-72 md:h-80'
         }`}
       >
-        <MapContainer center={center} zoom={17} className="h-full w-full" scrollWheelZoom>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        {!mapReady && (
+          <div
+            className="absolute inset-0 z-[500] animate-pulse bg-gradient-to-br from-[#f3eadb] via-white to-[#f7f0e3]"
+            aria-label="Loading map"
+            aria-busy="true"
           />
-          <MapRecenter latitude={latitude} longitude={longitude} />
+        )}
+        <style>{`
+          .location-map-picker .leaflet-container {
+            height: 100%;
+            width: 100%;
+            background: var(--color-surface-muted);
+          }
+          .location-map-picker .leaflet-control-attribution {
+            font-size: 10px;
+            background: rgba(253, 251, 247, 0.92);
+            color: var(--color-text-tertiary);
+          }
+          .location-map-picker .salon-map-marker {
+            background: transparent;
+            border: none;
+          }
+        `}</style>
+        <MapContainer
+          center={center}
+          zoom={SALON_MAP_ZOOM}
+          className="h-full w-full"
+          scrollWheelZoom={false}
+          touchZoom
+          doubleClickZoom={!readOnly}
+          boxZoom={false}
+          zoomControl={false}
+          whenReady={() => setMapReady(true)}
+        >
+          <TileLayer attribution={LIGHT_MAP_ATTRIBUTION} url={LIGHT_MAP_TILE_URL} />
+          <MapPaddingView latitude={center[0]} longitude={center[1]} zoom={SALON_MAP_ZOOM} />
           <MapClickHandler onLocationChange={onLocationChange} readOnly={readOnly} />
-          <Marker position={center} />
+          <Marker position={center} icon={salonGoldMarkerIcon} />
           <Circle
             center={center}
             radius={radius}
-            pathOptions={{ color: '#c9a227', fillColor: '#c9a227', fillOpacity: 0.15 }}
+            pathOptions={{ color: '#c5a059', fillColor: '#c5a059', fillOpacity: 0.12 }}
           />
         </MapContainer>
       </div>
