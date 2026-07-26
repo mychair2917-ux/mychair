@@ -3,13 +3,24 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.dependencies.auth import get_current_user
+from app.auth.rbac_config import ROLE_SALON_OWNER, normalize_role
 from app.models.user import User
 from app.services.my_earnings import MyEarningsService
+from app.services.salon_earnings import SalonEarningsService
 from app.utils.api_response import success_response
 
 router = APIRouter()
 my_earnings_service = MyEarningsService()
+salon_earnings_service = SalonEarningsService()
 
+
+def _require_salon_owner(current_user: User) -> User:
+    if normalize_role(current_user.role) != ROLE_SALON_OWNER:
+        raise HTTPException(
+            status_code=403,
+            detail="Salon earnings overview is available to salon owners only",
+        )
+    return current_user
 
 
 async def _resolve_target_user(current_user: User, employee_id: Optional[str]) -> User:
@@ -189,4 +200,76 @@ async def list_my_recent_activity(
     return success_response(
         "My recent earnings activity fetched successfully",
         data=[row.model_dump(mode="json") for row in rows],
+    )
+
+
+@router.get("/salon/report")
+async def get_salon_earnings_report(
+    month: Optional[int] = Query(default=None, ge=1, le=12),
+    year: Optional[int] = Query(default=None, ge=2000, le=3000),
+    period: Optional[str] = Query(default="monthly"),
+    start_date: Optional[str] = Query(default=None, alias="startDate"),
+    end_date: Optional[str] = Query(default=None, alias="endDate"),
+    staff_id: Optional[str] = Query(default=None, alias="staffId"),
+    service_id: Optional[str] = Query(default=None, alias="serviceId"),
+    product_id: Optional[str] = Query(default=None, alias="productId"),
+    payment_method: Optional[str] = Query(default=None, alias="paymentMethod"),
+    revenue_type: Optional[str] = Query(default=None, alias="revenueType"),
+    current_user: User = Depends(get_current_user),
+):
+    owner = _require_salon_owner(current_user)
+    data = await salon_earnings_service.get_report(
+        owner,
+        month=month,
+        year=year,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        staff_id=staff_id,
+        service_id=service_id,
+        product_id=product_id,
+        payment_method=payment_method,
+        revenue_type=revenue_type,
+    )
+    return success_response(
+        "Salon earnings report fetched successfully",
+        data=data.model_dump(mode="json"),
+    )
+
+
+@router.get("/salon/transactions")
+async def list_salon_earnings_transactions(
+    month: Optional[int] = Query(default=None, ge=1, le=12),
+    year: Optional[int] = Query(default=None, ge=2000, le=3000),
+    period: Optional[str] = Query(default="monthly"),
+    start_date: Optional[str] = Query(default=None, alias="startDate"),
+    end_date: Optional[str] = Query(default=None, alias="endDate"),
+    staff_id: Optional[str] = Query(default=None, alias="staffId"),
+    service_id: Optional[str] = Query(default=None, alias="serviceId"),
+    product_id: Optional[str] = Query(default=None, alias="productId"),
+    payment_method: Optional[str] = Query(default=None, alias="paymentMethod"),
+    revenue_type: Optional[str] = Query(default=None, alias="revenueType"),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    owner = _require_salon_owner(current_user)
+    data = await salon_earnings_service.list_transactions(
+        owner,
+        month=month,
+        year=year,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        staff_id=staff_id,
+        service_id=service_id,
+        product_id=product_id,
+        payment_method=payment_method,
+        revenue_type=revenue_type,
+        page=page,
+        limit=limit,
+    )
+    return success_response(
+        "Salon earnings transactions fetched successfully",
+        data=data.model_dump(mode="json"),
     )

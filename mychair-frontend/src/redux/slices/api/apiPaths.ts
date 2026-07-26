@@ -101,6 +101,8 @@ export const API_PATHS = {
     SALARY_SLIP: (id: string) => `/my-earnings/salary-history/${id}/slip`,
     BREAKDOWN: '/my-earnings/breakdown',
     ACTIVITY: '/my-earnings/activity',
+    SALON_REPORT: '/my-earnings/salon/report',
+    SALON_TRANSACTIONS: '/my-earnings/salon/transactions',
   },
   ATTENDANCE: {
     SUMMARY: '/attendance/summary',

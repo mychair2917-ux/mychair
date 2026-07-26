@@ -137,3 +137,146 @@ export interface IncentiveBreakdown {
   best_earning_days: BestEarningDay[];
   monthly_growth: EarningsTrendPoint[];
 }
+
+export interface SalonEarningsQueryParams {
+  month?: number;
+  year?: number;
+  period?: 'daily' | 'weekly' | 'monthly' | 'custom';
+  startDate?: string;
+  endDate?: string;
+  staffId?: string;
+  serviceId?: string;
+  productId?: string;
+  paymentMethod?: string;
+  revenueType?: 'SERVICE' | 'PRODUCT' | '';
+  page?: number;
+  limit?: number;
+}
+
+export interface PeriodComparison {
+  current_amount: number;
+  previous_amount: number;
+  change_percent: number | null;
+  has_previous_data: boolean;
+}
+
+export interface SalonEarningsSummary {
+  total_revenue: number;
+  service_revenue: number;
+  product_revenue: number;
+  discounts: number;
+  refunds: number;
+  taxes: number;
+  staff_incentives: number;
+  net_salon_earnings: number;
+  invoice_count: number;
+  comparison: PeriodComparison;
+}
+
+export interface RevenueSource {
+  key: string;
+  label: string;
+  amount: number;
+  percent: number;
+}
+
+export interface SalonTrendPoint {
+  label: string;
+  date?: string | null;
+  total_revenue: number;
+  service_revenue: number;
+  product_revenue: number;
+  net_salon_earnings: number;
+}
+
+export interface ServiceEarningsRow {
+  service_id: string;
+  service_name: string;
+  times_performed: number;
+  gross_revenue: number;
+  discounts: number;
+  net_revenue: number;
+  staff_names: string[];
+  staff_incentive: number;
+  salon_earnings: number;
+}
+
+export interface ProductEarningsRow {
+  product_id: string;
+  product_name: string;
+  quantity_sold: number;
+  gross_sales: number;
+  discounts: number;
+  net_sales: number;
+  sold_by: string[];
+  product_cost: number | null;
+  profit: number | null;
+  staff_incentive: number;
+  salon_earnings: number;
+}
+
+export interface StaffPerformanceRow {
+  staff_id: string;
+  staff_name: string;
+  services_performed: number;
+  service_revenue: number;
+  product_sales: number;
+  total_generated_revenue: number;
+  incentive: number;
+  salon_contribution: number;
+}
+
+export interface SalonTransactionRow {
+  id: string;
+  invoice_number: string;
+  date: string;
+  client_name?: string | null;
+  services_summary: string;
+  products_summary: string;
+  gross_amount: number;
+  discount: number;
+  tax: number;
+  final_amount: number;
+  payment_method?: string | null;
+  payment_status: string;
+  refund_amount: number;
+  staff_summary: string;
+}
+
+export interface FilterOption {
+  value: string;
+  label: string;
+}
+
+export interface SalonEarningsFilterOptions {
+  staff: FilterOption[];
+  services: FilterOption[];
+  products: FilterOption[];
+  payment_methods: FilterOption[];
+}
+
+export interface SalonEarningsReport {
+  month: number;
+  year: number;
+  range_label: string;
+  period_start: string;
+  period_end: string;
+  summary: SalonEarningsSummary;
+  revenue_sources: RevenueSource[];
+  trend: SalonTrendPoint[];
+  services: ServiceEarningsRow[];
+  products: ProductEarningsRow[];
+  staff_performance: StaffPerformanceRow[];
+  filter_options: SalonEarningsFilterOptions;
+}
+
+export interface SalonTransactionsResponse {
+  items: SalonTransactionRow[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  period_start: string;
+  period_end: string;
+  range_label: string;
+}

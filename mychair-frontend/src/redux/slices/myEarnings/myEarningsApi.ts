@@ -9,6 +9,9 @@ import {
   IncentiveBreakdown,
   MyEarningsQueryParams,
   SalaryHistoryResponse,
+  SalonEarningsQueryParams,
+  SalonEarningsReport,
+  SalonTransactionsResponse,
   WalletOverview,
 } from './Types';
 import { SalarySlip } from '../payroll/Types';
@@ -79,6 +82,25 @@ export const myEarningsApi = baseApi.injectEndpoints({
       }),
       providesTags: ['MyEarnings'],
     }),
+    getSalonEarningsReport: builder.query<ApiResponse<SalonEarningsReport>, SalonEarningsQueryParams | void>({
+      query: (params) => ({
+        url: API_PATHS.MY_EARNINGS.SALON_REPORT,
+        method: HTTP_METHODS.GET,
+        params: params ?? undefined,
+      }),
+      providesTags: ['MyEarnings'],
+    }),
+    listSalonEarningsTransactions: builder.query<
+      ApiResponse<SalonTransactionsResponse>,
+      SalonEarningsQueryParams | void
+    >({
+      query: (params) => ({
+        url: API_PATHS.MY_EARNINGS.SALON_TRANSACTIONS,
+        method: HTTP_METHODS.GET,
+        params: params ?? undefined,
+      }),
+      providesTags: ['MyEarnings'],
+    }),
   }),
 });
 
@@ -90,4 +112,6 @@ export const {
   useLazyGetMySalarySlipQuery,
   useGetMyIncentiveBreakdownQuery,
   useListMyRecentActivityQuery,
+  useGetSalonEarningsReportQuery,
+  useListSalonEarningsTransactionsQuery,
 } = myEarningsApi;
