@@ -31,6 +31,56 @@ class InvoiceItem(BaseModel):
         return self.subtotal + self.tax_amount
 
 
+class PaymentHistoryEntry(BaseModel):
+    """
+    One step in a payment flow (e.g. partial then remaining balance).
+    Stored on appointments/bills so the full journey is auditable end-to-end.
+    """
+    installment_number: int = Field(..., ge=1)
+    amount: float = Field(default=0.0, ge=0.0)
+    payment_method: Optional[str] = None
+    status_before: str
+    status_after: str  # PENDING | PARTIALLY_PAID | PAID
+    paid_amount_after: float = Field(default=0.0, ge=0.0)
+    remaining_amount_after: float = Field(default=0.0, ge=0.0)
+    note: str
+    paid_at: datetime = Field(default_factory=now_utc)
+
+
+def build_payment_history_note(
+    status_before: str,
+    status_after: str,
+    installment_number: int,
+    amount: float,
+    remaining_after: float,
+) -> str:
+    """Human-readable note for bill/PDF payment trail (ASCII-safe for PDF fonts)."""
+    before = (status_before or "PENDING").upper()
+    after = (status_after or "PENDING").upper()
+    if after == "PENDING" and amount <= 0:
+        return "Bill created — payment pending"
+    if before == "PENDING" and after == "PAID":
+        return f"Installment {installment_number} — full payment received (Rs. {amount:.2f})"
+    if before == "PENDING" and after == "PARTIALLY_PAID":
+        return (
+            f"Installment {installment_number} — partial payment received (Rs. {amount:.2f}); "
+            f"remaining Rs. {remaining_after:.2f}"
+        )
+    if before == "PARTIALLY_PAID" and after == "PAID":
+        return (
+            f"Installment {installment_number} — remaining balance paid (Rs. {amount:.2f}); "
+            "payment complete"
+        )
+    if before == "PARTIALLY_PAID" and after == "PARTIALLY_PAID":
+        return (
+            f"Installment {installment_number} — additional partial payment (Rs. {amount:.2f}); "
+            f"remaining Rs. {remaining_after:.2f}"
+        )
+    if after == "PAID":
+        return f"Installment {installment_number} — payment of Rs. {amount:.2f}; payment complete"
+    return f"Installment {installment_number} — payment of Rs. {amount:.2f}"
+
+
 class Invoice(BaseTenantDocument):
     """
     Invoice Model representing a permanent finance record.
@@ -94,6 +144,11 @@ class Payment(BaseTenantDocument):
     status: str = Field(default="SUCCESSFUL", index=True)  # SUCCESSFUL, FAILED, REFUNDED
 
     transaction_reference: Optional[str] = Field(default=None)  # e.g., UPI ID or gateway ID
+    note: Optional[str] = Field(default=None)
+    installment_number: Optional[int] = Field(default=None, ge=1)
+    status_after: Optional[str] = Field(default=None)  # PENDING | PARTIALLY_PAID | PAID
+    paid_amount_after: Optional[float] = Field(default=None, ge=0.0)
+    remaining_amount_after: Optional[float] = Field(default=None, ge=0.0)
 
     # Audit tracking for refunds
     refunded_amount: float = Field(default=0.0)

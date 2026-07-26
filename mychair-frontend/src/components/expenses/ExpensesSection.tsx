@@ -102,7 +102,7 @@ const ReceiptUploadBox: React.FC<{
   };
 
   return (
-    <div className="rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] p-6 text-center">
+    <div className="rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] p-4 text-center sm:p-6">
       <input
         ref={inputRef}
         type="file"
@@ -111,11 +111,15 @@ const ReceiptUploadBox: React.FC<{
         onChange={handleChange}
       />
       {displayUrl && !isPdf ? (
-        <img src={displayUrl} alt="Receipt preview" className="mx-auto max-h-40 rounded-xl object-contain" />
+        <img
+          src={displayUrl}
+          alt="Receipt preview"
+          className="mx-auto max-h-40 max-w-full rounded-xl object-contain"
+        />
       ) : (
         <UploadCloud className="mx-auto h-8 w-8 text-[var(--color-brand-gold-dark)]" />
       )}
-      <p className="mt-3 text-sm font-semibold text-[var(--color-text-primary)]">
+      <p className="mt-3 break-all text-sm font-semibold text-[var(--color-text-primary)]">
         {file ? file.name : 'Upload receipt'}
       </p>
       <p className="mt-1 text-xs text-gray-500">PDF, PNG, JPG up to 5 MB</p>
@@ -153,6 +157,8 @@ const ExpenseForm: React.FC<{
   receiptFile: File | null;
   receiptPreview: string | null;
   existingReceiptUrl?: string | null;
+  /** Use stacked layout inside modals so the form never overflows. */
+  stacked?: boolean;
   onChange: <K extends keyof ExpenseFormState>(field: K, value: ExpenseFormState[K]) => void;
   onReceiptSelect: (file: File | null) => void;
 }> = ({
@@ -163,16 +169,22 @@ const ExpenseForm: React.FC<{
   receiptFile,
   receiptPreview,
   existingReceiptUrl,
+  stacked = false,
   onChange,
   onReceiptSelect,
 }) => (
-  <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
-    <div className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-5 shadow-soft">
+  <div
+    className={cn(
+      'grid min-w-0 gap-5',
+      stacked ? 'grid-cols-1' : 'xl:grid-cols-[minmax(0,1fr)_minmax(260px,320px)]'
+    )}
+  >
+    <div className="min-w-0 rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-4 shadow-soft sm:p-5">
       <h3 className="text-lg font-bold text-[var(--color-text-primary)]">Expense details</h3>
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
+      <div className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
         <FormField label="Category" required error={errors.category}>
           <Select
-            className="!h-11 rounded-2xl border-[var(--color-border-strong)]"
+            className="!h-11 w-full min-w-0 rounded-2xl border-[var(--color-border-strong)]"
             value={form.category}
             onChange={(e) => onChange('category', e.target.value)}
             placeholder="Select category"
@@ -181,7 +193,7 @@ const ExpenseForm: React.FC<{
         </FormField>
         <FormField label="Amount" required error={errors.amount}>
           <Input
-            className="!h-11 rounded-2xl border-[var(--color-border-strong)]"
+            className="!h-11 w-full min-w-0 rounded-2xl border-[var(--color-border-strong)]"
             placeholder="0.00"
             value={form.amount}
             onChange={(e) => onChange('amount', e.target.value)}
@@ -189,7 +201,7 @@ const ExpenseForm: React.FC<{
         </FormField>
         <FormField label="Payment mode" required error={errors.payment_mode}>
           <Select
-            className="!h-11 rounded-2xl border-[var(--color-border-strong)]"
+            className="!h-11 w-full min-w-0 rounded-2xl border-[var(--color-border-strong)]"
             value={form.payment_mode}
             onChange={(e) => onChange('payment_mode', e.target.value)}
             placeholder="Select payment mode"
@@ -199,35 +211,39 @@ const ExpenseForm: React.FC<{
         <FormField label="Expense date" required error={errors.expense_date}>
           <Input
             type="date"
-            className="!h-11 rounded-2xl border-[var(--color-border-strong)]"
+            className="!h-11 w-full min-w-0 rounded-2xl border-[var(--color-border-strong)]"
             value={form.expense_date}
             onChange={(e) => onChange('expense_date', e.target.value)}
           />
         </FormField>
         <FormField label="Vendor / supplier name" error={errors.vendor_name}>
           <Input
-            className="!h-11 rounded-2xl border-[var(--color-border-strong)]"
+            className="!h-11 w-full min-w-0 rounded-2xl border-[var(--color-border-strong)]"
             placeholder="Vendor name"
             value={form.vendor_name}
             onChange={(e) => onChange('vendor_name', e.target.value)}
           />
         </FormField>
       </div>
-      <FormField label="Notes / description">
-        <textarea
-          className="min-h-28 w-full rounded-2xl border border-[var(--color-border-strong)] p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-gold)]"
-          placeholder="Add vendor, approval, or operational notes"
-          value={form.description}
-          onChange={(e) => onChange('description', e.target.value)}
-        />
-      </FormField>
+      <div className="mt-4 min-w-0">
+        <FormField label="Notes / description">
+          <textarea
+            className="min-h-28 w-full min-w-0 resize-y rounded-2xl border border-[var(--color-border-strong)] p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-gold)]"
+            placeholder="Add vendor, approval, or operational notes"
+            value={form.description}
+            onChange={(e) => onChange('description', e.target.value)}
+          />
+        </FormField>
+      </div>
     </div>
-    <ReceiptUploadBox
-      file={receiptFile}
-      previewUrl={receiptPreview}
-      existingUrl={existingReceiptUrl}
-      onSelect={onReceiptSelect}
-    />
+    <div className="min-w-0">
+      <ReceiptUploadBox
+        file={receiptFile}
+        previewUrl={receiptPreview}
+        existingUrl={existingReceiptUrl}
+        onSelect={onReceiptSelect}
+      />
+    </div>
   </div>
 );
 
@@ -709,12 +725,21 @@ const ExpensesSection: React.FC<{ activeTab: string; salonId: string }> = ({ act
         onClose={() => setViewExpense(null)}
       />
 
-      <Modal open={!!editExpense} onClose={() => setEditExpense(null)} size="xl" isShowIcon>
+      <Modal
+        open={!!editExpense}
+        onClose={() => {
+          setEditExpense(null);
+          resetForm();
+        }}
+        size="2xl"
+        isShowIcon
+        className="mx-4 max-h-[90vh] overflow-hidden rounded-2xl"
+      >
         <ModalHeader>
           <h3 className="text-lg font-bold text-[var(--color-text-primary)]">Edit expense</h3>
         </ModalHeader>
-        <ModalBody>
-          <form id="edit-expense-form" onSubmit={handleUpdate}>
+        <ModalBody className="min-h-0 overflow-y-auto overscroll-contain !pt-4 sm:!pt-5">
+          <form id="edit-expense-form" onSubmit={handleUpdate} className="min-w-0">
             <ExpenseForm
               form={form}
               errors={formErrors}
@@ -723,13 +748,21 @@ const ExpensesSection: React.FC<{ activeTab: string; salonId: string }> = ({ act
               receiptFile={receiptFile}
               receiptPreview={receiptPreview}
               existingReceiptUrl={editExpense?.receipt_url}
+              stacked
               onChange={handleFieldChange}
               onReceiptSelect={handleReceiptSelect}
             />
           </form>
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" className="rounded-xl" onClick={() => setEditExpense(null)}>
+          <Button
+            variant="secondary"
+            className="rounded-xl"
+            onClick={() => {
+              setEditExpense(null);
+              resetForm();
+            }}
+          >
             Cancel
           </Button>
           <Button

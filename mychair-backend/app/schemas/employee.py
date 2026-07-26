@@ -17,6 +17,8 @@ class EmployeeListItem(BaseModel):
     status: str
     is_active: bool
     created_at: datetime
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
     weekly_off: List[str] = Field(default_factory=list)
 
 
@@ -31,6 +33,7 @@ class SalonEmployeeGroup(BaseModel):
 class EmployeeUpdate(BaseModel):
     first_name: Optional[str] = Field(default=None, max_length=50)
     last_name: Optional[str] = Field(default=None, max_length=50)
+    email: Optional[EmailStr] = None
     phone: Optional[str] = Field(default=None, max_length=20)
     role: Optional[str] = None
     branch_name: Optional[str] = Field(default=None, max_length=150)

@@ -59,9 +59,9 @@ class PayrollService:
 
     @staticmethod
     def _full_name(user: User) -> str:
-        parts = [user.first_name or "", user.last_name or ""]
-        name = " ".join(p for p in parts if p).strip()
-        return name or user.email
+        from app.utils.user_name import user_display_name
+
+        return user_display_name(user)
 
     @staticmethod
     def _month_range(month: int, year: int) -> Tuple[datetime, datetime]:

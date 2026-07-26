@@ -4,7 +4,6 @@ import {
   AlertCircle,
   Bell,
   Calendar as CalendarIcon,
-  ChevronRight,
   Clock,
   Star,
   TrendingUp,
@@ -15,7 +14,6 @@ import '../../utils/echarts-init';
 import { cn } from '../../utils/cn';
 import type {
   DashboardAlert,
-  DashboardAppointmentItem,
   DashboardKpi,
   DashboardOperation,
   DashboardQuickAction,
@@ -229,59 +227,6 @@ export const TrendCharts: React.FC<{
         </SectionCard>
       )}
     </div>
-  );
-};
-
-export const UpcomingAppointments: React.FC<{
-  items: DashboardAppointmentItem[];
-  title?: string;
-  onViewAll?: () => void;
-}> = ({ items, title = 'Upcoming Appointments', onViewAll }) => {
-  if (!items.length) return null;
-
-  return (
-    <SectionCard className="h-full">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <SectionHeading>{title}</SectionHeading>
-        {onViewAll && (
-          <button
-            type="button"
-            onClick={onViewAll}
-            className="flex items-center text-sm font-semibold text-[var(--color-brand-gold-dark)] hover:underline"
-          >
-            View Calendar <ChevronRight className="ml-1 h-4 w-4" />
-          </button>
-        )}
-      </div>
-      <div className="space-y-3">
-        {items.map((apt) => (
-          <div
-            key={apt.id}
-            className="flex items-center justify-between rounded-xl border border-gray-100 p-4 transition-colors hover:bg-gray-50"
-          >
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="min-w-[70px] text-center">
-                <span className="block text-sm font-bold text-[var(--color-text-primary)]">
-                  {apt.time}
-                </span>
-              </div>
-              <div className="h-10 w-[2px] rounded-full bg-gray-200" />
-              <div className="min-w-0">
-                <h4 className="truncate text-sm font-bold text-[var(--color-text-primary)]">
-                  {apt.client_name}
-                </h4>
-                <p className="mt-0.5 truncate text-xs text-[var(--color-text-secondary)]">
-                  {apt.service_summary} • with {apt.staff_name}
-                </p>
-              </div>
-            </div>
-            <span className="ml-3 shrink-0 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-              {apt.status}
-            </span>
-          </div>
-        ))}
-      </div>
-    </SectionCard>
   );
 };
 

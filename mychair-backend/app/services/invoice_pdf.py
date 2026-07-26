@@ -97,6 +97,44 @@ class InvoicePDFService:
                 Paragraph(f"Total: Rs. {bill.total_amount:.2f}", styles["Heading3"]),
                 Paragraph(f"Paid: Rs. {bill.paid_amount:.2f}", styles["Normal"]),
                 Paragraph(f"Remaining: Rs. {bill.remaining_amount:.2f}", styles["Normal"]),
+                Paragraph(f"Payment status: {bill.payment_status}", styles["Normal"]),
             ]
         )
+
+        history = list(bill.payment_history or [])
+        if history:
+            story.append(Spacer(1, 6 * mm))
+            story.append(Paragraph("Payment History", styles["Heading3"]))
+            history_rows = [["#", "Amount", "Method", "Status", "Remaining", "Details"]]
+            for entry in history:
+                history_rows.append(
+                    [
+                        str(entry.installment_number),
+                        f"Rs. {entry.amount:.2f}",
+                        entry.payment_method or bill.payment_method or "-",
+                        entry.status_after,
+                        f"Rs. {entry.remaining_amount_after:.2f}",
+                        entry.note or "-",
+                    ]
+                )
+            history_table = Table(
+                history_rows,
+                colWidths=[12 * mm, 24 * mm, 22 * mm, 28 * mm, 26 * mm, 60 * mm],
+            )
+            history_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#111827")),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d1d5db")),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ]
+                )
+            )
+            story.append(history_table)
+
         doc.build(story)

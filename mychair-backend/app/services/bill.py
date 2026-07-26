@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from app.models.bill import Bill, BillItem
+from app.models.billing import PaymentHistoryEntry, build_payment_history_note
 from app.utils.timezone import now_utc
 
 
@@ -65,17 +66,24 @@ class BillService:
         for prod in products:
             unit_price = float(prod.get("price", 0.0))
             tax_rate = float(prod.get("tax_rate", 0.0))
-            line_tax = round(unit_price * (tax_rate / 100.0), 2)
-            line_total = round(unit_price + line_tax, 2)
+            try:
+                quantity = int(prod.get("quantity") or 1)
+            except (TypeError, ValueError):
+                quantity = 1
+            if quantity < 1:
+                quantity = 1
+            line_subtotal = unit_price * quantity
+            line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
+            line_total = round(line_subtotal + line_tax, 2)
 
-            subtotal += unit_price
+            subtotal += line_subtotal
             tax_amount += line_tax
 
             items.append(BillItem(
                 item_type="PRODUCT",
                 item_id=prod.get("product_id", ""),
                 name=prod.get("name", "Product"),
-                quantity=1,
+                quantity=quantity,
                 unit_price=unit_price,
                 tax_rate=tax_rate,
                 tax_amount=line_tax,
@@ -98,6 +106,25 @@ class BillService:
             remaining = round(computed_total - effective_paid, 2)
 
         bill_number = await self._generate_bill_number(salon_id)
+        installment_number = 1
+        history_note = build_payment_history_note(
+            status_before="PENDING",
+            status_after=payment_status,
+            installment_number=installment_number,
+            amount=effective_paid,
+            remaining_after=remaining,
+        )
+        history_entry = PaymentHistoryEntry(
+            installment_number=installment_number,
+            amount=round(effective_paid, 2),
+            payment_method=payment_method,
+            status_before="PENDING",
+            status_after=payment_status,
+            paid_amount_after=round(effective_paid, 2),
+            remaining_amount_after=remaining,
+            note=history_note,
+            paid_at=now_utc(),
+        )
 
         bill = Bill(
             salon_id=salon_id,
@@ -119,6 +146,7 @@ class BillService:
             remaining_amount=remaining,
             payment_status=payment_status,
             payment_method=payment_method,
+            payment_history=[history_entry],
             bill_date=now_utc(),
         )
         await bill.insert()

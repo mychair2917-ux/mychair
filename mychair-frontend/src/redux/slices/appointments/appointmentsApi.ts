@@ -20,6 +20,7 @@ import {
   PhoneAvailability,
   SearchClientsParams,
   TodayAppointmentsParams,
+  UpdateAppointmentPaymentRequest,
 } from './Types';
 import type { BillDetail } from '../billing/Types';
 
@@ -107,6 +108,17 @@ export const appointmentsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Appointments'],
     }),
+    updateAppointmentPayment: builder.mutation<
+      ApiResponse<AppointmentListItem>,
+      UpdateAppointmentPaymentRequest
+    >({
+      query: ({ id, ...body }) => ({
+        url: API_PATHS.APPOINTMENTS.UPDATE_PAYMENT(id),
+        method: HTTP_METHODS.PUT,
+        body,
+      }),
+      invalidatesTags: ['Appointments', 'Bills'],
+    }),
     listAppointments: builder.query<ApiResponse<PaginatedAppointmentData>, AppointmentListParams>({
       query: (params) => {
         const queryParams: Record<string, string | number> = {
@@ -116,6 +128,7 @@ export const appointmentsApi = baseApi.injectEndpoints({
         if (params.limit) queryParams.limit = params.limit;
         if (params.search) queryParams.search = params.search;
         if (params.status) queryParams.status = params.status;
+        if (params.payment_status) queryParams.payment_status = params.payment_status;
         if (params.sort_by) queryParams.sort_by = params.sort_by;
         if (params.sort_order) queryParams.sort_order = params.sort_order;
         if (params.date_from) queryParams.date_from = params.date_from;
@@ -153,6 +166,7 @@ export const {
   useGetAppointmentSalonProductsQuery,
   useGetAppointmentStaffQuery,
   useCreateFrontDeskAppointmentMutation,
+  useUpdateAppointmentPaymentMutation,
   useListAppointmentsQuery,
   useLazyGetBillByAppointmentQuery,
 } = appointmentsApi;

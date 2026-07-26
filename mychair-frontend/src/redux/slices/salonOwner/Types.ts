@@ -11,6 +11,7 @@ export interface SalonOwnerLoginResponseData {
   id?: string;
   email: string;
   username: string;
+  full_name?: string;
   first_name?: string;
   last_name?: string;
   phone?: string;

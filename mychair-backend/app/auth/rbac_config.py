@@ -146,5 +146,10 @@ def employee_list_roles_visible(actor_role: str) -> FrozenSet[str]:
 
 
 def invite_list_scoped_to_inviter(actor_role: str) -> bool:
-    """Non–super-admin users only see invitations they personally sent."""
-    return normalize_role(actor_role) != ROLE_SUPER_ADMIN
+    """Whether invite lists are limited to invites the actor personally sent.
+
+    Super admins see everything. Salon owners/admins see all invites for their
+    salon (including those created by managers). Managers only see their own.
+    """
+    normalized = normalize_role(actor_role)
+    return normalized not in (ROLE_SUPER_ADMIN, ROLE_SALON_OWNER, ROLE_SALON_ADMIN)

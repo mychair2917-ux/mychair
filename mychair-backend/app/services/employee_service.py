@@ -1,5 +1,7 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 import logging
+
+from beanie import PydanticObjectId
 
 from app.auth.rbac import can_manage_user
 from app.auth.rbac_config import (
@@ -10,11 +12,12 @@ from app.auth.rbac_config import (
     employee_list_roles_visible,
     normalize_role,
 )
-from app.core.exceptions import PermissionDeniedException
+from app.core.exceptions import ImmutableResourceException, PermissionDeniedException
 from app.core.security import get_password_hash
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.employee import EmployeeListItem, EmployeeUpdate, SalonEmployeeGroup
+from app.utils.user_name import user_display_name
 
 
 class EmployeeService:
@@ -23,16 +26,12 @@ class EmployeeService:
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
-    def _full_name(user: User) -> str:
-        parts = [user.first_name or "", user.last_name or ""]
-        name = " ".join(p for p in parts if p).strip()
-        return name or user.email
-
-    @staticmethod
-    def _to_list_item(user: User) -> EmployeeListItem:
+    def _to_list_item(
+        user: User, created_by_name: Optional[str] = None
+    ) -> EmployeeListItem:
         return EmployeeListItem(
             id=str(user.id),
-            full_name=EmployeeService._full_name(user),
+            full_name=user_display_name(user),
             first_name=user.first_name,
             last_name=user.last_name,
             role=user.role,
@@ -43,8 +42,48 @@ class EmployeeService:
             status=user.status,
             is_active=user.is_active,
             created_at=user.created_at,
+            created_by=user.created_by,
+            created_by_name=created_by_name,
             weekly_off=user.weekly_off or [],
         )
+
+    async def _creator_names_by_id(self, users: List[User]) -> Dict[str, str]:
+        creator_ids: Set[str] = {
+            str(u.created_by) for u in users if u.created_by
+        }
+        if not creator_ids:
+            return {}
+
+        object_ids: List[PydanticObjectId] = []
+        for creator_id in creator_ids:
+            try:
+                object_ids.append(PydanticObjectId(creator_id))
+            except Exception:
+                continue
+
+        if not object_ids:
+            return {}
+
+        # Include soft-deleted creators so historical "Created by" still shows a name
+        creators = await User.find({"_id": {"$in": object_ids}}).to_list()
+        return {
+            str(creator.id): user_display_name(creator)
+            for creator in creators
+        }
+
+    async def _to_list_items(self, users: List[User]) -> List[EmployeeListItem]:
+        creator_names = await self._creator_names_by_id(users)
+        return [
+            self._to_list_item(
+                user,
+                created_by_name=(
+                    creator_names.get(str(user.created_by))
+                    if user.created_by
+                    else None
+                ),
+            )
+            for user in users
+        ]
 
     def _resolve_tenant_id(self, actor: User, tenant_id: Optional[str]) -> Optional[str]:
         normalized = normalize_role(actor.role)
@@ -100,7 +139,7 @@ class EmployeeService:
         safe_users = [u for u in (users or []) if u]
         if len(safe_users) != len(users or []):
             self.logger.warning("Filtered null employee records from repository result")
-        return [self._to_list_item(u) for u in safe_users]
+        return await self._to_list_items(safe_users)
 
     async def list_employees_by_salon(
         self,
@@ -139,11 +178,14 @@ class EmployeeService:
                 limit=1000,
             )
 
+        safe_users = [u for u in (users or []) if u]
+        items_by_id = {
+            item.id: item for item in await self._to_list_items(safe_users)
+        }
+
         # Group by (tenant_id, branch_name)
         groups: Dict[str, SalonEmployeeGroup] = {}
-        for u in (users or []):
-            if not u:
-                continue
+        for u in safe_users:
             key = f"{u.tenant_id or 'unknown'}::{u.branch_name or ''}"
             if key not in groups:
                 groups[key] = SalonEmployeeGroup(
@@ -151,7 +193,7 @@ class EmployeeService:
                     salon_name=None,
                     branch_name=u.branch_name,
                 )
-            item = self._to_list_item(u)
+            item = items_by_id[str(u.id)]
             if u.role == ROLE_SALON_MANAGER:
                 groups[key].managers.append(item)
             else:
@@ -180,7 +222,8 @@ class EmployeeService:
 
     async def get_employee(self, actor: User, user_id: str) -> EmployeeListItem:
         user = await self._get_employee_in_scope(actor, user_id)
-        return self._to_list_item(user)
+        items = await self._to_list_items([user])
+        return items[0]
 
     async def update_employee(
         self, actor: User, user_id: str, payload: EmployeeUpdate
@@ -196,6 +239,16 @@ class EmployeeService:
             update_data["first_name"] = payload.first_name
         if payload.last_name is not None:
             update_data["last_name"] = payload.last_name
+        if payload.email is not None:
+            normalized_email = str(payload.email).strip().lower()
+            existing = await self.repo.get_by_email_global_excluding_user(
+                normalized_email, user_id
+            )
+            if existing:
+                raise ImmutableResourceException(
+                    detail="This email is already registered"
+                )
+            update_data["email"] = normalized_email
         if payload.phone is not None:
             update_data["phone"] = payload.phone
         if payload.branch_name is not None:
@@ -211,7 +264,8 @@ class EmployeeService:
         updated = await self.repo.update_fields(
             user_id, target.tenant_id, update_data
         )
-        return self._to_list_item(updated)
+        items = await self._to_list_items([updated])
+        return items[0]
 
     async def set_employee_status(
         self, actor: User, user_id: str, is_active: bool
@@ -225,8 +279,12 @@ class EmployeeService:
     async def reset_password(
         self, actor: User, user_id: str, password: str, confirm_password: str
     ) -> dict:
+        if not password or len(password) < 8:
+            raise ImmutableResourceException(
+                detail="Password must be at least 8 characters"
+            )
         if password != confirm_password:
-            raise PermissionDeniedException(detail="Passwords do not match")
+            raise ImmutableResourceException(detail="Passwords do not match")
 
         target = await self._get_employee_in_scope(actor, user_id)
         if not can_manage_user(actor.role, target.role, "update"):
@@ -234,11 +292,13 @@ class EmployeeService:
                 detail=f"Cannot reset password for role '{target.role}'"
             )
 
+        current_version = target.refresh_token_version or 0
         await self.repo.update_fields(
             user_id,
             target.tenant_id,
             {
                 "hashed_password": get_password_hash(password),
+                "refresh_token_version": current_version + 1,
                 "updated_by": str(actor.id),
             },
         )

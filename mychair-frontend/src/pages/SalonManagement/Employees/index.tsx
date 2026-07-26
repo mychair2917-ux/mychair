@@ -28,6 +28,7 @@ import {
 } from '../../../redux/slices/employees/employeesApi';
 import { EmployeeListItem } from '../../../redux/slices/employees/Types';
 import { getApiErrorMessage } from '../../../utils/apiErrors';
+import { formatDateDMY } from '../../../utils/utilities';
 
 const statusStyles: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-800',
@@ -94,6 +95,7 @@ const Employees: React.FC = () => {
   const handleEditSubmit = async (payload: {
     first_name: string;
     last_name: string;
+    email: string;
     phone: string;
     role: string;
     branch_name: string;
@@ -194,6 +196,7 @@ const Employees: React.FC = () => {
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Branch</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Created</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Created by</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-600">Actions</th>
               </tr>
             </thead>
@@ -215,7 +218,10 @@ const Employees: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    {new Date(employee.created_at).toLocaleDateString()}
+                    {formatDateDMY(employee.created_at)}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {employee.created_by_name || '-'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">

@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from beanie import PydanticObjectId
 from app.models.appointment import Appointment, ProductSnapshot, ServiceSnapshot
-from app.models.billing import Invoice, Payment
+from app.models.bill import Bill
+from app.models.billing import Invoice, Payment, PaymentHistoryEntry, build_payment_history_note
 from app.models.product import Product
 from app.models.salon import Salon
 from app.models.salon_product import SalonProduct
@@ -15,9 +16,14 @@ from app.repositories.appointment import AppointmentRepository
 from app.services.billing import BillingService
 from app.services.bill import BillService
 from app.services.whatsapp import WhatsAppService
-from app.core.exceptions import BookingConflictException, ResourceNotFoundException
+from app.utils.user_name import user_display_name
+from app.core.exceptions import (
+    BookingConflictException,
+    ImmutableResourceException,
+    ResourceNotFoundException,
+)
 from app.core import tenant_context
-from app.utils.timezone import make_aware
+from app.utils.timezone import make_aware, now_utc
 from app.services.member_pricing import resolve_applied_service_price
 
 class AppointmentService:
@@ -72,8 +78,7 @@ class AppointmentService:
         staff = await User.find_one(User.id == appointment.staff_id, User.is_deleted == False)
         staff_name = None
         if staff:
-            staff_name = " ".join(part for part in [staff.first_name, staff.last_name] if part).strip()
-            staff_name = staff_name or staff.email
+            staff_name = user_display_name(staff)
 
         invoice: Optional[Invoice] = await self.appointment_repo.get_appointment_invoice(str(appointment.id))
         payments: List[Payment] = []
@@ -95,6 +100,7 @@ class AppointmentService:
             "notes": appointment.notes,
             "booking_source": appointment.booking_source,
             "payment_type": appointment.payment_type,
+            "payment_status": appointment.payment_status,
             "paid_amount": appointment.paid_amount,
             "whatsapp_status": await self.whatsapp_service.latest_status_for_appointment(str(appointment.id)),
             "services": [
@@ -117,6 +123,7 @@ class AppointmentService:
                     "name": product.name,
                     "price": product.price,
                     "tax_rate": product.tax_rate,
+                    "quantity": max(int(getattr(product, "quantity", 1) or 1), 1),
                     "staff_id": product.staff_id,
                     "staff_name": product.staff_name,
                 }
@@ -388,9 +395,7 @@ class AppointmentService:
             staff_user = await User.find_one(User.id == staff_obj_id, User.is_deleted == False)
             staff_name = None
             if staff_user:
-                staff_name = " ".join(
-                    part for part in [staff_user.first_name, staff_user.last_name] if part
-                ).strip() or staff_user.email
+                staff_name = user_display_name(staff_user)
             else:
                 staff = await Staff.find_one(Staff.id == staff_obj_id, Staff.is_deleted == False)
                 if not staff:
@@ -419,8 +424,14 @@ class AppointmentService:
             product_id = item.get("product_id")
             salon_product_id = item.get("salon_product_id")
             snapshot_price = item.get("price", 0)
+            try:
+                product_quantity = int(item.get("quantity") or 1)
+            except (TypeError, ValueError):
+                product_quantity = 1
+            if product_quantity < 1:
+                product_quantity = 1
             if item.get("price") is not None:
-                submitted_lines_total += float(item.get("price"))
+                submitted_lines_total += float(item.get("price")) * product_quantity
             custom_product_name: Optional[str] = None
             brand_id: Optional[str] = None
             brand_name: Optional[str] = None
@@ -473,9 +484,7 @@ class AppointmentService:
             staff_user = await User.find_one(User.id == staff_obj_id, User.is_deleted == False)
             staff_name = None
             if staff_user:
-                staff_name = " ".join(
-                    part for part in [staff_user.first_name, staff_user.last_name] if part
-                ).strip() or staff_user.email
+                staff_name = user_display_name(staff_user)
             else:
                 staff = await Staff.find_one(Staff.id == staff_obj_id, Staff.is_deleted == False)
                 if not staff:
@@ -504,6 +513,7 @@ class AppointmentService:
                     name=display_product_name,
                     price=float(snapshot_price),
                     tax_rate=tax_rate,
+                    quantity=product_quantity,
                     staff_id=item["staff_id"],
                     staff_name=staff_name,
                 )
@@ -513,7 +523,7 @@ class AppointmentService:
 
         applied_lines_total = round(
             sum(float(s.price) for s in service_snapshots)
-            + sum(float(p.price) for p in product_snapshots),
+            + sum(float(p.price) * max(int(getattr(p, "quantity", 1) or 1), 1) for p in product_snapshots),
             2,
         )
         # When the client used the calculated total (sum of submitted line prices),
@@ -530,6 +540,25 @@ class AppointmentService:
         else:  # PARTIALLY_PAID
             effective_paid = float(paid_amount or 0.0)
 
+        remaining_at_create = round(max(effective_total_amount - effective_paid, 0.0), 2)
+        initial_history = PaymentHistoryEntry(
+            installment_number=1,
+            amount=round(effective_paid, 2),
+            payment_method=payment_type,
+            status_before="PENDING",
+            status_after=payment_status,
+            paid_amount_after=round(effective_paid, 2),
+            remaining_amount_after=remaining_at_create,
+            note=build_payment_history_note(
+                status_before="PENDING",
+                status_after=payment_status,
+                installment_number=1,
+                amount=effective_paid,
+                remaining_after=remaining_at_create,
+            ),
+            paid_at=now_utc(),
+        )
+
         appointment_data = {
             "salon_id": salon_id,
             "customer_id": customer_id,
@@ -545,6 +574,7 @@ class AppointmentService:
             "payment_type": payment_type,
             "payment_status": payment_status,
             "paid_amount": effective_paid,
+            "payment_history": [initial_history],
         }
 
         appointment = await self.appointment_repo.create(appointment_data)
@@ -586,6 +616,7 @@ class AppointmentService:
                 "name": p.name,
                 "price": p.price,
                 "tax_rate": p.tax_rate,
+                "quantity": max(int(getattr(p, "quantity", 1) or 1), 1),
                 "staff_id": p.staff_id,
                 "staff_name": p.staff_name,
             }
@@ -664,4 +695,176 @@ class AppointmentService:
         
         appointment.add_status(new_status, changed_by=user_id, reason=reason)
         await appointment.save()
+        return appointment
+
+    async def update_payment_status(
+        self,
+        appointment_id: str,
+        payment_status: str,
+        paid_amount: Optional[float] = None,
+        payment_type: Optional[str] = None,
+    ) -> Appointment:
+        """
+        Advance payment on an unpaid/partial appointment.
+
+        Allowed transitions:
+        - PENDING → PARTIALLY_PAID | PAID
+        - PARTIALLY_PAID → PAID
+        PAID appointments cannot be updated.
+
+        Each payment step is recorded on appointment, bill, and invoice payment ledger.
+        """
+        appointment = await self.appointment_repo.get(appointment_id)
+        current = (appointment.payment_status or "PENDING").upper()
+        target = payment_status.upper()
+
+        if current == "PAID":
+            raise ImmutableResourceException("Payment is already complete and cannot be updated")
+
+        allowed: Dict[str, set] = {
+            "PENDING": {"PARTIALLY_PAID", "PAID"},
+            "PARTIALLY_PAID": {"PAID"},
+        }
+        if target not in allowed.get(current, set()):
+            raise ImmutableResourceException(
+                f"Cannot change payment status from {current} to {target}"
+            )
+
+        total = float(appointment.total_price or 0.0)
+        previous_paid = float(appointment.paid_amount or 0.0)
+
+        if target == "PAID":
+            effective_paid = total
+        else:
+            effective_paid = float(paid_amount or 0.0)
+            if effective_paid <= 0:
+                raise ImmutableResourceException("paid_amount must be greater than 0 for partial payment")
+            if effective_paid <= previous_paid:
+                raise ImmutableResourceException(
+                    "paid_amount must be greater than the amount already paid"
+                )
+            if effective_paid >= total:
+                raise ImmutableResourceException(
+                    "paid_amount must be less than total for PARTIALLY_PAID status"
+                )
+
+        delta = round(effective_paid - previous_paid, 2)
+        remaining = round(max(total - effective_paid, 0.0), 2)
+        method = payment_type or appointment.payment_type
+
+        # Backfill missing first installment for older partial/pending records.
+        if not appointment.payment_history and previous_paid > 0.01:
+            prior_remaining = round(max(total - previous_paid, 0.0), 2)
+            appointment.payment_history = [
+                PaymentHistoryEntry(
+                    installment_number=1,
+                    amount=round(previous_paid, 2),
+                    payment_method=appointment.payment_type,
+                    status_before="PENDING",
+                    status_after=current,
+                    paid_amount_after=round(previous_paid, 2),
+                    remaining_amount_after=prior_remaining,
+                    note=build_payment_history_note(
+                        status_before="PENDING",
+                        status_after=current,
+                        installment_number=1,
+                        amount=previous_paid,
+                        remaining_after=prior_remaining,
+                    ),
+                )
+            ]
+
+        installment_number = len(appointment.payment_history or []) + 1
+        if installment_number < 1:
+            installment_number = 1
+        history_note = build_payment_history_note(
+            status_before=current,
+            status_after=target,
+            installment_number=installment_number,
+            amount=delta if delta > 0 else effective_paid,
+            remaining_after=remaining,
+        )
+        history_entry = PaymentHistoryEntry(
+            installment_number=installment_number,
+            amount=round(delta if delta > 0 else effective_paid, 2),
+            payment_method=method,
+            status_before=current,
+            status_after=target,
+            paid_amount_after=round(effective_paid, 2),
+            remaining_amount_after=remaining,
+            note=history_note,
+            paid_at=now_utc(),
+        )
+
+        appointment.payment_status = target
+        appointment.paid_amount = round(effective_paid, 2)
+        if payment_type:
+            appointment.payment_type = payment_type
+        if appointment.payment_history is None:
+            appointment.payment_history = []
+        appointment.payment_history.append(history_entry)
+        await appointment.save()
+
+        bill = await Bill.find_one(
+            {"appointment_id": str(appointment.id), "is_deleted": False}
+        )
+        if bill:
+            if not bill.payment_history and previous_paid > 0.01:
+                prior_remaining = round(max(total - previous_paid, 0.0), 2)
+                bill.payment_history = [
+                    PaymentHistoryEntry(
+                        installment_number=1,
+                        amount=round(previous_paid, 2),
+                        payment_method=appointment.payment_type,
+                        status_before="PENDING",
+                        status_after=current,
+                        paid_amount_after=round(previous_paid, 2),
+                        remaining_amount_after=prior_remaining,
+                        note=build_payment_history_note(
+                            status_before="PENDING",
+                            status_after=current,
+                            installment_number=1,
+                            amount=previous_paid,
+                            remaining_after=prior_remaining,
+                        ),
+                    )
+                ]
+
+            bill.payment_status = target
+            bill.paid_amount = round(effective_paid, 2)
+            bill.remaining_amount = remaining
+            if method:
+                bill.payment_method = method
+            if bill.payment_history is None:
+                bill.payment_history = []
+            bill.payment_history.append(history_entry)
+            await bill.save()
+
+        invoice = await self.appointment_repo.get_appointment_invoice(str(appointment.id))
+        if invoice:
+            invoice_delta = round(effective_paid - float(invoice.paid_amount or 0.0), 2)
+            invoice.payment_status = target
+            invoice.paid_amount = round(effective_paid, 2)
+            invoice.remaining_amount = remaining
+            if method:
+                invoice.payment_method = method
+            await invoice.save()
+
+            if invoice_delta > 0.01:
+                payment = Payment(
+                    invoice_id=str(invoice.id),
+                    salon_id=appointment.salon_id,
+                    amount=invoice_delta,
+                    payment_method=method or "CASH",
+                    status="SUCCESSFUL",
+                    note=history_note,
+                    installment_number=installment_number,
+                    status_after=target,
+                    paid_amount_after=round(effective_paid, 2),
+                    remaining_amount_after=remaining,
+                    tenant_id=invoice.tenant_id,
+                    payment_date=now_utc(),
+                )
+                await payment.insert()
+
         return appointment

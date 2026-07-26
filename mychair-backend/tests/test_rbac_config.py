@@ -43,5 +43,6 @@ class TestRbacConfig:
 
     def test_invite_list_scoped_to_inviter(self):
         assert not invite_list_scoped_to_inviter("super_admin")
-        assert invite_list_scoped_to_inviter("salon_owner")
+        assert not invite_list_scoped_to_inviter("salon_owner")
+        assert not invite_list_scoped_to_inviter("salon_admin")
         assert invite_list_scoped_to_inviter("salon_manager")

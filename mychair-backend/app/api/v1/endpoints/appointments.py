@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -17,14 +18,20 @@ from app.models.salon_service import SalonService
 from app.models.service import Service
 from app.models.user import User
 from app.repositories.appointment import AppointmentRepository
+from app.utils.user_name import user_display_name
 from app.schemas.appointment import (
     AppointmentCreate,
+    AppointmentPaymentUpdate,
     AppointmentResponse,
     AppointmentStatusUpdate,
     CustomerQuickCreate,
     FrontDeskAppointmentCreate,
 )
 from app.services.appointment import AppointmentService
+from app.services.appointment_list_rows import (
+    expand_appointment_items_to_list_rows,
+    row_matches_search,
+)
 from app.services.customer_phone import (
     customer_display_name,
     duplicate_phone_message,
@@ -34,7 +41,7 @@ from app.services.notifications import notification_service
 from app.services.websocket import manager
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import error_response, success_response
-from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile
+from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile, phone_lookup_variants
 from app.utils.timezone import make_aware
 
 router = APIRouter()
@@ -50,6 +57,60 @@ def _normalize_client_phone(raw: str):
     if err == PHONE_INVALID or not normalized:
         return None, "Enter a valid mobile number."
     return normalized, None
+
+
+def _client_search_or_clauses(term: str) -> List[dict]:
+    """Build Mongo $or clauses that match phone, name parts, full name, or email."""
+    escaped = re.escape(term)
+    clauses: List[dict] = [
+        {"phone": {"$regex": escaped, "$options": "i"}},
+        {"first_name": {"$regex": escaped, "$options": "i"}},
+        {"last_name": {"$regex": escaped, "$options": "i"}},
+        {"email": {"$regex": escaped, "$options": "i"}},
+        {
+            "$expr": {
+                "$regexMatch": {
+                    "input": {
+                        "$trim": {
+                            "input": {
+                                "$concat": [
+                                    {"$ifNull": ["$first_name", ""]},
+                                    " ",
+                                    {"$ifNull": ["$last_name", ""]},
+                                ]
+                            }
+                        }
+                    },
+                    "regex": escaped,
+                    "options": "i",
+                }
+            }
+        },
+    ]
+
+    parts = [p for p in term.split() if p]
+    if len(parts) >= 2:
+        first = re.escape(parts[0])
+        last = re.escape(" ".join(parts[1:]))
+        clauses.append(
+            {
+                "$and": [
+                    {"first_name": {"$regex": first, "$options": "i"}},
+                    {"last_name": {"$regex": last, "$options": "i"}},
+                ]
+            }
+        )
+
+    digits = re.sub(r"\D", "", term)
+    if len(digits) >= 4:
+        clauses.append({"phone": {"$regex": re.escape(digits)}})
+        normalized, err = normalize_mobile(term)
+        if not err and normalized:
+            variants = phone_lookup_variants(normalized)
+            clauses.append({"phone": {"$in": variants}})
+            clauses.append({"phone": {"$regex": re.escape(normalized)}})
+
+    return clauses
 
 
 def _resolve_salon_scope(current_user: User, salon_id: Optional[str]) -> str:
@@ -106,8 +167,7 @@ async def _appointment_response(appointment: Appointment) -> dict:
 
     staff_name = None
     if staff:
-        staff_name = " ".join(part for part in [staff.first_name, staff.last_name] if part).strip()
-        staff_name = staff_name or staff.email
+        staff_name = user_display_name(staff)
 
     customer_name = "Deleted Customer"
     customer_phone = ""
@@ -152,6 +212,7 @@ async def _appointment_response(appointment: Appointment) -> dict:
                 "name": product.name,
                 "price": product.price,
                 "tax_rate": product.tax_rate,
+                "quantity": max(int(getattr(product, "quantity", 1) or 1), 1),
                 "staff_id": product.staff_id,
                 "staff_name": product.staff_name,
             }
@@ -166,13 +227,11 @@ async def search_clients(
     current_user: User = Depends(PermissionChecker("appointments.view")),
 ):
     term = search.strip()
-    query = {
-        "$or": [
-            {"phone": {"$regex": term, "$options": "i"}},
-            {"first_name": {"$regex": term, "$options": "i"}},
-            {"last_name": {"$regex": term, "$options": "i"}},
-            {"email": {"$regex": term, "$options": "i"}},
-        ],
+    if not term:
+        return success_response("Clients retrieved successfully", data=[])
+
+    query: dict = {
+        "$or": _client_search_or_clauses(term),
         "is_deleted": False,
     }
     effective_tenant_id = _effective_tenant_id(current_user)
@@ -274,7 +333,7 @@ async def get_client_history(
     history = await appointment_repo.get_customer_history_for_salon(
         str(customer.id),
         salon_id=resolved_salon_id,
-        limit=20,
+        limit=5,
     )
     return success_response(
         "Client history retrieved successfully",
@@ -439,8 +498,7 @@ async def list_staff_users(
         data=[
             {
                 "id": str(user.id),
-                "name": " ".join(part for part in [user.first_name, user.last_name] if part).strip()
-                or user.email,
+                "name": user_display_name(user),
                 "role": user.role,
             }
             for user in staff
@@ -548,6 +606,10 @@ async def list_appointments(
     limit: int = Query(default=20, ge=1, le=100),
     search: Optional[str] = Query(default=None, description="Search by client name or phone"),
     status_filter: Optional[str] = Query(default=None, alias="status"),
+    payment_status: Optional[str] = Query(
+        default=None,
+        description="Payment status filter: PAID, PENDING, or PARTIALLY_PAID",
+    ),
     sort_by: str = Query(default="start_datetime"),
     sort_order: str = Query(default="desc"),
     date_from: Optional[datetime] = Query(default=None),
@@ -556,40 +618,59 @@ async def list_appointments(
 ):
     """
     Paginated appointment list for a salon with search, filter, and sort support.
+
+    Each appointment is expanded into staff-wise representation rows
+    (services + products grouped by assigned staff) before pagination so
+    page boundaries never split a staff group incorrectly.
     """
     date_from_aware = make_aware(date_from) if date_from else None
     date_to_aware = make_aware(date_to) if date_to else None
 
-    appointments, total = await appointment_repo.list_paginated(
+    appointments = await appointment_repo.list_filtered(
         salon_id=salon_id,
-        page=page,
-        limit=limit,
         search=search,
         status=status_filter,
+        payment_status=payment_status,
         sort_by=sort_by,
         sort_order=sort_order,
         date_from=date_from_aware,
         date_to=date_to_aware,
     )
 
-    # Build enriched response items
-    items = []
-    for appt in appointments:
-        item = await _appointment_response(appt)
+    enriched = [await _appointment_response(appt) for appt in appointments]
 
-        # Apply search filter in-memory (customer name/phone — indexed at query level in future)
-        if search and search.strip():
-            term = search.strip().lower()
-            if (
-                term not in item.get("customer_name", "").lower()
-                and term not in item.get("customer_phone", "")
-                and term not in item.get("id", "").lower()
-            ):
-                total -= 1
-                continue
+    # Prefer invoice number as stable bill reference across multi-row expansions.
+    bill_refs: dict = {}
+    appointment_ids = [item["id"] for item in enriched if item.get("id")]
+    if appointment_ids:
+        from app.models.billing import Invoice
 
-        items.append(item)
+        invoices = (
+            await Invoice.find(
+                {
+                    "appointment_id": {"$in": appointment_ids},
+                    "is_deleted": False,
+                }
+            )
+            .sort("-created_at")
+            .to_list()
+        )
+        for invoice in invoices:
+            appt_id = invoice.appointment_id
+            if appt_id and appt_id not in bill_refs and invoice.invoice_number:
+                bill_refs[appt_id] = invoice.invoice_number
 
+    expanded = expand_appointment_items_to_list_rows(
+        enriched,
+        bill_reference_by_appointment_id=bill_refs,
+    )
+
+    if search and search.strip():
+        expanded = [row for row in expanded if row_matches_search(row, search)]
+
+    total = len(expanded)
+    skip = (page - 1) * limit
+    items = expanded[skip : skip + limit]
     pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
 
     return success_response(
@@ -715,6 +796,43 @@ async def update_booking_status(
         background_tasks.add_task(whatsapp_service.send_invoice_review_after_completion, str(appt.id))
 
     return appt
+
+
+@router.put("/{id}/payment")
+async def update_appointment_payment(
+    id: str,
+    payload: AppointmentPaymentUpdate,
+    current_user: User = Depends(PermissionChecker("appointments.create")),
+):
+    """
+    Update payment status for unpaid or partially paid appointments.
+
+    Allowed: PENDING → PARTIALLY_PAID | PAID, and PARTIALLY_PAID → PAID.
+    Syncs appointment, bill, and invoice payment fields.
+    """
+    appt = await appointment_service.update_payment_status(
+        appointment_id=id,
+        payment_status=payload.payment_status,
+        paid_amount=payload.paid_amount,
+        payment_type=payload.payment_type,
+    )
+
+    await manager.broadcast_to_salon(
+        tenant_id=_effective_tenant_id(current_user),
+        salon_id=appt.salon_id,
+        message={
+            "event": "BOOKING_PAYMENT_UPDATED",
+            "salon_id": appt.salon_id,
+            "appointment_id": str(appt.id),
+            "payment_status": appt.payment_status,
+            "paid_amount": appt.paid_amount,
+        },
+    )
+
+    return success_response(
+        "Payment status updated successfully",
+        data=await _appointment_response(appt),
+    )
 
 
 @router.get("/calendar", response_model=List[AppointmentResponse])

@@ -79,6 +79,18 @@ export interface AppointmentListItem {
   customer_phone: string;
   staff_id: string;
   staff_name?: string | null;
+  /** Unique id for staff-wise list representation rows (same appointment may appear multiple times). */
+  row_id?: string;
+  /** `service` or `product` representation row. */
+  row_kind?: 'service' | 'product' | string;
+  /** Stable bill/invoice reference shared across expanded rows for the same appointment. */
+  bill_reference?: string | null;
+  /** Unique service staff names for this representation row. */
+  service_by?: string | null;
+  /** Unique product sold-by staff names for this representation row. */
+  sold_by?: string | null;
+  /** Summed product quantity for product rows; null/undefined for service rows. */
+  quantity?: number | null;
   start_datetime: string;
   end_datetime: string;
   total_price: number;
@@ -100,6 +112,8 @@ export interface AppointmentProductSnapshot {
   name: string;
   price: number;
   tax_rate: number;
+  quantity?: number;
+  display_name?: string;
   staff_id?: string | null;
   staff_name?: string | null;
 }
@@ -116,6 +130,7 @@ export interface AppointmentProductRequest {
   salon_product_id?: string;
   staff_id: string;
   price: number;
+  quantity?: number;
 }
 
 export interface CreateFrontDeskAppointmentRequest {
@@ -130,6 +145,13 @@ export interface CreateFrontDeskAppointmentRequest {
   total_amount: number;
   booking_source: string;
   notes?: string;
+}
+
+export interface UpdateAppointmentPaymentRequest {
+  id: string;
+  payment_status: 'PAID' | 'PARTIALLY_PAID';
+  paid_amount?: number;
+  payment_type?: string;
 }
 
 export interface CreateAppointmentClientRequest {
@@ -185,6 +207,7 @@ export interface AppointmentListParams {
   limit?: number;
   search?: string;
   status?: string;
+  payment_status?: string;
   sort_by?: string;
   sort_order?: string;
   date_from?: string;

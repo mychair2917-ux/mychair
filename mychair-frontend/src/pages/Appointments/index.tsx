@@ -1,10 +1,11 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   Download,
+  Pencil,
   Plus,
   ReceiptText,
   Search,
@@ -12,7 +13,10 @@ import {
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 
-import { Button, CommonDropdown, Input, Select } from '../../components/common';
+import { Button, CommonDropdown, Input, Modal, Select } from '../../components/common';
+import ModalBody from '../../components/common/Modal/ModalBody';
+import ModalFooter from '../../components/common/Modal/ModalFooter';
+import ModalHeader from '../../components/common/Modal/ModalHeader';
 import { useAppSelector } from '../../redux/hooks';
 import {
   useCreateAppointmentClientMutation,
@@ -25,10 +29,12 @@ import {
   useLazyGetBillByAppointmentQuery,
   useLazySearchAppointmentClientsQuery,
   useListAppointmentsQuery,
+  useUpdateAppointmentPaymentMutation,
 } from '../../redux/slices/appointments/appointmentsApi';
 import { useLazyGetBillDetailQuery } from '../../redux/slices/billing/billingApi';
 import {
   AppointmentClient,
+  AppointmentListItem,
   AppointmentProductOption,
   AppointmentServiceOption,
 } from '../../redux/slices/appointments/Types';
@@ -57,6 +63,7 @@ type ProductRow = {
   product_id: string;
   staff_id: string;
   price: string;
+  quantity: string;
 };
 
 /* ─── constants ──────────────────────────────────────────── */
@@ -71,7 +78,7 @@ const paymentMethodOptions = [
 const paymentStatusOptions = [
   { value: 'PAID', label: 'Paid' },
   { value: 'PENDING', label: 'Pending' },
-  { value: 'PARTIALLY_PAID', label: 'Partially Paid' },
+  { value: 'PARTIALLY_PAID', label: 'Partial' },
 ];
 
 const clientGenderOptions = [
@@ -79,23 +86,32 @@ const clientGenderOptions = [
   { value: 'FEMALE', label: 'Female' },
 ];
 
-const statusOptions = [
-  { value: 'BOOKED', label: 'Booked' },
-  { value: 'CHECKED_IN', label: 'Checked in' },
-  { value: 'IN_PROGRESS', label: 'In progress' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'NO_SHOW', label: 'No show' },
-];
-
-const statusStyles: Record<string, string> = {
-  BOOKED: 'bg-blue-100 text-blue-700',
-  CHECKED_IN: 'bg-amber-100 text-amber-700',
-  IN_PROGRESS: 'bg-purple-100 text-purple-700',
-  COMPLETED: 'bg-emerald-100 text-emerald-700',
-  CANCELLED: 'bg-red-100 text-red-700',
-  NO_SHOW: 'bg-gray-100 text-gray-600',
+const paymentStatusStyles: Record<string, string> = {
+  PAID: 'bg-emerald-100 text-emerald-700',
+  PENDING: 'bg-amber-100 text-amber-700',
+  PARTIALLY_PAID: 'bg-blue-100 text-blue-700',
 };
+
+const paymentStatusLabels: Record<string, string> = {
+  PAID: 'Paid',
+  PENDING: 'Pending',
+  PARTIALLY_PAID: 'Partial',
+};
+
+function canUpdatePaymentStatus(status: string | undefined): boolean {
+  const normalized = (status || '').toUpperCase();
+  return normalized === 'PENDING' || normalized === 'PARTIALLY_PAID';
+}
+
+function nextPaymentStatusOptions(current: string): { value: string; label: string }[] {
+  if ((current || '').toUpperCase() === 'PARTIALLY_PAID') {
+    return [{ value: 'PAID', label: 'Paid (Complete)' }];
+  }
+  return [
+    { value: 'PARTIALLY_PAID', label: 'Partial' },
+    { value: 'PAID', label: 'Paid (Complete)' },
+  ];
+}
 
 /* ─── helpers ────────────────────────────────────────────── */
 function createRow(): ServiceRow {
@@ -103,7 +119,14 @@ function createRow(): ServiceRow {
 }
 
 function createProductRow(): ProductRow {
-  return { id: crypto.randomUUID(), salon_product_id: '', product_id: '', staff_id: '', price: '' };
+  return {
+    id: crypto.randomUUID(),
+    salon_product_id: '',
+    product_id: '',
+    staff_id: '',
+    price: '',
+    quantity: '1',
+  };
 }
 
 function canManageMembership(role: string | undefined): boolean {
@@ -130,6 +153,11 @@ function hasValidPrice(value: string): boolean {
   return value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
 }
 
+function hasValidQuantity(value: string): boolean {
+  const qty = Number(value);
+  return value.trim() !== '' && Number.isInteger(qty) && qty >= 1;
+}
+
 function isServiceRowComplete(row: ServiceRow): boolean {
   return Boolean(row.salon_service_id && row.staff_id && hasValidPrice(row.price));
 }
@@ -139,11 +167,34 @@ function isServiceRowBlank(row: ServiceRow): boolean {
 }
 
 function isProductRowBlank(row: ProductRow): boolean {
-  return !row.salon_product_id && !row.product_id && !row.staff_id && row.price.trim() === '';
+  return (
+    !row.salon_product_id &&
+    !row.product_id &&
+    !row.staff_id &&
+    row.price.trim() === '' &&
+    (row.quantity.trim() === '' || row.quantity.trim() === '1')
+  );
 }
 
 function isProductRowComplete(row: ProductRow): boolean {
-  return Boolean(row.salon_product_id && row.staff_id && hasValidPrice(row.price));
+  return Boolean(
+    row.salon_product_id && row.staff_id && hasValidPrice(row.price) && hasValidQuantity(row.quantity)
+  );
+}
+
+function productLineTotal(unitPrice: string | number, quantity: string | number): number {
+  const price = Number(unitPrice || 0);
+  const qty = Math.max(1, Number(quantity || 1));
+  return price * qty;
+}
+
+function formatProductListLabel(product: {
+  name: string;
+  quantity?: number;
+  display_name?: string;
+}): string {
+  // Quantity has its own column — product name must appear once.
+  return product.display_name || product.name;
 }
 
 function toDateTimeInputValue(date: Date): string {
@@ -158,7 +209,7 @@ function formatTime(value: string): string {
 /* ─── List tab skeleton row ─────────────────────────────── */
 const SkeletonRow: React.FC = () => (
   <tr>
-    {Array.from({ length: 10 }).map((_, i) => (
+    {Array.from({ length: 13 }).map((_, i) => (
       <td key={i} className="px-3 py-3">
         <div className="h-4 animate-pulse rounded bg-gray-200" />
       </td>
@@ -166,21 +217,201 @@ const SkeletonRow: React.FC = () => (
   </tr>
 );
 
+/* ─── Payment update modal ───────────────────────────────── */
+const PaymentUpdateModal: React.FC<{
+  open: boolean;
+  appointment: AppointmentListItem | null;
+  isLoading: boolean;
+  onClose: () => void;
+  onSubmit: (payload: {
+    payment_status: 'PAID' | 'PARTIALLY_PAID';
+    paid_amount?: number;
+    payment_type?: string;
+  }) => Promise<void>;
+}> = ({ open, appointment, isLoading, onClose, onSubmit }) => {
+  const [nextStatus, setNextStatus] = useState('PAID');
+  const [paidAmount, setPaidAmount] = useState('');
+  const [paymentType, setPaymentType] = useState('CASH');
+
+  useEffect(() => {
+    if (!appointment || !open) return;
+    const options = nextPaymentStatusOptions(appointment.payment_status);
+    setNextStatus(options[0]?.value ?? 'PAID');
+    setPaidAmount(
+      appointment.payment_status === 'PARTIALLY_PAID'
+        ? String(appointment.paid_amount || '')
+        : ''
+    );
+    setPaymentType(appointment.payment_type || 'CASH');
+  }, [appointment, open]);
+
+  if (!appointment) return null;
+
+  const total = Number(appointment.total_price || 0);
+  const alreadyPaid = Number(appointment.paid_amount || 0);
+  const remainingPreview =
+    nextStatus === 'PARTIALLY_PAID' && paidAmount
+      ? Math.max(0, total - Number(paidAmount))
+      : nextStatus === 'PAID'
+        ? 0
+        : Math.max(0, total - alreadyPaid);
+
+  const handleSubmit = async () => {
+    if (nextStatus === 'PARTIALLY_PAID') {
+      const amount = Number(paidAmount);
+      if (!paidAmount || !Number.isFinite(amount) || amount <= 0) {
+        showToast('warning', 'Enter a valid paid amount');
+        return;
+      }
+      if (amount <= alreadyPaid) {
+        showToast('warning', 'Paid amount must be greater than amount already paid');
+        return;
+      }
+      if (amount >= total) {
+        showToast('warning', 'For partial payment, amount must be less than total');
+        return;
+      }
+      await onSubmit({
+        payment_status: 'PARTIALLY_PAID',
+        paid_amount: amount,
+        payment_type: paymentType,
+      });
+      return;
+    }
+    await onSubmit({
+      payment_status: 'PAID',
+      payment_type: paymentType,
+    });
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} size="md" isShowIcon>
+      <ModalHeader>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Update payment status</h2>
+          <p className="mt-1 text-sm font-normal text-gray-500">
+            {appointment.customer_name} · {formatDateDMY(appointment.start_datetime)}
+          </p>
+        </div>
+      </ModalHeader>
+      <ModalBody className="space-y-4">
+        <div className="rounded-xl bg-gray-50 p-3 text-sm">
+          <div className="flex justify-between gap-3">
+            <span className="text-gray-500">Current status</span>
+            <span className="font-medium text-gray-900">
+              {paymentStatusLabels[appointment.payment_status] ?? appointment.payment_status}
+            </span>
+          </div>
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-gray-500">Total</span>
+            <span className="font-medium text-gray-900">₹{total}</span>
+          </div>
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-gray-500">Already paid</span>
+            <span className="font-medium text-gray-900">₹{alreadyPaid}</span>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">New payment status</label>
+          <Select
+            value={nextStatus}
+            onChange={(e) => {
+              setNextStatus(e.target.value);
+              if (e.target.value !== 'PARTIALLY_PAID') setPaidAmount('');
+            }}
+            options={nextPaymentStatusOptions(appointment.payment_status)}
+            placeholder="Select status"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Payment method</label>
+          <Select
+            value={paymentType}
+            onChange={(e) => setPaymentType(e.target.value)}
+            options={paymentMethodOptions}
+            placeholder="Payment method"
+          />
+        </div>
+        {nextStatus === 'PARTIALLY_PAID' && (
+          <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50 p-3">
+            <label className="mb-1 block text-xs font-medium text-violet-700">
+              Paid amount <span className="text-red-500">*</span>
+            </label>
+            <Input
+              type="number"
+              min={alreadyPaid + 0.01}
+              max={total - 0.01}
+              placeholder="Enter total amount paid so far"
+              value={paidAmount}
+              onChange={(e) => setPaidAmount(e.target.value)}
+            />
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Remaining</span>
+              <span className="font-semibold text-amber-700">₹{remainingPreview.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+        {nextStatus === 'PAID' && (
+          <p className="text-sm text-emerald-700">
+            Marking as paid will set paid amount to the full total (₹{total}).
+          </p>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="button" isLoading={isLoading} onClick={handleSubmit}>
+          Update status
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+};
+
 /* ─── Appointment List Tab ───────────────────────────────── */
-const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
+const AppointmentListTab: React.FC<{
+  salonId: string;
+  highlightAppointmentId?: string | null;
+  initialSearch?: string;
+  onHighlightConsumed?: () => void;
+}> = ({ salonId, highlightAppointmentId = null, initialSearch = '', onHighlightConsumed }) => {
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState(initialSearch);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   const [sortBy] = useState('start_datetime');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [downloadingBillId, setDownloadingBillId] = useState<string | null>(null);
+  const [updatingAppointment, setUpdatingAppointment] = useState<AppointmentListItem | null>(null);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightAppointmentId);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [fetchBillByAppointment] = useLazyGetBillByAppointmentQuery();
   const [fetchBillDetail] = useLazyGetBillDetailQuery();
+  const [updatePayment, { isLoading: isUpdatingPayment }] = useUpdateAppointmentPaymentMutation();
 
-  // Debounce search
+  useEffect(() => {
+    if (!initialSearch) return;
+    setSearch(initialSearch);
+    setDebouncedSearch(initialSearch);
+    setPage(1);
+  }, [initialSearch]);
+
+  useEffect(() => {
+    if (!highlightAppointmentId) return;
+    setActiveHighlightId(highlightAppointmentId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setActiveHighlightId(null);
+      onHighlightConsumed?.();
+    }, 8000);
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, [highlightAppointmentId]); // eslint-disable-line react-hooks/exhaustive-deps -- consume once per highlight id
+
   const handleSearchChange = (val: string) => {
     setSearch(val);
     if (searchTimerRef.current) {
@@ -198,7 +429,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
       page,
       limit: PAGE_SIZE,
       search: debouncedSearch || undefined,
-      status: statusFilter || undefined,
+      payment_status: paymentStatusFilter || undefined,
       sort_by: sortBy,
       sort_order: sortOrder,
     },
@@ -210,6 +441,34 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
   const totalPages = data?.data?.pages ?? 1;
   const startItem = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endItem = Math.min(page * PAGE_SIZE, total);
+
+  useEffect(() => {
+    if (!activeHighlightId || items.length === 0) return;
+    const el = document.querySelector(`[data-appointment-id="${activeHighlightId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeHighlightId, items]);
+
+  const handlePaymentUpdate = async (payload: {
+    payment_status: 'PAID' | 'PARTIALLY_PAID';
+    paid_amount?: number;
+    payment_type?: string;
+  }) => {
+    if (!updatingAppointment) return;
+    try {
+      const response = await updatePayment({
+        id: updatingAppointment.id,
+        ...payload,
+      }).unwrap();
+      if (response.success) {
+        showToast('success', response.message || 'Payment status updated');
+        setUpdatingAppointment(null);
+      }
+    } catch (err: unknown) {
+      showToast('error', getApiErrorMessage(err, 'Failed to update payment status'));
+    }
+  };
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -224,20 +483,18 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
             className="!pl-9"
           />
         </div>
-        <div className="w-40">
+        <div className="w-44">
           <Select
-            value={statusFilter}
+            value={paymentStatusFilter}
             onChange={(e) => {
-              setStatusFilter(e.target.value);
+              setPaymentStatusFilter(e.target.value);
               setPage(1);
             }}
             options={[
-              { value: '', label: 'All statuses' },
-              ...statusOptions,
-              { value: 'CANCELLED', label: 'Cancelled' },
-              { value: 'NO_SHOW', label: 'No-show' },
+              { value: '', label: 'All payment statuses' },
+              ...paymentStatusOptions,
             ]}
-            placeholder="Filter status"
+            placeholder="Filter payment status"
           />
         </div>
         <Button
@@ -263,11 +520,14 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Phone</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Services</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Products</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Staff</th>
+              <th className="px-3 py-3 text-right font-semibold text-gray-500">Quantity</th>
+              <th className="px-3 py-3 text-left font-semibold text-gray-500">Service By</th>
+              <th className="px-3 py-3 text-left font-semibold text-gray-500">Sold By</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Date & Time</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Status</th>
+              <th className="px-3 py-3 text-left font-semibold text-gray-500">Payment Status</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Payment</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-500">Bill</th>
+              <th className="px-3 py-3 text-right font-semibold text-gray-500">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
@@ -275,27 +535,39 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
               Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
             ) : isError ? (
               <tr>
-                <td colSpan={10} className="px-3 py-12 text-center text-sm text-red-500">
+                <td colSpan={13} className="px-3 py-12 text-center text-sm text-red-500">
                   Failed to load appointments. Please try again.
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-16 text-center">
+                <td colSpan={13} className="px-3 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <CalendarDays className="h-10 w-10 text-gray-300" />
                     <p className="text-sm font-medium text-gray-500">No appointments found</p>
-                    {(debouncedSearch || statusFilter) && (
+                    {(debouncedSearch || paymentStatusFilter) && (
                       <p className="text-xs text-gray-400">Try adjusting your filters</p>
                     )}
                   </div>
                 </td>
               </tr>
             ) : (
-              items.map((appt) => (
-                <tr key={appt.id} className="hover:bg-gray-50 transition-colors">
+              items.map((appt) => {
+                const rowKey = appt.row_id || appt.id;
+                const isHighlighted = activeHighlightId === appt.id;
+                return (
+                <tr
+                  key={rowKey}
+                  data-appointment-id={appt.id}
+                  className={cn(
+                    'transition-colors',
+                    isHighlighted
+                      ? 'bg-amber-50 ring-2 ring-inset ring-[var(--color-brand-gold)]'
+                      : 'hover:bg-gray-50'
+                  )}
+                >
                   <td className="px-3 py-3 font-mono text-xs text-gray-500">
-                    {appt.id.slice(-8).toUpperCase()}
+                    {appt.bill_reference || appt.id.slice(-8).toUpperCase()}
                   </td>
                   <td className="px-3 py-3 font-medium text-gray-900">{appt.customer_name}</td>
                   <td className="px-3 py-3 text-gray-600">{appt.customer_phone || '-'}</td>
@@ -306,25 +578,34 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                   </td>
                   <td className="px-3 py-3 text-gray-600 max-w-40">
                     <span className="line-clamp-2">
-                      {appt.products.map((p) => p.name).join(', ') || '-'}
+                      {appt.products.map((p) => formatProductListLabel(p)).join(', ') || '-'}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-gray-600">{appt.staff_name || '-'}</td>
+                  <td className="px-3 py-3 text-right text-gray-600 tabular-nums">
+                    {appt.quantity != null ? appt.quantity : '-'}
+                  </td>
+                  <td className="px-3 py-3 text-gray-600">{appt.service_by || '-'}</td>
+                  <td className="px-3 py-3 text-gray-600">{appt.sold_by || '-'}</td>
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
                     <p className="font-medium text-gray-900">{formatDateDMY(appt.start_datetime)}</p>
                     <p className="text-xs text-gray-500">{formatTime(appt.start_datetime)}</p>
                   </td>
                   <td className="px-3 py-3">
                     <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusStyles[appt.status] ?? 'bg-gray-100 text-gray-600'}`}
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusStyles[appt.payment_status] ?? 'bg-gray-100 text-gray-600'}`}
                     >
-                      {appt.status.toLowerCase().replace('_', ' ')}
+                      {paymentStatusLabels[appt.payment_status] ?? appt.payment_status}
                     </span>
                   </td>
                   <td className="px-3 py-3">
                     <div>
                       <p className="font-medium text-gray-900">₹{appt.total_price}</p>
-                      <p className="text-xs text-gray-500">{appt.payment_type || '-'}</p>
+                      <p className="text-xs text-gray-500">
+                        {appt.payment_type || '-'}
+                        {canUpdatePaymentStatus(appt.payment_status)
+                          ? ` · paid ₹${appt.paid_amount || 0}`
+                          : ''}
+                      </p>
                     </div>
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -333,13 +614,13 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                       variant="ghost"
                       className="!px-2 !py-1 text-xs"
                       title={appt.payment_status === 'PENDING' ? 'No bill yet' : 'Download bill'}
-                      disabled={downloadingBillId === appt.id}
+                      disabled={downloadingBillId === rowKey}
                       onClick={async () => {
                         if (appt.payment_status === 'PENDING') {
                           showToast('warning', 'No bill available — payment is still pending.');
                           return;
                         }
-                        setDownloadingBillId(appt.id);
+                        setDownloadingBillId(rowKey);
                         try {
                           const listRes = await fetchBillByAppointment({
                             salon_id: salonId,
@@ -362,7 +643,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                         }
                       }}
                     >
-                      {downloadingBillId === appt.id ? (
+                      {downloadingBillId === rowKey ? (
                         <span className="text-xs text-gray-400">…</span>
                       ) : appt.payment_status === 'PENDING' ? (
                         <ReceiptText className="h-4 w-4 text-gray-300" />
@@ -371,8 +652,24 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                       )}
                     </Button>
                   </td>
+                  <td className="px-3 py-3 text-right">
+                    {canUpdatePaymentStatus(appt.payment_status) ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="!px-2 !py-1 text-xs text-[var(--color-brand-gold)]"
+                        title="Update payment status"
+                        onClick={() => setUpdatingAppointment(appt)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -383,7 +680,7 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
         <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
           <p className="text-xs text-gray-500">
             Showing <span className="font-medium">{startItem}–{endItem}</span> of{' '}
-            <span className="font-medium">{total}</span> appointments
+            <span className="font-medium">{total}</span> entries
           </p>
           <div className="flex items-center gap-1">
             <Button
@@ -433,6 +730,14 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
           </div>
         </div>
       )}
+
+      <PaymentUpdateModal
+        open={Boolean(updatingAppointment)}
+        appointment={updatingAppointment}
+        isLoading={isUpdatingPayment}
+        onClose={() => setUpdatingAppointment(null)}
+        onSubmit={handlePaymentUpdate}
+      />
     </div>
   );
 };
@@ -448,6 +753,14 @@ const Appointments: React.FC = () => {
   const salonId = (orgId ?? (isSuperAdmin ? selectedSalonId : storedOrgId) ?? '').trim();
 
   const [activeTab, setActiveTab] = useState<Tab>('entry');
+  const [highlightAppointmentId, setHighlightAppointmentId] = useState<string | null>(null);
+  const [listSearchSeed, setListSearchSeed] = useState('');
+
+  const openAppointmentInList = (item: AppointmentListItem) => {
+    setListSearchSeed(item.customer_phone || item.customer_name || '');
+    setHighlightAppointmentId(item.id);
+    setActiveTab('list');
+  };
 
   const defaultStart = useMemo(() => {
     const date = new Date();
@@ -456,6 +769,8 @@ const Appointments: React.FC = () => {
   }, []);
 
   const [clientSearch, setClientSearch] = useState('');
+  const [clientSearchResults, setClientSearchResults] = useState<AppointmentClient[]>([]);
+  const [hasClientSearched, setHasClientSearched] = useState(false);
   const [selectedClient, setSelectedClient] = useState<AppointmentClient | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [clientForm, setClientForm] = useState({
@@ -490,7 +805,7 @@ const Appointments: React.FC = () => {
     { id: selectedClient?.id ?? '', salon_id: salonId || undefined },
     { skip: !selectedClient }
   );
-  const [searchClients, { data: clientsData, isFetching: isSearchingClients }] =
+  const [searchClients, { isFetching: isSearchingClients }] =
     useLazySearchAppointmentClientsQuery();
   const [checkClientPhone] = useLazyCheckAppointmentClientPhoneQuery();
   const [createClient, { isLoading: isCreatingClient }] = useCreateAppointmentClientMutation();
@@ -499,7 +814,6 @@ const Appointments: React.FC = () => {
   const services = servicesData?.data ?? [];
   const products = productsData?.data ?? [];
   const staff = staffData?.data ?? [];
-  const clients = clientsData?.data ?? [];
   const history = historyData?.data ?? [];
 
   const serviceOptions = services.map((service) => ({
@@ -515,7 +829,7 @@ const Appointments: React.FC = () => {
   const calculatedTotal = useMemo(
     () =>
       serviceRows.reduce((sum, row) => sum + Number(row.price || 0), 0) +
-      productRows.reduce((sum, row) => sum + Number(row.price || 0), 0),
+      productRows.reduce((sum, row) => sum + productLineTotal(row.price, row.quantity), 0),
     [productRows, serviceRows]
   );
 
@@ -529,6 +843,18 @@ const Appointments: React.FC = () => {
     );
   }
 
+  const prefillQuickAddFromSearch = (term: string) => {
+    const digits = term.replace(/\D/g, '');
+    const looksLikePhone = digits.length >= 6 && /^[\d\s+\-()]+$/.test(term);
+    setClientForm((prev) => ({
+      ...prev,
+      name: looksLikePhone ? prev.name : term,
+      phone: looksLikePhone ? term.trim() : prev.phone,
+    }));
+    setClientPhoneError('');
+    setQuickAddOpen(true);
+  };
+
   const handleClientSearch = async (event: React.FormEvent) => {
     event.preventDefault();
     const term = clientSearch.trim();
@@ -536,7 +862,21 @@ const Appointments: React.FC = () => {
       showToast('warning', 'Enter at least 2 characters to search clients');
       return;
     }
-    await searchClients({ search: term }).unwrap();
+    try {
+      const response = await searchClients({ search: term }).unwrap();
+      const matches = response.data ?? [];
+      setClientSearchResults(matches);
+      setHasClientSearched(true);
+      if (matches.length === 0) {
+        prefillQuickAddFromSearch(term);
+      } else {
+        setQuickAddOpen(false);
+      }
+    } catch {
+      setClientSearchResults([]);
+      setHasClientSearched(true);
+      showToast('error', 'Failed to search clients');
+    }
   };
 
   const handleClientPhoneBlur = async () => {
@@ -587,6 +927,9 @@ const Appointments: React.FC = () => {
         setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
         setClientPhoneError('');
         setQuickAddOpen(false);
+        setClientSearchResults([response.data]);
+        setHasClientSearched(true);
+        setClientSearch(response.data.name || response.data.phone || '');
         showToast('success', 'Client added');
       }
     } catch (err: unknown) {
@@ -743,6 +1086,7 @@ const Appointments: React.FC = () => {
           salon_product_id: row.salon_product_id,
           staff_id: row.staff_id,
           price: Number(row.price || 0),
+          quantity: Math.max(1, Number(row.quantity || 1)),
         })),
         payment_type: paymentMethod,
         payment_status: paymentStatus,
@@ -833,16 +1177,22 @@ const Appointments: React.FC = () => {
                 <Input
                   placeholder="Phone number or client name"
                   value={clientSearch}
-                  onChange={(event) => setClientSearch(event.target.value)}
+                  onChange={(event) => {
+                    setClientSearch(event.target.value);
+                    if (hasClientSearched) {
+                      setHasClientSearched(false);
+                      setClientSearchResults([]);
+                    }
+                  }}
                 />
                 <Button type="submit" isLoading={isSearchingClients} icon={<Search className="h-4 w-4" />}>
                   Search
                 </Button>
               </form>
 
-              {clients.length > 0 && (
+              {hasClientSearched && clientSearchResults.length > 0 && (
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  {clients.map((client) => (
+                  {clientSearchResults.map((client) => (
                     <button
                       key={client.id}
                       type="button"
@@ -860,6 +1210,26 @@ const Appointments: React.FC = () => {
                       <p className="text-sm text-gray-500">{client.phone}</p>
                     </button>
                   ))}
+                </div>
+              )}
+
+              {hasClientSearched && clientSearchResults.length === 0 && !isSearchingClients && (
+                <div className="mt-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
+                  <p className="text-sm text-gray-600">
+                    No client found for &ldquo;{clientSearch.trim()}&rdquo;.
+                  </p>
+                  {!quickAddOpen && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="mt-3"
+                      icon={<Plus className="h-4 w-4" />}
+                      onClick={() => prefillQuickAddFromSearch(clientSearch.trim())}
+                    >
+                      Quick add client
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -975,7 +1345,7 @@ const Appointments: React.FC = () => {
                           value={row.staff_id}
                           onChange={(event) => updateServiceRow(row.id, 'staff_id', event.target.value)}
                           options={staffOptions}
-                          placeholder="Staff"
+                          placeholder="Service By"
                         />
                         <Input
                           type="number"
@@ -1008,7 +1378,7 @@ const Appointments: React.FC = () => {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h2 className="font-semibold text-gray-900">Products</h2>
-                  <p className="text-sm text-gray-500">Add multiple products with assigned staff.</p>
+                  <p className="text-sm text-gray-500">Add products with quantity and sold-by staff.</p>
                 </div>
                 <Button
                   type="button"
@@ -1033,7 +1403,7 @@ const Appointments: React.FC = () => {
                       <div
                         key={row.id}
                         className={cn(
-                          'grid gap-3 rounded-xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
+                          'grid gap-3 rounded-xl border p-3 md:grid-cols-[1.2fr_1fr_80px_110px_40px]',
                           isInvalid
                             ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
                             : 'border-gray-100 bg-gray-50'
@@ -1051,12 +1421,20 @@ const Appointments: React.FC = () => {
                           value={row.staff_id}
                           onChange={(event) => updateProductRow(row.id, 'staff_id', event.target.value)}
                           options={staffOptions}
-                          placeholder="Staff"
+                          placeholder="Sold By"
+                        />
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="Qty"
+                          value={row.quantity}
+                          onChange={(event) => updateProductRow(row.id, 'quantity', event.target.value)}
                         />
                         <Input
                           type="number"
                           min="0"
-                          placeholder="Price"
+                          placeholder="Unit price"
                           value={row.price}
                           onChange={(event) => updateProductRow(row.id, 'price', event.target.value)}
                         />
@@ -1069,8 +1447,8 @@ const Appointments: React.FC = () => {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                         {isInvalid && (
-                          <p className="text-xs font-medium text-red-600 md:col-span-4">
-                            Complete this product row or remove it before submitting.
+                          <p className="text-xs font-medium text-red-600 md:col-span-5">
+                            Complete this product row (product, sold by, qty, price) or remove it.
                           </p>
                         )}
                       </div>
@@ -1090,16 +1468,45 @@ const Appointments: React.FC = () => {
                 <p className="mt-3 text-sm text-gray-500">No previous appointments for this client.</p>
               ) : (
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {history.slice(0, 4).map((item) => (
-                    <div key={item.id} className="rounded-xl bg-gray-50 p-3 text-sm">
-                      <p className="font-medium text-gray-900">
-                        {formatDateDMY(item.start_datetime)}
-                      </p>
-                      <p className="mt-1 text-gray-500">
-                        {[...item.services.map((s) => s.name), ...item.products.map((p) => p.name)].join(', ')}
-                      </p>
-                    </div>
-                  ))}
+                  {history.slice(0, 5).map((item) => {
+                    const canUpdate = canUpdatePaymentStatus(item.payment_status);
+                    return (
+                      <div key={item.id} className="rounded-xl bg-gray-50 p-3 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {formatDateDMY(item.start_datetime)}
+                            </p>
+                            <p className="mt-1 text-gray-500">
+                              {[
+                                ...item.services.map((s) => s.name),
+                                ...item.products.map((p) => p.name),
+                              ].join(', ')}
+                            </p>
+                          </div>
+                          <span
+                            className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusStyles[item.payment_status] ?? 'bg-gray-100 text-gray-600'}`}
+                          >
+                            {paymentStatusLabels[item.payment_status] ?? item.payment_status}
+                          </span>
+                        </div>
+                        {canUpdate && (
+                          <div className="mt-3">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="!px-2 !py-1 text-xs"
+                              icon={<Pencil className="h-3.5 w-3.5" />}
+                              onClick={() => openAppointmentInList(item)}
+                            >
+                              Update payment
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -1207,10 +1614,15 @@ const Appointments: React.FC = () => {
                   {productRows.map((row) => {
                     const item = products.find((product) => product.salon_product_id === row.salon_product_id);
                     if (!item) return null;
+                    const qty = Math.max(1, Number(row.quantity || 1));
+                    const lineTotal = productLineTotal(row.price || item.price, qty);
                     return (
                       <div key={row.id} className="flex items-center justify-between gap-3">
-                        <span>{item.product_name}</span>
-                        <span>₹{row.price || item.price}</span>
+                        <span>
+                          {item.product_name}
+                          {qty > 1 ? ` × ${qty}` : ''}
+                        </span>
+                        <span>₹{lineTotal}</span>
                       </div>
                     );
                   })}
@@ -1232,7 +1644,15 @@ const Appointments: React.FC = () => {
 
       {/* ── List Tab ── */}
       {activeTab === 'list' && (
-        <AppointmentListTab salonId={salonId} />
+        <AppointmentListTab
+          salonId={salonId}
+          highlightAppointmentId={highlightAppointmentId}
+          initialSearch={listSearchSeed}
+          onHighlightConsumed={() => {
+            setHighlightAppointmentId(null);
+            setListSearchSeed('');
+          }}
+        />
       )}
     </div>
   );

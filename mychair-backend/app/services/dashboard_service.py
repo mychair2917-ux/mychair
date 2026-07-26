@@ -977,9 +977,9 @@ class DashboardService:
 
     @staticmethod
     def _staff_name(user: User) -> str:
-        parts = [user.first_name or "", user.last_name or ""]
-        name = " ".join(part for part in parts if part).strip()
-        return name or user.email
+        from app.utils.user_name import user_display_name
+
+        return user_display_name(user)
 
     async def _upcoming_appointments(
         self,

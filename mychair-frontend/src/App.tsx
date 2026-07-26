@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router';
 
 import { ErrorBoundary } from './components/common';
 import PermissionsBootstrap from './components/permissions/PermissionsBootstrap';
+import AuthProfileSync from './components/auth/AuthProfileSync';
 import NotificationRealtimeBridge from './components/notifications/NotificationRealtimeBridge';
 import SubscriptionExpiryBanner from './components/subscription/SubscriptionExpiryBanner';
 import SubscriptionGuard from './components/subscription/SubscriptionGuard';
@@ -18,6 +19,7 @@ function AuthenticatedShell() {
 
   return (
     <>
+      <AuthProfileSync />
       <Sidebar />
       <div
         className={cn(

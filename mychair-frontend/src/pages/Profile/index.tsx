@@ -8,7 +8,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { Button, CommonCard, EmptyState, FormField, Input, PageLoader, Select } from '../../components/common';
+import { Button, CommonCard, EmptyState, FormField, Input, PageLoader, PasswordInput, Select } from '../../components/common';
 import { showToast } from '../../components/common/Toast/toastService';
 import { useAppSelector } from '../../redux/hooks';
 import {
@@ -20,6 +20,7 @@ import {
 } from '../../redux/slices/profile/profileApi';
 import { ProfileData, UpdateProfileRequest } from '../../redux/slices/profile/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
+import { formatPersonName } from '../../utils/personName';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
 
 type ProfileFormState = {
@@ -122,7 +123,15 @@ const Profile: React.FC = () => {
   }, [profile]);
 
   const displayAvatar = avatarPreview || profile?.avatar || authUser?.avatar || null;
-  const displayName = profile?.full_name || [authUser?.first_name, authUser?.last_name].filter(Boolean).join(' ') || authUser?.email || 'User';
+  const displayName = formatPersonName(
+    {
+      full_name: profile?.full_name,
+      first_name: authUser?.first_name,
+      last_name: authUser?.last_name,
+      username: authUser?.username,
+    },
+    'User'
+  );
 
   const isProfessionalEditable = Boolean(profile?.can_edit_professional_info);
   const isAvatarBusy = isUploadingAvatar || isRemovingAvatar;
@@ -502,13 +511,13 @@ const Profile: React.FC = () => {
           <CommonCard title="Change Password" subtitle="Use a strong password to keep your account secure.">
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <FormField label="Current Password" name="current_password" error={passwordErrors.current_password} touched={!!passwordErrors.current_password} required>
-                <Input type="password" value={passwordState.current_password} onChange={(e) => handlePasswordFieldChange('current_password', e.target.value)} />
+                <PasswordInput value={passwordState.current_password} onChange={(e) => handlePasswordFieldChange('current_password', e.target.value)} autoComplete="current-password" />
               </FormField>
               <FormField label="New Password" name="new_password" error={passwordErrors.new_password} touched={!!passwordErrors.new_password} required>
-                <Input type="password" value={passwordState.new_password} onChange={(e) => handlePasswordFieldChange('new_password', e.target.value)} />
+                <PasswordInput value={passwordState.new_password} onChange={(e) => handlePasswordFieldChange('new_password', e.target.value)} autoComplete="new-password" />
               </FormField>
               <FormField label="Confirm New Password" name="confirm_password" error={passwordErrors.confirm_password} touched={!!passwordErrors.confirm_password} required>
-                <Input type="password" value={passwordState.confirm_password} onChange={(e) => handlePasswordFieldChange('confirm_password', e.target.value)} />
+                <PasswordInput value={passwordState.confirm_password} onChange={(e) => handlePasswordFieldChange('confirm_password', e.target.value)} autoComplete="new-password" />
               </FormField>
               <Button type="submit" variant="primary" fullWidth isLoading={isChangingPassword}>
                 Update password

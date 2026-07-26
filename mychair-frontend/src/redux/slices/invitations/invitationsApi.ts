@@ -95,6 +95,20 @@ export const invitationsApi = baseApi.injectEndpoints({
         method: HTTP_METHODS.POST,
         body,
       }),
+      async onQueryStarted({ token }, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(
+            invitationsApi.util.updateQueryData('validateInvitation', token, (draft) => {
+              if (draft?.data) {
+                draft.data.is_valid = false;
+              }
+            })
+          );
+        } catch {
+          // no-op: keep cached validation when create-password fails
+        }
+      },
     }),
     acceptInvitation: builder.mutation<
       ApiResponse<CreatePasswordResponseData>,

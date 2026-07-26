@@ -31,6 +31,7 @@ from app.services.email_service import send_invitation_email, send_team_invitati
 from app.services.invitation_service import InvitationService
 from app.services.notifications import notification_service
 from app.utils.timezone import make_aware, now_utc
+from app.utils.user_name import user_display_name
 
 RESEND_MAX = 5
 ROLE_LABELS = {
@@ -60,6 +61,8 @@ class InviteService:
         errors: dict = {}
         if not payload.email:
             errors["email"] = ["Email is required"]
+        if not payload.phone or not payload.phone.strip():
+            errors["phone"] = ["Mobile number is required"]
         if not payload.password:
             errors["password"] = ["Password is required"]
         if not payload.confirm_password:
@@ -110,9 +113,16 @@ class InviteService:
         ]
 
     async def _managers_and_branches_for_tenant(
-        self, tenant_id: str, actor_branch_name: Optional[str] = None
+        self,
+        tenant_id: str,
+        actor_branch_name: Optional[str] = None,
+        salon_name: Optional[str] = None,
     ) -> Tuple[List[dict], List[dict]]:
-        """Salon managers for Reporting Manager dropdown + branch options."""
+        """Salon managers for Reporting Manager dropdown + branch options.
+
+        For now, include the salon (tenant) name as a branch option so the
+        Branch dropdown is never empty when multi-branch isn't set up yet.
+        """
         managers = await User.find(
             User.tenant_id == tenant_id,
             User.role == ROLE_SALON_MANAGER,
@@ -127,6 +137,8 @@ class InviteService:
             for m in managers
         ]
         branch_names: set[str] = set()
+        if salon_name:
+            branch_names.add(salon_name)
         if actor_branch_name:
             branch_names.add(actor_branch_name)
         for m in managers:
@@ -159,19 +171,20 @@ class InviteService:
                 tenant = await Tenant.get(tenant_id)
                 if tenant and not tenant.is_deleted:
                     managers, branches = await self._managers_and_branches_for_tenant(
-                        tenant_id
+                        tenant_id, salon_name=tenant.name
                     )
                     options["managers"] = managers
                     options["branches"] = branches
         elif actor.tenant_id:
             scoped_tenant_id = actor.tenant_id
             tenant = await Tenant.get(scoped_tenant_id)
+            salon_name = tenant.name if tenant else None
             if tenant:
                 options["tenants"] = [
                     {"value": scoped_tenant_id, "label": tenant.name}
                 ]
             managers, branches = await self._managers_and_branches_for_tenant(
-                scoped_tenant_id, actor.branch_name
+                scoped_tenant_id, actor.branch_name, salon_name=salon_name
             )
             options["managers"] = managers
             options["branches"] = branches
@@ -179,9 +192,7 @@ class InviteService:
 
     @staticmethod
     def _display_name(user: User) -> str:
-        if user.first_name or user.last_name:
-            return f"{user.first_name or ''} {user.last_name or ''}".strip()
-        return user.email
+        return user_display_name(user)
 
     async def _pending_invite_for_email(self, email: str) -> Optional[Invite]:
         return await Invite.find_one(
@@ -410,7 +421,7 @@ class InviteService:
     ) -> Dict[str, Any]:
         """
         List invitations scoped by actor role with pagination, search, and sorting.
-        super_admin: all; others: tenant + inviter scope + visible target roles.
+        super_admin: all; salon owner/admin: salon-wide; managers: own invites only.
         """
         role_filter = invite_list_roles_visible(actor.role)
         if role_filter is not None and not role_filter:
@@ -501,16 +512,17 @@ class InviteService:
         normalized = normalize_role(actor.role)
         if normalized == "super_admin":
             return True
-        if str(invite.invited_by) != str(actor.id):
-            return False
         if normalized in (RBAC_SALON_OWNER, ROLE_SALON_ADMIN):
+            # Owners/admins manage any manager/staff invite in their salon,
+            # including invites created by managers.
             return (
                 invite.salon_id == actor.tenant_id
                 and invite.role in (ROLE_SALON_MANAGER, ROLE_EMPLOYEE)
             )
         if normalized == ROLE_SALON_MANAGER:
             return (
-                invite.salon_id == actor.tenant_id
+                str(invite.invited_by) == str(actor.id)
+                and invite.salon_id == actor.tenant_id
                 and invite.role == ROLE_EMPLOYEE
             )
         return False
@@ -615,12 +627,12 @@ class InviteService:
             user = await User.get(invite.user_id)
             if user:
                 salon_name = salon_name or user.salon_name or ""
-                username = user.username or user.email
+                username = user.username or user_display_name(user)
 
         return {
             "salon_name": salon_name,
             "email": invite.invited_email,
-            "username": username or invite.invited_email,
+            "username": username or invite.full_name or "User",
             "full_name": invite.full_name,
             "role": invite.role,
             "expires_at": invite.expires_at.isoformat(),

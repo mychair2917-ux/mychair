@@ -7,10 +7,11 @@ from app.services.permission_service import PermissionService
 from app.utils.timezone import now_utc
 
 
+from app.utils.user_name import user_display_name
+
+
 def _full_name_from_user(user: User) -> str:
-    if user.first_name and user.last_name:
-        return f"{user.first_name} {user.last_name}".strip()
-    return (user.first_name or user.last_name or "").strip()
+    return user_display_name(user, fallback="")
 
 
 class SalonOwnerAuthService:
@@ -61,6 +62,7 @@ class SalonOwnerAuthService:
             "email": user.email,
             "id": user_id,
             "username": user.username or "",
+            "full_name": user_display_name(user),
             "first_name": user.first_name or "",
             "last_name": user.last_name or "",
             "phone": user.phone or "",

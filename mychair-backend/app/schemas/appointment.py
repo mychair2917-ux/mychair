@@ -43,6 +43,7 @@ class AppointmentProductCreate(BaseModel):
     salon_product_id: Optional[str] = None
     staff_id: str
     price: float = Field(..., ge=0)
+    quantity: int = Field(default=1, ge=1)
 
     @field_validator("product_id", "salon_product_id")
     @classmethod
@@ -57,6 +58,19 @@ class AppointmentProductCreate(BaseModel):
         if not cleaned:
             raise ValueError("staff_id is required")
         return cleaned
+
+    @field_validator("quantity", mode="before")
+    @classmethod
+    def normalize_quantity(cls, v) -> int:
+        if v is None or v == "":
+            return 1
+        try:
+            qty = int(v)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("quantity must be a positive integer") from exc
+        if qty < 1:
+            raise ValueError("quantity must be at least 1")
+        return qty
 
     @model_validator(mode="after")
     def validate_product_identity(self) -> "AppointmentProductCreate":
@@ -140,6 +154,7 @@ class AppointmentProductResponse(BaseModel):
     name: str
     price: float
     tax_rate: float
+    quantity: int = 1
     staff_id: Optional[str] = None
     staff_name: Optional[str] = None
 
@@ -175,6 +190,47 @@ class AppointmentStatusUpdate(BaseModel):
         if upper_v not in allowed:
             raise ValueError(f"Invalid status '{v}'. Allowed: {allowed}")
         return upper_v
+
+
+class AppointmentPaymentUpdate(BaseModel):
+    """Update remaining payment on an appointment (PENDING/PARTIAL only)."""
+
+    payment_status: str = Field(..., description="PARTIALLY_PAID or PAID")
+    paid_amount: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Required when payment_status is PARTIALLY_PAID",
+    )
+    payment_type: Optional[str] = Field(
+        default=None,
+        description="Optional payment method override: CASH, UPI, or CARD",
+    )
+
+    @field_validator("payment_status")
+    @classmethod
+    def validate_payment_status(cls, v: str) -> str:
+        normalized = v.upper()
+        if normalized not in {"PAID", "PARTIALLY_PAID"}:
+            raise ValueError("Payment status must be PAID or PARTIALLY_PAID")
+        return normalized
+
+    @field_validator("payment_type")
+    @classmethod
+    def validate_payment_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        normalized = v.upper()
+        if normalized not in {"CASH", "UPI", "CARD"}:
+            raise ValueError("Payment type must be CASH, UPI, or CARD")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_partial_amount(self) -> "AppointmentPaymentUpdate":
+        if self.payment_status == "PARTIALLY_PAID" and self.paid_amount is None:
+            raise ValueError("paid_amount is required when payment_status is PARTIALLY_PAID")
+        return self
+
+
 class AppointmentResponse(BaseModel):
     id: str
     salon_id: str

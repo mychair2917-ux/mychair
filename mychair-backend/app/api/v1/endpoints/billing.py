@@ -281,7 +281,55 @@ async def get_bill_detail(
 
     payments = await Payment.find(
         {"invoice_id": str(invoice.id), "is_deleted": False}
-    ).sort("-payment_date").to_list()
+    ).sort("+payment_date").to_list()
+
+    # Prefer bill-embedded payment history when present (clearest end-to-end trail).
+    bill_doc = None
+    if invoice.appointment_id:
+        from app.models.bill import Bill
+
+        bill_doc = await Bill.find_one(
+            {"appointment_id": invoice.appointment_id, "is_deleted": False}
+        )
+
+    payment_history_payload: List[Dict[str, Any]] = []
+    if bill_doc and bill_doc.payment_history:
+        payment_history_payload = [
+            {
+                "installment_number": entry.installment_number,
+                "amount": entry.amount,
+                "method": entry.payment_method,
+                "status_before": entry.status_before,
+                "status_after": entry.status_after,
+                "paid_amount_after": entry.paid_amount_after,
+                "remaining_amount_after": entry.remaining_amount_after,
+                "note": entry.note,
+                "payment_date": entry.paid_at.isoformat() if entry.paid_at else None,
+            }
+            for entry in bill_doc.payment_history
+        ]
+    elif payments:
+        running_paid = 0.0
+        for idx, p in enumerate(payments, start=1):
+            running_paid = float(p.paid_amount_after) if p.paid_amount_after is not None else round(running_paid + p.amount, 2)
+            remaining_after = (
+                float(p.remaining_amount_after)
+                if p.remaining_amount_after is not None
+                else round(max(float(invoice.total_amount or 0) - running_paid, 0.0), 2)
+            )
+            payment_history_payload.append(
+                {
+                    "installment_number": p.installment_number or idx,
+                    "amount": p.amount,
+                    "method": p.payment_method,
+                    "status_before": None,
+                    "status_after": p.status_after or invoice.payment_status,
+                    "paid_amount_after": running_paid,
+                    "remaining_amount_after": remaining_after,
+                    "note": p.note,
+                    "payment_date": p.payment_date.isoformat() if p.payment_date else None,
+                }
+            )
 
     tax_buckets: Dict[str, float] = {}
     services: List[Dict[str, Any]] = []
@@ -349,10 +397,16 @@ async def get_bill_detail(
                     "method": p.payment_method,
                     "status": p.status,
                     "transaction_reference": p.transaction_reference,
+                    "note": p.note,
+                    "installment_number": p.installment_number,
+                    "status_after": p.status_after,
+                    "paid_amount_after": p.paid_amount_after,
+                    "remaining_amount_after": p.remaining_amount_after,
                     "payment_date": p.payment_date.isoformat() if p.payment_date else None,
                 }
                 for p in payments
             ],
+            "payment_history": payment_history_payload,
         },
     )
 

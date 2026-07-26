@@ -127,7 +127,10 @@ const CreatePassword: React.FC = () => {
   const token = searchParams.get('token') || '';
 
   const { data: validationData, isLoading: isValidating, error: validationError } =
-    useValidateInvitationQuery(token, { skip: !token });
+    useValidateInvitationQuery(token, {
+      skip: !token,
+      refetchOnMountOrArgChange: true,
+    });
 
   const [createPassword, { isLoading }] = useCreatePasswordMutation();
 
@@ -146,12 +149,7 @@ const CreatePassword: React.FC = () => {
 
       if (response.success) {
         showToast('success', response.message || 'Password created successfully');
-        const role = response.data?.role ?? salonInfo?.role;
-        if (role === 'salon_owner') {
-          navigate(`/${ROUTE_PATHS.SALON_OWNER_LOGIN}`);
-        } else {
-          navigate(`/${ROUTE_PATHS.LOGIN}`);
-        }
+        navigate(`/${ROUTE_PATHS.LOGIN}`, { replace: true });
       } else {
         showToast('error', response.message || 'Failed to create password');
       }

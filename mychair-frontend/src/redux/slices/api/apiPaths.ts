@@ -61,6 +61,7 @@ export const API_PATHS = {
     TODAY: '/appointments/frontdesk/today',
     CREATE_FRONTDESK: '/appointments/frontdesk',
     LIST: '/appointments/list',
+    UPDATE_PAYMENT: (id: string) => `/appointments/${id}/payment`,
     CLIENTS: '/appointments/clients',
     CLIENTS_CHECK_PHONE: '/appointments/clients/check-phone',
     CLIENT_HISTORY: (id: string) => `/appointments/clients/${id}/history`,

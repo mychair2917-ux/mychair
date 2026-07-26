@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-import { Button, FormField, Input } from '../common';
+import { Button, FormField, PasswordInput } from '../common';
 import Modal from '../common/Modal';
 import ModalBody from '../common/Modal/ModalBody';
 import ModalFooter from '../common/Modal/ModalFooter';
@@ -24,14 +24,30 @@ const EmployeeResetPasswordModal: React.FC<EmployeeResetPasswordModalProps> = ({
 }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setPassword('');
+      setConfirmPassword('');
+      setError('');
+    }
+  }, [open, employee?.id]);
 
   if (!employee) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    setError('');
     await onSubmit(password, confirmPassword);
-    setPassword('');
-    setConfirmPassword('');
   };
 
   return (
@@ -43,19 +59,33 @@ const EmployeeResetPasswordModal: React.FC<EmployeeResetPasswordModalProps> = ({
             Set a new password for <span className="font-medium text-gray-800">{employee.full_name}</span>.
           </p>
           <FormField label="New password" name="password" required>
-            <Input
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError('');
+              }}
               autoComplete="new-password"
+              minLength={8}
+              required
             />
           </FormField>
-          <FormField label="Confirm password" name="confirm_password" required>
-            <Input
-              type="password"
+          <FormField
+            label="Confirm password"
+            name="confirm_password"
+            required
+            error={error}
+            touched={!!error}
+          >
+            <PasswordInput
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                if (error) setError('');
+              }}
               autoComplete="new-password"
+              minLength={8}
+              required
             />
           </FormField>
         </ModalBody>

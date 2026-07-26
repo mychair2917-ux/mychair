@@ -59,7 +59,9 @@ def _pages(total: int, limit: int) -> int:
 
 
 def _user_display_name(user: User) -> str:
-    return " ".join(part for part in [user.first_name, user.last_name] if part).strip() or user.email
+    from app.utils.user_name import user_display_name
+
+    return user_display_name(user)
 
 
 class NotificationService:

@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import type { PermissionMap } from '../../../config/rbac';
+import { formatPersonName } from '../../../utils/personName';
 import { clearAuthStorage, readStoredPermissions, readStoredUser } from './authSession';
 
 export interface AuthUser {
@@ -8,6 +9,7 @@ export interface AuthUser {
   email: string;
   role: string;
   username?: string;
+  full_name?: string;
   first_name?: string;
   last_name?: string;
   phone?: string;
@@ -27,12 +29,8 @@ export interface AuthUser {
 }
 
 export function getUserDisplayName(user: AuthUser | null | undefined): string {
-  if (!user) return '';
-  const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
-  if (fullName) return fullName;
-  if (user.username?.trim()) return user.username.trim();
-  if (user.email) return user.email.split('@')[0];
-  return '';
+  const name = formatPersonName(user, '');
+  return name || 'User';
 }
 
 export interface AuthState {

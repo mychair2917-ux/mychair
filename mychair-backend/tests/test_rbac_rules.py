@@ -31,6 +31,15 @@ class TestCanManageUser:
     def test_salon_admin_can_delete_lower_roles_only(self):
         assert can_manage_user("salon_admin", "employee", "delete") is True
 
+    def test_salon_owner_can_update_manager_and_staff(self):
+        assert can_manage_user("salon_owner", "salon_manager", "update") is True
+        assert can_manage_user("salon_owner", "employee", "update") is True
+        assert can_manage_user("salon_owner", "salon_owner", "update") is False
+
+    def test_salon_owner_can_list_and_delete(self):
+        assert can_manage_user("salon_owner", "employee", "list") is True
+        assert can_manage_user("salon_owner", "employee", "delete") is True
+
 
 class TestAssertValidRole:
     def test_invalid_role_raises(self):

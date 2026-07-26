@@ -5,6 +5,7 @@ export { default as ExpandableText } from './ExpandableText';
 export { default as HTMLRenderer } from './HTMLRenderer';
 export { default as IconButton } from './IconButton';
 export { default as Input } from './Input';
+export { default as PasswordInput } from './PasswordInput';
 export { default as Select } from './Select';
 export { default as LabelTag } from './LabelTag';
 export { default as Loader, CommonLoader, PageLoader, TableLoader, ButtonLoader, SkeletonLoader, EmptyState } from './Loader';

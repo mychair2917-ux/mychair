@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Formik, FormikHelpers } from 'formik';
 import * as Yup from 'yup';
 
-import { Button, FormField, Input, Select } from '../common';
+import { Button, FormField, Input, PasswordInput, Select } from '../common';
 import Modal from '../common/Modal';
 import ModalBody from '../common/Modal/ModalBody';
 import ModalFooter from '../common/Modal/ModalFooter';
@@ -157,7 +157,6 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
     >
       <ModalHeader>
         <h2 className="text-xl font-semibold">Invite User</h2>
-        <p className="mt-0.5 text-sm text-gray-500">All users sign in with email and password.</p>
       </ModalHeader>
       <Formik<InviteFormValues>
         initialValues={{ ...defaultInviteFormValues, role: initialRole }}
@@ -464,10 +463,11 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                     />
                   </FormField>
 
-                  {/* Phone — always optional, contact field only */}
+                  {/* Phone — required for all roles */}
                   <FormField
-                    label="Phone"
+                    label="Mobile"
                     name="phone"
+                    required
                     error={errors.phone}
                     touched={touched.phone}
                   >
@@ -478,7 +478,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       value={values.phone}
                       onChange={handleChange}
                       onBlur={handleBlur}
-                      placeholder="Optional contact number"
+                      placeholder="Mobile number"
                     />
                   </FormField>
                     </>
@@ -509,14 +509,14 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                         error={errors.password}
                         touched={touched.password}
                       >
-                        <Input
+                        <PasswordInput
                           id="password"
                           name="password"
-                          type="password"
                           value={values.password}
                           onChange={handleChange}
                           onBlur={handleBlur}
                           placeholder="Login password"
+                          autoComplete="new-password"
                         />
                       </FormField>
                       <FormField
@@ -526,13 +526,13 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                         error={errors.confirm_password}
                         touched={touched.confirm_password}
                       >
-                        <Input
+                        <PasswordInput
                           id="confirm_password"
                           name="confirm_password"
-                          type="password"
                           value={values.confirm_password}
                           onChange={handleChange}
                           onBlur={handleBlur}
+                          autoComplete="new-password"
                         />
                       </FormField>
                     </>

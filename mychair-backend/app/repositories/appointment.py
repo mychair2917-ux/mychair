@@ -87,6 +87,46 @@ class AppointmentRepository(BaseRepository[Appointment]):
         filters = {"invoice_id": invoice_id, "is_deleted": False}
         return await Payment.find(self._build_tenant_query(filters)).sort("payment_date").to_list()
 
+    async def list_filtered(
+        self,
+        salon_id: str,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        payment_status: Optional[str] = None,
+        sort_by: str = "start_datetime",
+        sort_order: str = "desc",
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        limit: int = 5000,
+    ) -> List[Appointment]:
+        """
+        Fetch filtered appointments without pagination.
+
+        Used by the Appointment List when staff-wise row expansion must happen
+        before page slicing.
+        """
+        filters: Dict[str, Any] = {"salon_id": salon_id, "is_deleted": False}
+
+        if status:
+            filters["status"] = status.upper()
+
+        if payment_status:
+            filters["payment_status"] = payment_status.upper()
+
+        if date_from:
+            filters.setdefault("start_datetime", {})["$gte"] = date_from
+        if date_to:
+            filters.setdefault("start_datetime", {})["$lte"] = date_to
+
+        merged = self._build_tenant_query(filters)
+
+        allowed_sort = {"start_datetime", "created_at", "status", "total_price", "payment_status"}
+        sort_field = sort_by if sort_by in allowed_sort else "start_datetime"
+        sort_prefix = "-" if sort_order.lower() == "desc" else "+"
+        sort_expr = f"{sort_prefix}{sort_field}"
+
+        return await self.model.find(merged).sort(sort_expr).limit(limit).to_list()
+
     async def list_paginated(
         self,
         salon_id: str,

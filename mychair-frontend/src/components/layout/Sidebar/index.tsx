@@ -371,7 +371,7 @@ const Sidebar: React.FC = () => {
                   {displayName || 'User'}
                 </p>
                 <p className="truncate text-xs whitespace-nowrap text-[var(--color-sidebar-text-muted)]">
-                  {user?.branch_name || user?.salon_name || user?.email}
+                  {user?.branch_name || user?.salon_name || ''}
                 </p>
               </div>
             )}

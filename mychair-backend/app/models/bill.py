@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import Field, BaseModel
 from app.models.base import BaseTenantDocument
+from app.models.billing import PaymentHistoryEntry
 from app.utils.timezone import now_utc
 
 
@@ -60,6 +61,7 @@ class Bill(BaseTenantDocument):
     # === Payment Tracking ===
     payment_status: str = Field(default="PENDING", index=True)  # PENDING, PAID, PARTIALLY_PAID
     payment_method: Optional[str] = Field(default=None)         # CASH, CARD, UPI
+    payment_history: List[PaymentHistoryEntry] = Field(default_factory=list)
 
     # === Timestamps ===
     bill_date: datetime = Field(default_factory=now_utc)

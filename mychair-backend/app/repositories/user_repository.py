@@ -114,11 +114,11 @@ class UserRepository(BaseRepository[User]):
     async def update_fields(
         self,
         user_id: str,
-        tenant_id: str,
+        tenant_id: Optional[str],
         data: Dict[str, Any],
     ) -> User:
         user = await self.get(user_id)
-        if user.tenant_id != tenant_id:
+        if tenant_id is not None and user.tenant_id != tenant_id:
             from app.core.exceptions import TenantAccessDeniedException
             raise TenantAccessDeniedException()
         for field, value in data.items():

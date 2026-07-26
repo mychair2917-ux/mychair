@@ -39,9 +39,9 @@ def can_manage_user(actor_role: str, target_role: str, action: str) -> bool:
     if actor_role == "super_admin":
         return True
     if action == "list":
-        return actor_role in ("salon_admin", "salon_manager")
+        return actor_role in ("salon_owner", "salon_admin", "salon_manager")
     if action == "delete":
-        return actor_role == "salon_admin"
+        return actor_role in ("salon_owner", "salon_admin")
     if action == "create":
         return can_create_role(actor_role, target_role)
     if action == "update":
@@ -49,7 +49,7 @@ def can_manage_user(actor_role: str, target_role: str, action: str) -> bool:
             return False
         if actor_role == "salon_manager":
             return target_role == "employee"
-        if actor_role == "salon_admin":
+        if actor_role in ("salon_owner", "salon_admin"):
             return target_role in ("salon_manager", "employee")
     return False
 

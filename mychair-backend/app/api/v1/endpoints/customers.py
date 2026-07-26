@@ -18,6 +18,7 @@ from app.core.exceptions import PermissionDeniedException, ResourceNotFoundExcep
 from app.models.appointment import Appointment
 from app.models.billing import Invoice
 from app.models.customer import Customer
+from app.utils.user_name import user_display_name
 from app.models.customer_reward_transaction import CustomerRewardTransaction
 from app.models.user import User
 from app.services.customer_import import (
@@ -339,10 +340,7 @@ async def get_customer(
                 {"_id": PydanticObjectId(appt.staff_id), "is_deleted": False}
             )
             if staff:
-                staff_name = (
-                    " ".join(p for p in [staff.first_name, staff.last_name] if p).strip()
-                    or staff.email
-                )
+                staff_name = user_display_name(staff)
         except Exception:
             pass
         service_names = ", ".join(s.name for s in (appt.services or []))

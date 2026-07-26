@@ -16,7 +16,7 @@ const ACTION_SEGMENTS: Record<string, string> = {
   create_bill: `${ROUTE_PATHS.ADMIN_BILLING_FINANCE}/bills`,
   add_customer: ROUTE_PATHS.ADMIN_CUSTOMER_ANALYTICS,
   add_product: ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY,
-  add_staff: ROUTE_PATHS.ADMIN_SALON_EMPLOYEES,
+  add_staff: ROUTE_PATHS.ADMIN_INVITE,
   view_reports: ROUTE_PATHS.ADMIN_BILLING_FINANCE,
   check_in_customer: ROUTE_PATHS.ADMIN_APPOINTMENTS,
   attendance: ROUTE_PATHS.ADMIN_ATTENDANCE,
@@ -33,7 +33,7 @@ const ORG_ACTION_SEGMENTS: Record<string, string> = {
   create_bill: `${ROUTE_PATHS.BILLING_FINANCE}/bills`,
   add_customer: ROUTE_PATHS.CUSTOMER_ANALYTICS,
   add_product: ROUTE_PATHS.PRODUCTS_INVENTORY,
-  add_staff: ROUTE_PATHS.SALON_EMPLOYEES,
+  add_staff: ROUTE_PATHS.ORG_INVITE,
   view_reports: ROUTE_PATHS.BILLING_FINANCE,
   check_in_customer: ROUTE_PATHS.APPOINTMENTS,
   attendance: ROUTE_PATHS.ATTENDANCE,
@@ -75,6 +75,7 @@ export function useDashboardActions() {
         if (
           actionKey !== 'create_salon' &&
           actionKey !== 'create_admin' &&
+          actionKey !== 'add_staff' &&
           actionKey !== 'manage_subscription' &&
           actionKey !== 'manage_plans' &&
           !selectedSalonId

@@ -69,7 +69,9 @@ const SalonOwnerDashboard: React.FC = () => {
 
       <main className="mx-auto max-w-5xl p-6 md:p-8">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">Welcome, {profile.username}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">
+            Welcome, {profile.owner_full_name || displayName || profile.username}
+          </h2>
           <p className="mt-1 text-gray-500">Your salon details from the invitation</p>
         </div>
 

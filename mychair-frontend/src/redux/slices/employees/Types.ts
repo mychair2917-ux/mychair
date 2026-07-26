@@ -8,12 +8,15 @@ export interface EmployeeListItem {
   status: string;
   is_active: boolean;
   created_at: string;
+  created_by?: string | null;
+  created_by_name?: string | null;
   weekly_off?: string[];
 }
 
 export interface EmployeeUpdateRequest {
   first_name?: string;
   last_name?: string;
+  email?: string;
   phone?: string;
   role?: string;
   branch_name?: string;

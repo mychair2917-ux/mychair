@@ -74,6 +74,23 @@ export interface BillPaymentDetail {
   method: string;
   status: string;
   transaction_reference?: string | null;
+  note?: string | null;
+  installment_number?: number | null;
+  status_after?: string | null;
+  paid_amount_after?: number | null;
+  remaining_amount_after?: number | null;
+  payment_date?: string | null;
+}
+
+export interface BillPaymentHistoryEntry {
+  installment_number: number;
+  amount: number;
+  method?: string | null;
+  status_before?: string | null;
+  status_after?: string | null;
+  paid_amount_after: number;
+  remaining_amount_after: number;
+  note: string;
   payment_date?: string | null;
 }
 
@@ -108,4 +125,5 @@ export interface BillDetail extends BillListItem {
   products: BillLineDetail[];
   tax_breakdown: BillTaxBreakdown[];
   payments: BillPaymentDetail[];
+  payment_history?: BillPaymentHistoryEntry[];
 }

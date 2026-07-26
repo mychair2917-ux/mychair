@@ -1,9 +1,6 @@
-import React, { useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo } from 'react';
 
 import { isSuperAdmin } from '../../config/rbac';
-import { ROUTE_PATHS } from '../../constants';
-import { showToast } from '../../components/common/Toast/toastService';
 import { getUserDisplayName } from '../../redux/slices/auth/authSlice';
 import { useAppSelector } from '../../redux/hooks';
 import { useGetDashboardQuery } from '../../redux/slices/dashboard/dashboardApi';
@@ -18,16 +15,18 @@ import {
   QuickActionsBar,
   StaffPerformancePanel,
   TrendCharts,
-  UpcomingAppointments,
 } from './DashboardWidgets';
 
 const Dashboard: React.FC = () => {
-  const navigate = useNavigate();
   const user = useAppSelector((state) => state.auth.user);
   const orgId = useAppSelector((state) => state.auth.orgId);
   const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
   const { handleAction, navigateToLeave } = useDashboardActions();
-  const displayName = getUserDisplayName(user) || 'there';
+  const displayName = useMemo(() => {
+    const name = getUserDisplayName(user);
+    if (name && name !== 'User') return name;
+    return 'there';
+  }, [user]);
 
   const salonId = isSuperAdmin(user?.role)
     ? selectedSalonId ?? undefined
@@ -46,22 +45,6 @@ const Dashboard: React.FC = () => {
     if (hour < 17) return 'Good Afternoon';
     return 'Good Evening';
   }, []);
-
-  const handleViewAppointments = useCallback(() => {
-    if (isSuperAdmin(user?.role)) {
-      if (!selectedSalonId) {
-        showToast('warning', 'Select a salon from the header to view appointments.');
-        return;
-      }
-      navigate(`/${ROUTE_PATHS.ADMIN_APPOINTMENTS}`);
-      return;
-    }
-    if (!orgId || orgId === 'system') {
-      showToast('warning', 'Salon context is missing. Please sign in again.');
-      return;
-    }
-    navigate(`/orgs/${orgId}/${ROUTE_PATHS.APPOINTMENTS}`);
-  }, [navigate, orgId, selectedSalonId, user?.role]);
 
   const sidePanels = useMemo(() => {
     if (!dashboard) return [];
@@ -120,34 +103,11 @@ const Dashboard: React.FC = () => {
     return panels;
   }, [dashboard, navigateToLeave]);
 
-  const mainPanels = useMemo(() => {
-    if (!dashboard) return [];
-
-    const panels: React.ReactNode[] = [];
-
-    if (dashboard.upcoming_appointments.length) {
-      panels.push(
-        <UpcomingAppointments
-          key="appointments"
-          items={dashboard.upcoming_appointments}
-          title={
-            dashboard.role_view === 'staff'
-              ? "Today's Timeline"
-              : 'Upcoming Appointments'
-          }
-          onViewAll={handleViewAppointments}
-        />
-      );
-    }
-
-    return panels;
-  }, [dashboard, handleViewAppointments]);
-
   const hasTrendCharts =
     (dashboard?.revenue_trend?.length ?? 0) > 0 ||
     (dashboard?.appointment_trend?.length ?? 0) > 0;
 
-  const hasMainColumn = mainPanels.length > 0 || hasTrendCharts;
+  const hasMainColumn = hasTrendCharts;
   const hasSideColumn = sidePanels.length > 0;
 
   return (
@@ -221,7 +181,6 @@ const Dashboard: React.FC = () => {
                       appointmentTrend={dashboard.appointment_trend}
                     />
                   )}
-                  {mainPanels}
                 </div>
               )}
               {hasSideColumn && (

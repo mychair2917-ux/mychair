@@ -16,6 +16,7 @@ interface EmployeeEditModalProps {
   onSubmit: (payload: {
     first_name: string;
     last_name: string;
+    email: string;
     phone: string;
     role: string;
     branch_name: string;
@@ -43,20 +44,24 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
 }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('employee');
   const [branchName, setBranchName] = useState('');
   const [weeklyOff, setWeeklyOff] = useState<string[]>([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (employee) {
       const { first, last } = splitName(employee.full_name);
       setFirstName(first);
       setLastName(last);
+      setEmail(employee.email ?? '');
       setPhone(employee.phone ?? '');
       setRole(employee.role);
       setBranchName(employee.branch_name ?? '');
       setWeeklyOff(employee.weekly_off ?? []);
+      setError('');
     }
   }, [employee]);
 
@@ -64,9 +69,20 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError('Email is required');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('Enter a valid email address');
+      return;
+    }
+    setError('');
     await onSubmit({
       first_name: firstName,
       last_name: lastName,
+      email: trimmedEmail,
       phone,
       role,
       branch_name: branchName,
@@ -84,6 +100,17 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
           </FormField>
           <FormField label="Last name" name="last_name">
             <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          </FormField>
+          <FormField label="Email" name="email" required error={error} touched={!!error}>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError('');
+              }}
+              autoComplete="email"
+            />
           </FormField>
           <FormField label="Phone" name="phone">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} />

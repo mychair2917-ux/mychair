@@ -5,6 +5,7 @@ from app.core.security import create_access_token, create_refresh_token, verify_
 from app.models.user import User
 from app.services.permission_service import PermissionService
 from app.utils.timezone import now_utc
+from app.utils.user_name import user_display_name
 
 EMAIL_LOGIN_ROLES = frozenset(
     {"super_admin", "salon_owner", "salon_admin", "salon_manager", "employee"}
@@ -76,11 +77,13 @@ class AuthLoginService:
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
+            "token_type": "bearer",
             "role": user.role,
             "tenant_id": tenant_id,
             "email": user.email,
             "id": user_id,
             "username": user.username or "",
+            "full_name": user_display_name(user),
             "first_name": user.first_name or "",
             "last_name": user.last_name or "",
             "phone": user.phone or "",

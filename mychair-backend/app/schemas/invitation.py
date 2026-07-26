@@ -119,6 +119,9 @@ class CreateInviteRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_role_fields(self) -> "CreateInviteRequest":
+        if not self.phone or not self.phone.strip():
+            raise ValueError("Mobile number is required")
+
         if self.role in ROLES_REQUIRING_SALON_SETUP:
             missing = []
             if not self.email:

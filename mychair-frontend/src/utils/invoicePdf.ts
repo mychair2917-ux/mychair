@@ -319,13 +319,114 @@ export function downloadInvoicePDF(bill: BillListItem | BillDetail): void {
   summaryY += 2.5;
   addSummary('Grand Total', formatCurrencyPdf(bill.total_amount), true);
   addSummary('Amount Paid', formatCurrencyPdf(bill.paid_amount));
-  addSummary('Balance', formatCurrencyPdf(bill.remaining_amount));
+  addSummary('Remaining', formatCurrencyPdf(bill.remaining_amount));
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   doc.text(`Payment Method: ${bill.payment_method || '-'}`, sx, summaryY + 2);
+  summaryY += 8;
 
+  // Payment installments / history — placed below totals, PDF-safe text only
+  const toPdfSafe = (value?: string | null): string =>
+    String(value || '-')
+      .replace(/₹/g, 'Rs. ')
+      .replace(/\u20b9/g, 'Rs. ');
+
+  const historySource =
+    detail.payment_history && detail.payment_history.length > 0
+      ? detail.payment_history
+      : (detail.payments || []).map((p, idx) => ({
+          installment_number: p.installment_number || idx + 1,
+          amount: p.amount,
+          method: p.method,
+          status_after: p.status_after || bill.payment_status,
+          paid_amount_after: p.paid_amount_after ?? p.amount,
+          remaining_amount_after: p.remaining_amount_after ?? bill.remaining_amount,
+          note: p.note || `Payment ${idx + 1}`,
+          payment_date: p.payment_date,
+        }));
+
+  // Skip empty pending markers with no money movement when real payments exist
+  const historyRows = historySource.filter((entry, _idx, all) => {
+    const amount = Number(entry.amount || 0);
+    if (amount > 0) return true;
+    return all.every((row) => Number(row.amount || 0) <= 0);
+  });
+
+  const taxFinalY = autoTableDoc.lastAutoTable?.finalY || totalsStartY;
+  let flowY = Math.max(summaryY, taxFinalY) + 8;
+
+  if (historyRows.length > 0) {
+    const ensureSpace = (needed: number) => {
+      if (flowY + needed > pageHeight - 22) {
+        doc.addPage();
+        flowY = MARGIN;
+      }
+    };
+
+    ensureSpace(28);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...INK);
+    doc.text('Payment Installments', MARGIN, flowY);
+    flowY += 3;
+
+    autoTable(doc, {
+      startY: flowY,
+      margin: { left: MARGIN, right: MARGIN, bottom: 22 },
+      head: [['#', 'Date', 'Paid', 'Method', 'Remaining', 'Details']],
+      body: historyRows.map((entry) => [
+        String(entry.installment_number ?? ''),
+        entry.payment_date ? formatDateDMY(entry.payment_date) : '-',
+        formatCurrencyPdf(entry.amount),
+        toPdfSafe(entry.method || bill.payment_method || '-'),
+        formatCurrencyPdf(entry.remaining_amount_after ?? 0),
+        toPdfSafe(entry.note || '-'),
+      ]),
+      theme: 'grid',
+      headStyles: {
+        fillColor: LIGHT,
+        textColor: INK,
+        fontStyle: 'bold',
+        fontSize: 8,
+        lineWidth: 0.2,
+        lineColor: RULE,
+        valign: 'middle',
+      },
+      bodyStyles: {
+        font: 'helvetica',
+        fontSize: 7.5,
+        textColor: INK,
+        cellPadding: { top: 2.2, bottom: 2.2, left: 1.6, right: 1.6 },
+        lineColor: RULE,
+        lineWidth: 0.2,
+        valign: 'top',
+        overflow: 'linebreak',
+      },
+      styles: {
+        font: 'helvetica',
+        overflow: 'linebreak',
+        cellWidth: 'wrap',
+      },
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 26 },
+        2: { cellWidth: 28, halign: 'right' },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 28, halign: 'right' },
+        5: { cellWidth: 'auto' },
+      },
+    });
+
+    flowY = (autoTableDoc.lastAutoTable?.finalY || flowY) + 6;
+  }
+
+  // Footer on the last content page, clear of installment table
+  if (flowY > pageHeight - 20) {
+    doc.addPage();
+    flowY = MARGIN;
+  }
   const footerY = pageHeight - 16;
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.3);

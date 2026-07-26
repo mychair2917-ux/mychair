@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pydantic import Field, BaseModel
 from app.models.base import BaseTenantDocument
+from app.models.billing import PaymentHistoryEntry
 from app.utils.timezone import now_utc
 
 class ServiceSnapshot(BaseModel):
@@ -25,6 +26,8 @@ class ProductSnapshot(BaseModel):
     name: str
     price: float
     tax_rate: float
+    # Actual units sold. Missing on historical rows → treat as 1.
+    quantity: int = Field(default=1, ge=1)
     staff_id: Optional[str] = None
     staff_name: Optional[str] = None
 
@@ -64,6 +67,7 @@ class Appointment(BaseTenantDocument):
     payment_type: Optional[str] = Field(default=None)  # CASH, UPI, CARD (payment method)
     payment_status: str = Field(default="PENDING")  # PAID, PENDING, PARTIALLY_PAID
     paid_amount: float = Field(default=0.0)
+    payment_history: List[PaymentHistoryEntry] = Field(default_factory=list)
     
     # Cancellation details (if applicable)
     cancellation_reason: Optional[str] = Field(default=None)

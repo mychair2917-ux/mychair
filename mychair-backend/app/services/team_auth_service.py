@@ -7,6 +7,7 @@ from app.core.security import create_access_token, create_refresh_token, verify_
 from app.models.user import User
 from app.services.permission_service import PermissionService
 from app.utils.timezone import now_utc
+from app.utils.user_name import user_display_name
 
 TEAM_ROLES = frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE})
 
@@ -62,6 +63,7 @@ class TeamAuthService:
             "email": user.email,
             "id": user_id,
             "username": user.username or "",
+            "full_name": user_display_name(user),
             "first_name": user.first_name or "",
             "last_name": user.last_name or "",
             "permissions": permissions,

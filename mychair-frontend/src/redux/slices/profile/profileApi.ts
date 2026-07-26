@@ -15,6 +15,7 @@ const mapProfileToAuthUser = (profile: ProfileData) => ({
   id: profile.id,
   email: profile.email,
   role: profile.role,
+  full_name: profile.full_name,
   first_name: profile.first_name ?? undefined,
   last_name: profile.last_name ?? undefined,
   phone: profile.phone ?? undefined,
@@ -41,6 +42,16 @@ export const profileApi = baseApi.injectEndpoints({
         method: HTTP_METHODS.GET,
       }),
       providesTags: ['Profile'],
+      async onQueryStarted(_, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data?.data) {
+            dispatch(updateAuthUser(mapProfileToAuthUser(data.data)));
+          }
+        } catch {
+          // Keep existing auth user if profile fetch fails
+        }
+      },
     }),
     updateProfile: builder.mutation<ProfileResponse, UpdateProfileRequest>({
       query: (body) => ({

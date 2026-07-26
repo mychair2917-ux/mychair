@@ -84,9 +84,9 @@ class InvitationService:
 
     @staticmethod
     def _full_name_from_user(user: User) -> str:
-        if user.first_name and user.last_name:
-            return f"{user.first_name} {user.last_name}".strip()
-        return (user.first_name or user.last_name or "").strip()
+        from app.utils.user_name import user_display_name
+
+        return user_display_name(user, fallback="")
 
     async def _ensure_unique_slug(self, base_slug: str) -> str:
         slug = base_slug

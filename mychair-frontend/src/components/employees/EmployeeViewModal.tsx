@@ -5,6 +5,7 @@ import ModalBody from '../common/Modal/ModalBody';
 import ModalHeader from '../common/Modal/ModalHeader';
 import { EmployeeListItem } from '../../redux/slices/employees/Types';
 import { EMPLOYEE_ROLE_LABELS } from '../../constants/employees';
+import { formatDateDMY } from '../../utils/utilities';
 
 interface EmployeeViewModalProps {
   open: boolean;
@@ -48,10 +49,16 @@ const EmployeeViewModal: React.FC<EmployeeViewModalProps> = ({ open, employee, o
               {employee.status.toLowerCase()}
             </dd>
           </div>
-          <div className="sm:col-span-2">
+          <div>
             <dt className="text-gray-500">Created</dt>
             <dd className="font-medium text-gray-900">
-              {new Date(employee.created_at).toLocaleString()}
+              {formatDateDMY(employee.created_at)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Created by</dt>
+            <dd className="font-medium text-gray-900">
+              {employee.created_by_name || '—'}
             </dd>
           </div>
         </dl>

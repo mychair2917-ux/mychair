@@ -2,7 +2,7 @@ import React from 'react';
 import { Form, Formik } from 'formik';
 import { useDispatch } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Button, FormField, Input } from '../../components/common';
+import { Button, FormField, Input, PasswordInput } from '../../components/common';
 import { showToast } from '../../components/common/Toast/toastService';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { ROUTE_PATHS } from '../../constants';
@@ -31,7 +31,8 @@ const SalonOwnerLogin: React.FC = () => {
             user: {
               id,
               email,
-              username,
+              username: username || undefined,
+              full_name: response.data.full_name,
               role,
               first_name: response.data.first_name,
               last_name: response.data.last_name,
@@ -124,14 +125,14 @@ const SalonOwnerLogin: React.FC = () => {
                 error={errors.password}
                 touched={touched.password}
               >
-                <Input
+                <PasswordInput
                   id="password"
                   name="password"
-                  type="password"
                   value={values.password}
                   onChange={handleChange}
                   onBlur={handleBlur}
                   placeholder="Enter password"
+                  autoComplete="current-password"
                 />
               </FormField>
               <Button

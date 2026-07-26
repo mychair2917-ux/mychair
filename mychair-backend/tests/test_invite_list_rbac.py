@@ -24,6 +24,25 @@ class TestInviteListRolesVisible:
 
 @pytest.mark.asyncio
 class TestListInvitesScope:
+    async def test_owner_sees_all_salon_invites_not_only_own(self):
+        actor = make_user("salon_owner", tenant_id="tenant-abc", user_id="owner-1")
+        service = InviteService()
+
+        mock_find = MagicMock()
+        mock_find.count = AsyncMock(return_value=0)
+        mock_find.sort.return_value.skip.return_value.limit.return_value.to_list = AsyncMock(
+            return_value=[]
+        )
+
+        with patch("app.services.invite_service.Invite.find", return_value=mock_find) as find_mock:
+            await service.list_invites(actor)
+
+        assert find_mock.call_count == 2
+        query = find_mock.call_args_list[0].args[0]
+        assert query["salon_id"] == "tenant-abc"
+        assert "invited_by" not in query
+        assert set(query["role"]["$in"]) == {ROLE_SALON_MANAGER, ROLE_EMPLOYEE}
+
     async def test_manager_scoped_to_tenant_inviter_and_staff(self):
         actor = make_user(ROLE_SALON_MANAGER, tenant_id="tenant-abc", user_id="mgr-1")
         service = InviteService()
@@ -49,3 +68,24 @@ class TestListInvitesScope:
         service = InviteService()
         result = await service.list_invites(actor)
         assert result == {"items": [], "total": 0, "page": 1, "limit": 20, "pages": 0}
+
+
+@pytest.mark.asyncio
+class TestCanManageInvite:
+    async def test_owner_can_manage_manager_created_invite(self):
+        actor = make_user("salon_owner", tenant_id="tenant-abc", user_id="owner-1")
+        invite = MagicMock()
+        invite.invited_by = "mgr-1"
+        invite.salon_id = "tenant-abc"
+        invite.role = ROLE_EMPLOYEE
+
+        assert await InviteService()._can_manage_invite(actor, invite) is True
+
+    async def test_manager_cannot_manage_others_invite(self):
+        actor = make_user(ROLE_SALON_MANAGER, tenant_id="tenant-abc", user_id="mgr-1")
+        invite = MagicMock()
+        invite.invited_by = "mgr-2"
+        invite.salon_id = "tenant-abc"
+        invite.role = ROLE_EMPLOYEE
+
+        assert await InviteService()._can_manage_invite(actor, invite) is False

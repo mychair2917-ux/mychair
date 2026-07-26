@@ -11,6 +11,14 @@ const optionalPhone = Yup.string()
     return PHONE_REGEX.test(value);
   });
 
+const requiredPhone = Yup.string()
+  .trim()
+  .required('Mobile number is required')
+  .test('phone-format', 'Enter a valid phone number (7–15 digits, optional + prefix)', (value) => {
+    if (!value) return false;
+    return PHONE_REGEX.test(value);
+  });
+
 export interface InviteFormValues {
   role: string;
   full_name: string;
@@ -83,7 +91,7 @@ export const defaultInviteFormValues: InviteFormValues = {
 /**
  * All roles now use email + password for login.
  * directPasswordSetup = owner/admin/manager inviting staff → password set immediately (no email invite).
- * Phone is always optional and used only as a contact field.
+ * Mobile/phone is required for all invite roles.
  */
 export function buildInviteValidationSchema(
   selectedRole: string,
@@ -102,8 +110,8 @@ export function buildInviteValidationSchema(
       .trim()
       .email('Enter a valid email address')
       .required('Email is required'),
-    // Phone is always optional – used as contact only
-    phone: optionalPhone,
+    // Mobile is required for ALL roles
+    phone: requiredPhone,
     // Password fields only required when directly provisioning (owner invites staff/manager)
     password: directPasswordSetup
       ? Yup.string()

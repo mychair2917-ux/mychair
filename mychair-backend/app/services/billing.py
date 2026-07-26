@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from app.models.billing import Invoice, InvoiceItem, Payment
+from app.models.billing import Invoice, InvoiceItem, Payment, build_payment_history_note
 from app.repositories.billing import InvoiceRepository, PaymentRepository
 from app.core.exceptions import ResourceNotFoundException, ImmutableResourceException
 from app.core import tenant_context
@@ -69,8 +69,15 @@ class BillingService:
         for prod in products:
             price = float(prod.get("price", 0.0))
             tax_rate = float(prod.get("tax_rate", 0.0))
-            line_tax = price * (tax_rate / 100.0)
-            subtotal += price
+            try:
+                quantity = int(prod.get("quantity") or 1)
+            except (TypeError, ValueError):
+                quantity = 1
+            if quantity < 1:
+                quantity = 1
+            line_subtotal = price * quantity
+            line_tax = line_subtotal * (tax_rate / 100.0)
+            subtotal += line_subtotal
             tax_amount += line_tax
             invoice_items.append(
                 InvoiceItem(
@@ -79,7 +86,7 @@ class BillingService:
                     salon_product_id=prod.get("salon_product_id"),
                     brand_id=prod.get("brand_id"),
                     name=prod.get("name", "Product"),
-                    quantity=1,
+                    quantity=quantity,
                     unit_price=price,
                     tax_rate=tax_rate,
                     discount=0.0,
@@ -125,6 +132,32 @@ class BillingService:
             finalized_at=now_utc(),
         )
         await invoice.insert()
+
+        # Record initial paid amount in the payment ledger (partial or full).
+        if round(effective_paid, 2) > 0.01:
+            installment_number = 1
+            note = build_payment_history_note(
+                status_before="PENDING",
+                status_after=payment_status,
+                installment_number=installment_number,
+                amount=round(effective_paid, 2),
+                remaining_after=round(remaining, 2),
+            )
+            payment = Payment(
+                invoice_id=str(invoice.id),
+                salon_id=salon_id,
+                amount=round(effective_paid, 2),
+                payment_method=payment_method or "CASH",
+                status="SUCCESSFUL",
+                note=note,
+                installment_number=installment_number,
+                status_after=payment_status,
+                paid_amount_after=round(effective_paid, 2),
+                remaining_amount_after=round(remaining, 2),
+                payment_date=now_utc(),
+            )
+            await payment.insert()
+
         for item in invoice.items:
             if item.item_type != "PRODUCT":
                 continue
