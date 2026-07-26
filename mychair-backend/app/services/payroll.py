@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from beanie import PydanticObjectId
 
-from app.auth.rbac_config import EMPLOYEE_TABLE_ROLES, normalize_role, ROLE_SUPER_ADMIN
+from app.auth.rbac_config import EMPLOYEE_TABLE_ROLES, normalize_role, ROLE_SUPER_ADMIN, ROLE_SALON_OWNER
 from app.constants.attendance_options import (
     ATTENDANCE_STATUS_ABSENT,
     ATTENDANCE_STATUS_HALF_DAY,
@@ -24,6 +24,7 @@ from app.models.appointment import Appointment
 from app.models.attendance import Attendance
 from app.models.billing import Invoice, Payment
 from app.models.payroll import Payroll
+from app.models.salon import Salon
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.payroll import (
@@ -185,7 +186,7 @@ class PayrollService:
         start, end = self._month_range(month, year)
         invoices = await Invoice.find(
             {
-                "salon_id": salon_id,
+                "tenant_id": salon_id,
                 "is_deleted": False,
                 "status": {"$ne": "VOIDED"},
                 "created_at": {"$gte": start, "$lt": end},
@@ -457,13 +458,71 @@ class PayrollService:
         breakdown = await self.get_breakdown(actor, payroll_id)
 
         salon_name: Optional[str] = None
+        salon_phone: Optional[str] = None
+        salon_email: Optional[str] = None
+        salon_address: Any = None
         tenant = await Tenant.get(payroll.tenant_id) if payroll.tenant_id else None
         if tenant:
             salon_name = tenant.name
 
+        salon = None
+        if payroll.salon_id:
+            try:
+                salon = await Salon.find_one(
+                    {"_id": PydanticObjectId(payroll.salon_id), "is_deleted": False}
+                )
+            except Exception:
+                salon = None
+        if salon is None and payroll.tenant_id:
+            salon = await Salon.find_one(
+                {"tenant_id": payroll.tenant_id, "is_deleted": False}
+            )
+        if salon:
+            salon_name = salon.name or salon_name
+            salon_phone = salon.phone or None
+            salon_email = salon.email
+            salon_address = salon.address or None
+
+        if not salon_phone or not salon_email or not salon_address:
+            owner = None
+            if payroll.tenant_id:
+                owner = await User.find_one(
+                    {
+                        "tenant_id": payroll.tenant_id,
+                        "role": ROLE_SALON_OWNER,
+                        "is_deleted": False,
+                    }
+                )
+            if owner:
+                if not salon_phone:
+                    salon_phone = owner.salon_phone_number or owner.phone
+                if not salon_email:
+                    salon_email = owner.email
+                if not salon_address and owner.address:
+                    salon_address = owner.address
+                if not salon_name:
+                    salon_name = owner.salon_name
+
+        employee_phone: Optional[str] = None
+        employee_code: Optional[str] = None
+        if payroll.employee_id:
+            try:
+                employee = await User.get(PydanticObjectId(payroll.employee_id))
+                if employee:
+                    employee_phone = employee.phone
+                    employee_code = employee.employee_code
+            except Exception:
+                employee_phone = None
+                employee_code = None
+
         data = breakdown.model_dump(mode="json")
         data["salon_id"] = payroll.salon_id
         data["salon_name"] = salon_name
+        data["salon_phone"] = salon_phone
+        data["salon_email"] = salon_email
+        data["salon_address"] = salon_address
+        data["employee_phone"] = employee_phone
+        data["employee_code"] = employee_code
         data["generated_at"] = (
             payroll.generated_at.isoformat() if payroll.generated_at else None
         )

@@ -41,6 +41,7 @@ interface InviteFormModalProps {
   inviterRole: string;
   formOptions?: InvitationFormOptionsData;
   isLoadingOptions?: boolean;
+  onTenantChange?: (tenantId: string | undefined) => void;
   onSubmit: (payload: CreateInviteRequest) => Promise<{ success: boolean; message?: string }>;
   isSubmitting?: boolean;
 }
@@ -51,6 +52,7 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
   inviterRole,
   formOptions,
   isLoadingOptions,
+  onTenantChange,
   onSubmit,
   isSubmitting,
 }) => {
@@ -229,7 +231,13 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                       id="role"
                       name="role"
                       value={values.role}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        handleChange(e);
+                        setFieldValue('tenant_id', '');
+                        setFieldValue('reporting_manager_id', '');
+                        setFieldValue('branch_name', '');
+                        onTenantChange?.(undefined);
+                      }}
                       onBlur={handleBlur}
                       options={roleOptions}
                       placeholder={isLoadingOptions ? 'Loading...' : 'Select role'}
@@ -251,7 +259,13 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                         id="tenant_id"
                         name="tenant_id"
                         value={values.tenant_id}
-                        onChange={handleChange}
+                        onChange={(e) => {
+                          const nextTenantId = e.target.value;
+                          handleChange(e);
+                          setFieldValue('reporting_manager_id', '');
+                          setFieldValue('branch_name', '');
+                          onTenantChange?.(nextTenantId || undefined);
+                        }}
                         onBlur={handleBlur}
                         options={formOptions?.tenants ?? []}
                         placeholder="Select salon"
@@ -557,7 +571,18 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
                             onChange={handleChange}
                             onBlur={handleBlur}
                             options={formOptions?.managers ?? []}
-                            placeholder="Optional"
+                            placeholder={
+                              (formOptions?.managers?.length ?? 0) > 0
+                                ? 'Select salon manager'
+                                : needsTenant && !values.tenant_id
+                                  ? 'Select a salon first'
+                                  : 'No salon managers available'
+                            }
+                            disabled={
+                              needsTenant && !values.tenant_id
+                                ? true
+                                : (formOptions?.managers?.length ?? 0) === 0
+                            }
                           />
                         </FormField>
                       )}

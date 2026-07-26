@@ -139,6 +139,7 @@ class SalonServiceService:
             service_id=payload.service_id,
             custom_service_name=payload.custom_service_name,
             price=payload.price,
+            member_price=payload.member_price,
             status="ACTIVE",
             created_by=str(actor.id),
         )
@@ -150,6 +151,7 @@ class SalonServiceService:
             custom_service_name=item.custom_service_name,
             service_name=service_name,
             price=item.price,
+            member_price=item.member_price,
             status=item.status,
             created_by=item.created_by,
             created_at=item.created_at,
@@ -188,6 +190,7 @@ class SalonServiceService:
                     custom_service_name=item.custom_service_name,
                     service_name=service_name,
                     price=item.price,
+                    member_price=getattr(item, "member_price", None),
                     status=item.status,
                     created_by=item.created_by,
                     created_at=item.created_at,
@@ -226,6 +229,7 @@ class SalonServiceService:
             service_name = payload.custom_service_name or "-"
 
         item.price = payload.price
+        item.member_price = payload.member_price
         item.status = payload.status
         item.updated_by = str(actor.id)
         await item.save()
@@ -237,6 +241,7 @@ class SalonServiceService:
             custom_service_name=item.custom_service_name,
             service_name=service_name,
             price=item.price,
+            member_price=item.member_price,
             status=item.status,
             created_by=item.created_by,
             created_at=item.created_at,

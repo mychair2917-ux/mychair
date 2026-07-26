@@ -406,28 +406,28 @@ const MyEarningsPage: React.FC = () => {
               <MetricCard
                 label="Today's Earnings"
                 value={formatCurrency(summary?.today_earnings ?? 0)}
-                helper="Live value for today"
+                helper="Today's service & product incentives"
                 icon={CalendarDays}
                 tone="bg-blue-50 text-blue-700"
               />
               <MetricCard
                 label="Current Earnings"
                 value={formatCurrency(summary?.month_earnings_to_date ?? 0)}
-                helper={`Running total for ${filterLabel(period)}`}
+                helper={`Incentives earned ${filterLabel(period)}`}
                 icon={TrendingUp}
                 tone="bg-emerald-50 text-emerald-700"
               />
               <MetricCard
                 label="Service Incentives"
                 value={formatCurrency(summary?.total_service_incentive ?? 0)}
-                helper="From completed services"
+                helper="Incentive % of completed service sales"
                 icon={HandCoins}
                 tone="bg-emerald-50 text-emerald-700"
               />
               <MetricCard
                 label="Product Incentives"
                 value={formatCurrency(summary?.total_product_incentive ?? 0)}
-                helper="From retail product sales"
+                helper="Incentive % of product sales"
                 icon={BarChart3}
                 tone="bg-violet-50 text-violet-700"
               />
@@ -441,7 +441,7 @@ const MyEarningsPage: React.FC = () => {
               <MetricCard
                 label="Wallet Balance"
                 value={formatCurrency(summary?.wallet_balance ?? 0)}
-                helper="Current incentive wallet"
+                helper="Unpaid incentives auto-added from billing"
                 icon={Wallet}
                 tone="bg-teal-50 text-teal-700"
               />
@@ -473,71 +473,87 @@ const MyEarningsPage: React.FC = () => {
                       Progress Snapshot
                     </h3>
                     <p className="text-sm text-[var(--color-text-secondary)]">
-                      A simple view of where your pay is heading.
+                      Built only from your real incentive credits this period.
                     </p>
                   </div>
                   <Target className="h-5 w-5 text-[var(--color-brand-gold-dark)]" />
                 </div>
 
-                <div className="mt-6 space-y-5">
-                  <div>
-                    <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-medium text-[var(--color-text-secondary)]">Wallet Progress</span>
-                      <span className="font-semibold text-[var(--color-text-primary)]">
-                        {summary?.month_progress_percent ?? 0}%
-                      </span>
-                    </div>
-                    <ProgressBar positive={summary?.month_progress_percent ?? 0} negative={0} />
+                {(summary?.incentive_entries_count ?? 0) === 0 ? (
+                  <div className="mt-6 rounded-2xl border border-dashed border-[var(--color-border-soft)] bg-[var(--color-surface-bg)] p-5 text-center">
+                    <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                      No progress yet
+                    </p>
+                    <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+                      Progress appears after completed billed services or product sales with
+                      incentive % enabled.
+                    </p>
                   </div>
+                ) : (
+                  <div className="mt-6 space-y-5">
+                    <div>
+                      <div className="mb-2 flex items-center justify-between text-sm">
+                        <span className="font-medium text-[var(--color-text-secondary)]">
+                          Active Earning Days
+                        </span>
+                        <span className="font-semibold text-[var(--color-text-primary)]">
+                          {summary?.month_progress_percent ?? 0}%
+                        </span>
+                      </div>
+                      <ProgressBar positive={summary?.month_progress_percent ?? 0} negative={0} />
+                    </div>
 
-                  <div>
-                    <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-medium text-[var(--color-text-secondary)]">Target Progress</span>
-                      <span className="font-semibold text-[var(--color-text-primary)]">
-                        {summary?.target_progress_percent ?? 0}%
-                      </span>
+                    <div>
+                      <div className="mb-2 flex items-center justify-between text-sm">
+                        <span className="font-medium text-[var(--color-text-secondary)]">
+                          Pace vs Month Projection
+                        </span>
+                        <span className="font-semibold text-[var(--color-text-primary)]">
+                          {summary?.target_progress_percent ?? 0}%
+                        </span>
+                      </div>
+                      <ProgressBar positive={summary?.target_progress_percent ?? 0} negative={0} />
                     </div>
-                    <ProgressBar positive={summary?.target_progress_percent ?? 0} negative={0} />
-                  </div>
 
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl bg-[var(--color-surface-bg)] p-4">
-                      <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-                        Daily Average
-                      </p>
-                      <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
-                        {formatCurrency(summary?.daily_average_earnings ?? 0)}
-                      </p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl bg-[var(--color-surface-bg)] p-4">
+                        <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+                          Daily Average
+                        </p>
+                        <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
+                          {formatCurrency(summary?.daily_average_earnings ?? 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-[var(--color-surface-bg)] p-4">
+                        <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+                          Estimated Month-End
+                        </p>
+                        <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
+                          {formatCurrency(summary?.estimated_month_end_earnings ?? 0)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="rounded-2xl bg-[var(--color-surface-bg)] p-4">
-                      <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-                        Estimated Month-End
-                      </p>
-                      <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
-                        {formatCurrency(summary?.estimated_month_end_earnings ?? 0)}
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-[var(--color-border-soft)] p-4">
-                      <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-                        Completed Appointments
-                      </p>
-                      <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
-                        {summary?.completed_appointments_count ?? 0}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-[var(--color-border-soft)] p-4">
-                      <p className="text-sm font-medium text-[var(--color-text-secondary)]">
-                        Incentive Entries
-                      </p>
-                      <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
-                        {summary?.incentive_entries_count ?? 0}
-                      </p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl border border-[var(--color-border-soft)] p-4">
+                        <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+                          Completed Appointments
+                        </p>
+                        <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
+                          {summary?.completed_appointments_count ?? 0}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-[var(--color-border-soft)] p-4">
+                        <p className="text-sm font-medium text-[var(--color-text-secondary)]">
+                          Incentive Entries
+                        </p>
+                        <p className="mt-2 text-2xl font-bold text-[var(--color-text-primary)]">
+                          {summary?.incentive_entries_count ?? 0}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </SectionCard>
             </div>
 
@@ -589,7 +605,7 @@ const MyEarningsPage: React.FC = () => {
                   Recent Earnings Activity
                 </h3>
                 <p className="text-sm text-[var(--color-text-secondary)]">
-                  Every eligible billing entry adds to your live wallet automatically.
+                  Eligible billing credits your incentive wallet automatically using your incentive %.
                 </p>
 
                 <div className="mt-4 space-y-3">
@@ -597,7 +613,8 @@ const MyEarningsPage: React.FC = () => {
                     <p className="text-sm text-gray-500">Loading recent activity...</p>
                   ) : activityRows.length === 0 ? (
                     <p className="text-sm text-gray-500">
-                      Completed services and successful billings will appear here.
+                      No incentive credits yet. Complete a billed service or product sale with
+                      incentive % enabled to see activity here.
                     </p>
                   ) : (
                     activityRows.map((item) => (
@@ -649,7 +666,7 @@ const MyEarningsPage: React.FC = () => {
             <div className="rounded-2xl bg-[var(--color-surface-bg)] px-4 py-3 text-sm text-[var(--color-text-secondary)]">
               {summaryLoading
                 ? 'Refreshing your earnings numbers...'
-                : 'Incentives are counted only after appointment completion or successful payment. Cancelled appointments do not count, and refunds reduce earnings automatically.'}
+                : 'Incentives are calculated as your incentive % of real service/product sales after completion or payment. Cancelled appointments do not count, and refunds reduce earnings automatically.'}
             </div>
           </div>
         )}
@@ -664,7 +681,7 @@ const MyEarningsPage: React.FC = () => {
                   <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product</th>
                   <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service Incentive</th>
                   <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product Incentive</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Daily Total</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Incentive Total</th>
                   <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Appointments</th>
                 </tr>
               </thead>
@@ -724,28 +741,28 @@ const MyEarningsPage: React.FC = () => {
               <MetricCard
                 label="Wallet Balance"
                 value={formatCurrency(wallet?.balance ?? 0)}
-                helper="Live incentive balance"
+                helper="Unpaid incentives (auto-credited)"
                 icon={Wallet}
                 tone="bg-teal-50 text-teal-700"
               />
               <MetricCard
                 label="Earned Total"
                 value={formatCurrency(wallet?.earned_total ?? 0)}
-                helper="All incentives in this view"
+                helper="Incentives earned in this period"
                 icon={Sparkles}
                 tone="bg-emerald-50 text-emerald-700"
               />
               <MetricCard
                 label="Paid Out"
                 value={formatCurrency(wallet?.paid_out_total ?? 0)}
-                helper="Settled through payroll"
+                helper="Settled through payroll this period"
                 icon={CreditCard}
                 tone="bg-violet-50 text-violet-700"
               />
               <MetricCard
                 label="Today Incentives"
                 value={formatCurrency(summary?.today_incentives ?? 0)}
-                helper="Today's live wallet growth"
+                helper="Today's wallet credits"
                 icon={HandCoins}
                 tone="bg-amber-50 text-amber-700"
               />
@@ -775,7 +792,7 @@ const MyEarningsPage: React.FC = () => {
                       <td colSpan={6} className="px-4 py-10">
                         <EmptyState
                           title="No wallet transactions yet"
-                          description="Every completed incentive entry will update this wallet automatically."
+                          description="When you complete billed services or product sales, your incentive % is auto-added here. Wallet stays empty until then."
                         />
                       </td>
                     </tr>

@@ -8,6 +8,8 @@ from app.models.user import User
 from app.models.billing import Invoice, Payment
 from app.models.customer import Customer
 from app.models.salon import Salon
+from app.models.tenant import Tenant
+from app.auth.rbac_config import ROLE_SALON_OWNER
 from app.core.exceptions import ResourceNotFoundException
 from app.schemas.billing import InvoiceCreate, PaymentCreate, RefundCreate
 from app.services.billing import BillingService
@@ -231,6 +233,52 @@ async def get_bill_detail(
         )
     except Exception:
         salon = None
+    # salon_id on invoices is sometimes the tenant/org id — fall back to branch by tenant
+    if salon is None:
+        tenant_for_salon = effective_tenant or invoice.tenant_id
+        if tenant_for_salon:
+            salon = await Salon.find_one(
+                {"tenant_id": tenant_for_salon, "is_deleted": False}
+            )
+
+    tenant = None
+    tenant_id = effective_tenant or invoice.tenant_id
+    if tenant_id:
+        try:
+            tenant = await Tenant.get(PydanticObjectId(tenant_id))
+        except Exception:
+            tenant = None
+
+    owner = None
+    if tenant_id:
+        owner = await User.find_one(
+            {
+                "tenant_id": tenant_id,
+                "role": ROLE_SALON_OWNER,
+                "is_deleted": False,
+            }
+        )
+
+    snap_name = (invoice.salon_name or "").strip()
+    if snap_name.lower() in {"", "salon", "-"}:
+        snap_name = ""
+    salon_name = (
+        (salon.name if salon and salon.name else None)
+        or snap_name
+        or (tenant.name if tenant else None)
+        or "Salon"
+    )
+    salon_phone = (
+        (salon.phone if salon and salon.phone else None)
+        or (invoice.salon_phone or None)
+        or (owner.salon_phone_number if owner else None)
+        or (owner.phone if owner else None)
+    )
+    salon_email = (salon.email if salon else None) or (owner.email if owner else None)
+    salon_address = (salon.address if salon else None) or invoice.salon_address
+    if not salon_address and owner and owner.address:
+        salon_address = owner.address
+
     payments = await Payment.find(
         {"invoice_id": str(invoice.id), "is_deleted": False}
     ).sort("-payment_date").to_list()
@@ -265,6 +313,13 @@ async def get_bill_detail(
         "Bill detail retrieved successfully",
         data={
             **invoice_data,
+            "salon_name": salon_name,
+            "salon_phone": salon_phone,
+            "salon_address": (
+                ", ".join(str(v) for v in salon_address.values() if v)
+                if isinstance(salon_address, dict)
+                else salon_address
+            ),
             "customer": {
                 "id": str(customer.id) if customer else invoice.customer_id,
                 "name": customer.full_name if customer else invoice.customer_name,
@@ -274,10 +329,10 @@ async def get_bill_detail(
             },
             "salon": {
                 "id": str(salon.id) if salon else invoice.salon_id,
-                "name": salon.name if salon else invoice.salon_name,
-                "phone": salon.phone if salon else invoice.salon_phone,
-                "address": (salon.address if salon else None) or invoice.salon_address,
-                "email": salon.email if salon else None,
+                "name": salon_name,
+                "phone": salon_phone,
+                "address": salon_address,
+                "email": salon_email,
                 "gst_number": None,
                 "logo_url": None,
             },

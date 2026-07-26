@@ -9,6 +9,7 @@ export interface Customer {
   dob?: string;
   address?: string;
   notes?: string;
+  is_member: boolean;
   reward_points: number;
   total_visits: number;
   total_spent: number;
@@ -84,6 +85,7 @@ export interface CustomerListParams {
   search?: string;
   gender?: string;
   status?: string;
+  membership?: string;
 }
 
 export interface CustomerCreatePayload {
@@ -95,6 +97,7 @@ export interface CustomerCreatePayload {
   dob?: string;
   address?: string;
   notes?: string;
+  is_member?: boolean;
 }
 
 export interface CustomerUpdatePayload extends Partial<CustomerCreatePayload> {
@@ -133,4 +136,11 @@ export interface CustomerImportResult {
   errors: CustomerImportErrorItem[];
   reasons: Record<string, number>;
   errorReportCsv?: string;
+}
+
+export interface PhoneAvailability {
+  exists: boolean;
+  clientName: string | null;
+  valid: boolean;
+  message: string | null;
 }

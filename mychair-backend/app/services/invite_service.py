@@ -109,7 +109,37 @@ class InviteService:
             if role in allowed
         ]
 
-    async def get_form_options(self, actor: User) -> dict:
+    async def _managers_and_branches_for_tenant(
+        self, tenant_id: str, actor_branch_name: Optional[str] = None
+    ) -> Tuple[List[dict], List[dict]]:
+        """Salon managers for Reporting Manager dropdown + branch options."""
+        managers = await User.find(
+            User.tenant_id == tenant_id,
+            User.role == ROLE_SALON_MANAGER,
+            User.is_deleted == False,
+            User.is_active == True,
+        ).to_list()
+        manager_options = [
+            {
+                "value": str(m.id),
+                "label": f"{self._display_name(m)} (Salon Manager)",
+            }
+            for m in managers
+        ]
+        branch_names: set[str] = set()
+        if actor_branch_name:
+            branch_names.add(actor_branch_name)
+        for m in managers:
+            if m.branch_name:
+                branch_names.add(m.branch_name)
+        branch_options = [
+            {"value": name, "label": name} for name in sorted(branch_names)
+        ]
+        return manager_options, branch_options
+
+    async def get_form_options(
+        self, actor: User, tenant_id: Optional[str] = None
+    ) -> dict:
         options = {
             "invitable_roles": self._invitable_roles_for(actor.role),
             "salon_types": SALON_TYPES,
@@ -118,39 +148,33 @@ class InviteService:
             "branches": [],
             "managers": [],
         }
-        tenant_id = actor.tenant_id
         if actor.role == "super_admin":
             tenants = await Tenant.find(Tenant.is_deleted == False).to_list()
             options["tenants"] = [
                 {"value": str(t.id), "label": t.name}
                 for t in tenants
             ]
-        elif tenant_id:
-            tenant = await Tenant.get(tenant_id)
+            # When creating staff, load managers for the selected salon
+            if tenant_id:
+                tenant = await Tenant.get(tenant_id)
+                if tenant and not tenant.is_deleted:
+                    managers, branches = await self._managers_and_branches_for_tenant(
+                        tenant_id
+                    )
+                    options["managers"] = managers
+                    options["branches"] = branches
+        elif actor.tenant_id:
+            scoped_tenant_id = actor.tenant_id
+            tenant = await Tenant.get(scoped_tenant_id)
             if tenant:
-                options["tenants"] = [{"value": tenant_id, "label": tenant.name}]
-            managers = await User.find(
-                User.tenant_id == tenant_id,
-                User.role == ROLE_SALON_MANAGER,
-                User.is_deleted == False,
-                User.is_active == True,
-            ).to_list()
-            options["managers"] = [
-                {
-                    "value": str(m.id),
-                    "label": self._display_name(m),
-                }
-                for m in managers
-            ]
-            branch_names = set()
-            if actor.branch_name:
-                branch_names.add(actor.branch_name)
-            for m in managers:
-                if m.branch_name:
-                    branch_names.add(m.branch_name)
-            options["branches"] = [
-                {"value": name, "label": name} for name in sorted(branch_names)
-            ]
+                options["tenants"] = [
+                    {"value": scoped_tenant_id, "label": tenant.name}
+                ]
+            managers, branches = await self._managers_and_branches_for_tenant(
+                scoped_tenant_id, actor.branch_name
+            )
+            options["managers"] = managers
+            options["branches"] = branches
         return options
 
     @staticmethod
@@ -189,13 +213,15 @@ class InviteService:
         if not tenant or tenant.is_deleted:
             return None, {"tenant_id": ["Selected salon does not exist"]}
 
+        # Manager/staff: create account with password immediately (no email invite).
+        # Salon owners are handled above via email invitation.
         if uses_direct_password_provisioning(actor.role, payload.role):
             return await self._create_team_member_direct(
                 actor, payload, tenant_id, tenant.name
             )
 
         return None, {
-            "role": ["Manager and staff must be created with a password. Email invitations are only for salon owners."]
+            "role": ["Unsupported invitation role for this flow"]
         }
 
     async def _create_team_member_direct(

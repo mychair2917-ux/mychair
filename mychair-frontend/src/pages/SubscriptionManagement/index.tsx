@@ -281,6 +281,12 @@ const AdminSubscriptionManagement = () => {
                 placeholder="Select status"
               />
             </FormField>
+            {editForm.status === 'ACTIVE' && selected.status === 'EXPIRED' && (
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                Activating an expired subscription renews it from today using the default
+                subscription days, unless you set a future end date or extend by days.
+              </p>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <FormField label="Start Date" name="start_date">
                 <Input

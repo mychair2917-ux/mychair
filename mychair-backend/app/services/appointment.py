@@ -18,6 +18,7 @@ from app.services.whatsapp import WhatsAppService
 from app.core.exceptions import BookingConflictException, ResourceNotFoundException
 from app.core import tenant_context
 from app.utils.timezone import make_aware
+from app.services.member_pricing import resolve_applied_service_price
 
 class AppointmentService:
     def __init__(self) -> None:
@@ -313,19 +314,26 @@ class AppointmentService:
         if not customer:
             raise ResourceNotFoundException("Customer not found")
 
+        is_member = bool(getattr(customer, "is_member", False))
         total_duration = 0
         service_snapshots: List[ServiceSnapshot] = []
         product_snapshots: List[ProductSnapshot] = []
         primary_row = (services or products)
         appointment_staff_id = primary_row[0]["staff_id"]
+        submitted_lines_total = 0.0
 
         for item in services:
             service_id = item.get("service_id")
             salon_service_id = item.get("salon_service_id")
-            snapshot_price = item.get("price", 0)
+            submitted_price = item.get("price")
+            if submitted_price is not None:
+                submitted_lines_total += float(submitted_price)
             custom_service_name: Optional[str] = None
+            salon_service = None
+            pricing_type = None
+            snapshot_price = float(submitted_price) if submitted_price is not None else 0.0
 
-            if not service_id and salon_service_id:
+            if salon_service_id:
                 try:
                     salon_service_obj_id = PydanticObjectId(salon_service_id)
                 except Exception as exc:
@@ -345,7 +353,12 @@ class AppointmentService:
                     service_id = salon_service.service_id
                 else:
                     custom_service_name = (salon_service.custom_service_name or "").strip() or "Custom Service"
-                snapshot_price = item.get("price", salon_service.price)
+                snapshot_price, pricing_type = resolve_applied_service_price(
+                    is_member=is_member,
+                    normal_price=float(salon_service.price),
+                    member_price=getattr(salon_service, "member_price", None),
+                    submitted_price=float(submitted_price) if submitted_price is not None else None,
+                )
 
             svc = None
             if service_id:
@@ -357,6 +370,15 @@ class AppointmentService:
             if not svc and not custom_service_name:
                 missing_id = service_id or salon_service_id or "unknown"
                 raise ResourceNotFoundException(f"Service ID '{missing_id}' not found")
+
+            # Master-service-only path (no salon_service): use catalog normal price; no member price
+            if salon_service is None and svc is not None:
+                snapshot_price, pricing_type = resolve_applied_service_price(
+                    is_member=False,
+                    normal_price=float(svc.price),
+                    member_price=None,
+                    submitted_price=float(submitted_price) if submitted_price is not None else None,
+                )
 
             try:
                 staff_obj_id = PydanticObjectId(item["staff_id"])
@@ -387,6 +409,7 @@ class AppointmentService:
                     price=float(snapshot_price),
                     duration_minutes=duration_minutes,
                     tax_rate=tax_rate,
+                    pricing_type=pricing_type,
                     staff_id=item["staff_id"],
                     staff_name=staff_name,
                 )
@@ -396,6 +419,8 @@ class AppointmentService:
             product_id = item.get("product_id")
             salon_product_id = item.get("salon_product_id")
             snapshot_price = item.get("price", 0)
+            if item.get("price") is not None:
+                submitted_lines_total += float(item.get("price"))
             custom_product_name: Optional[str] = None
             brand_id: Optional[str] = None
             brand_name: Optional[str] = None
@@ -486,9 +511,20 @@ class AppointmentService:
 
         end_dt = start_dt + timedelta(minutes=total_duration)
 
+        applied_lines_total = round(
+            sum(float(s.price) for s in service_snapshots)
+            + sum(float(p.price) for p in product_snapshots),
+            2,
+        )
+        # When the client used the calculated total (sum of submitted line prices),
+        # prefer the membership-corrected applied total. Keep intentional total overrides.
+        effective_total_amount = float(total_amount)
+        if abs(effective_total_amount - submitted_lines_total) < 0.02:
+            effective_total_amount = applied_lines_total
+
         # Compute effective paid amount based on payment status
         if payment_status == "PAID":
-            effective_paid = total_amount
+            effective_paid = effective_total_amount
         elif payment_status == "PENDING":
             effective_paid = 0.0
         else:  # PARTIALLY_PAID
@@ -502,7 +538,7 @@ class AppointmentService:
             "end_datetime": end_dt,
             "services": service_snapshots,
             "products": product_snapshots,
-            "total_price": total_amount,
+            "total_price": effective_total_amount,
             "status": "COMPLETED",
             "booking_source": booking_source,
             "notes": notes,
@@ -573,7 +609,7 @@ class AppointmentService:
                 products=product_payload,
                 payment_status=payment_status,
                 payment_method=payment_type,
-                total_amount=total_amount,
+                total_amount=effective_total_amount,
                 paid_amount=effective_paid,
             )
         except Exception:
@@ -596,7 +632,7 @@ class AppointmentService:
                 products=product_payload,
                 payment_status=payment_status,
                 payment_method=payment_type,
-                total_amount=total_amount,
+                total_amount=effective_total_amount,
                 paid_amount=effective_paid,
             )
             if bill:

@@ -13,6 +13,7 @@ export interface SalonServiceItem {
   custom_service_name?: string | null;
   service_name: string;
   price: number;
+  member_price?: number | null;
   status: string;
   created_by?: string | null;
   created_at: string;
@@ -27,6 +28,7 @@ export interface CreateSalonServiceRequest {
   service_id?: string;
   custom_service_name?: string;
   price: number;
+  member_price?: number | null;
 }
 
 export interface UpdateSalonServiceRequest extends CreateSalonServiceRequest {

@@ -11,6 +11,8 @@ class ServiceSnapshot(BaseModel):
     price: float
     duration_minutes: int
     tax_rate: float
+    # NORMAL | MEMBER | MANUAL — optional for backward-compatible historical rows
+    pricing_type: Optional[str] = None
     staff_id: Optional[str] = None
     staff_name: Optional[str] = None
 

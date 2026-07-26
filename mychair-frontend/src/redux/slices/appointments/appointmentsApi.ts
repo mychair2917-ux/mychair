@@ -13,9 +13,11 @@ import {
   AppointmentServiceOption,
   AppointmentStaffOption,
   BillByAppointmentParams,
+  CheckClientPhoneParams,
   CreateAppointmentClientRequest,
   CreateFrontDeskAppointmentRequest,
   PaginatedAppointmentData,
+  PhoneAvailability,
   SearchClientsParams,
   TodayAppointmentsParams,
 } from './Types';
@@ -38,6 +40,16 @@ export const appointmentsApi = baseApi.injectEndpoints({
         params,
       }),
       providesTags: ['AppointmentClients'],
+    }),
+    checkAppointmentClientPhone: builder.query<
+      ApiResponse<PhoneAvailability>,
+      CheckClientPhoneParams
+    >({
+      query: ({ phone }) => ({
+        url: API_PATHS.APPOINTMENTS.CLIENTS_CHECK_PHONE,
+        method: HTTP_METHODS.GET,
+        params: { phone },
+      }),
     }),
     createAppointmentClient: builder.mutation<
       ApiResponse<AppointmentClient>,
@@ -134,6 +146,7 @@ export const appointmentsApi = baseApi.injectEndpoints({
 export const {
   useGetTodayAppointmentsQuery,
   useLazySearchAppointmentClientsQuery,
+  useLazyCheckAppointmentClientPhoneQuery,
   useCreateAppointmentClientMutation,
   useGetAppointmentClientHistoryQuery,
   useGetAppointmentSalonServicesQuery,

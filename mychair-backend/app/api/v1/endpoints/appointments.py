@@ -1,37 +1,55 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
+
 from beanie import PydanticObjectId
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+
 from app.api.dependencies.auth import PermissionChecker, get_current_user
+from app.auth.rbac_config import ROLE_SALON_OWNER, ROLE_SUPER_ADMIN, normalize_role
 from app.core import tenant_context
-from app.core.exceptions import ResourceNotFoundException
+from app.core.exceptions import PermissionDeniedException, ResourceNotFoundException
+from app.models.appointment import Appointment
+from app.models.brand import Brand
 from app.models.customer import Customer
 from app.models.product import Product
 from app.models.salon_product import SalonProduct
-from app.models.brand import Brand
 from app.models.salon_service import SalonService
 from app.models.service import Service
 from app.models.user import User
-from app.models.appointment import Appointment
+from app.repositories.appointment import AppointmentRepository
 from app.schemas.appointment import (
     AppointmentCreate,
-    AppointmentStatusUpdate,
     AppointmentResponse,
+    AppointmentStatusUpdate,
     CustomerQuickCreate,
     FrontDeskAppointmentCreate,
 )
 from app.services.appointment import AppointmentService
+from app.services.customer_phone import (
+    customer_display_name,
+    duplicate_phone_message,
+    find_client_by_phone,
+)
 from app.services.notifications import notification_service
-from app.services.whatsapp import WhatsAppService
-from app.repositories.appointment import AppointmentRepository
 from app.services.websocket import manager
+from app.services.whatsapp import WhatsAppService
+from app.utils.api_response import error_response, success_response
+from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile
 from app.utils.timezone import make_aware
-from app.utils.api_response import success_response
 
 router = APIRouter()
 appointment_service = AppointmentService()
 appointment_repo = AppointmentRepository()
 whatsapp_service = WhatsAppService()
+
+
+def _normalize_client_phone(raw: str):
+    normalized, err = normalize_mobile(raw)
+    if err == PHONE_MISSING:
+        return None, "Mobile number is required."
+    if err == PHONE_INVALID or not normalized:
+        return None, "Enter a valid mobile number."
+    return normalized, None
 
 
 def _resolve_salon_scope(current_user: User, salon_id: Optional[str]) -> str:
@@ -52,12 +70,18 @@ def _effective_tenant_id(current_user: User) -> Optional[str]:
     return str(current_user.tenant_id or "").strip() or None
 
 
+def _can_manage_membership(current_user: User) -> bool:
+    return normalize_role(current_user.role) in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER}
+
+
 def _customer_response(customer: Customer) -> dict:
     return {
         "id": str(customer.id),
         "name": customer.full_name.strip(),
         "phone": customer.phone,
         "email": customer.email,
+        "gender": customer.gender,
+        "is_member": bool(getattr(customer, "is_member", False)),
     }
 
 
@@ -116,6 +140,7 @@ async def _appointment_response(appointment: Appointment) -> dict:
                 "price": service.price,
                 "duration_minutes": service.duration_minutes,
                 "tax_rate": service.tax_rate,
+                "pricing_type": getattr(service, "pricing_type", None),
                 "staff_id": service.staff_id,
                 "staff_name": service.staff_name,
             }
@@ -157,18 +182,75 @@ async def search_clients(
     return success_response("Clients retrieved successfully", data=[_customer_response(c) for c in customers])
 
 
+@router.get("/clients/check-phone")
+async def check_client_phone(
+    phone: str = Query(..., min_length=5, max_length=20),
+    current_user: User = Depends(PermissionChecker("appointments.create")),
+):
+    """Pre-submit duplicate phone check for Appointment Quick Add Client."""
+    tenant_id = _effective_tenant_id(current_user)
+    normalized, norm_err = _normalize_client_phone(phone)
+    if norm_err or not normalized:
+        return success_response(
+            "Phone checked",
+            data={"exists": False, "clientName": None, "valid": False, "message": norm_err},
+        )
+    existing = await find_client_by_phone(normalized, tenant_id)
+    if existing:
+        name = customer_display_name(existing)
+        return success_response(
+            "Phone already registered",
+            data={
+                "exists": True,
+                "clientName": name,
+                "valid": True,
+                "message": duplicate_phone_message(name),
+            },
+        )
+    return success_response(
+        "Phone available",
+        data={"exists": False, "clientName": None, "valid": True, "message": None},
+    )
+
+
 @router.post("/clients", status_code=status.HTTP_201_CREATED)
 async def create_client(
     payload: CustomerQuickCreate,
     current_user: User = Depends(PermissionChecker("appointments.create")),
 ):
+    if payload.is_member and not _can_manage_membership(current_user):
+        raise PermissionDeniedException(
+            detail="Only Super Admin or Salon Owner can mark a client as a member"
+        )
+
+    normalized_phone, phone_err = _normalize_client_phone(payload.phone)
+    if phone_err or not normalized_phone:
+        return error_response(
+            phone_err or "Enter a valid mobile number.",
+            errors={"phone": [phone_err or "Enter a valid mobile number."]},
+            status_code=422,
+        )
+
+    tenant_id = _effective_tenant_id(current_user)
+    existing = await find_client_by_phone(normalized_phone, tenant_id)
+    if existing:
+        name = customer_display_name(existing)
+        message = duplicate_phone_message(name)
+        return error_response(
+            message,
+            errors={"phone": [message]},
+            status_code=409,
+        )
+
     name_parts = payload.name.strip().split(maxsplit=1)
     customer = Customer(
         first_name=name_parts[0],
         last_name=name_parts[1] if len(name_parts) > 1 else "",
-        phone=payload.phone.strip(),
+        phone=normalized_phone,
         email=payload.email.strip() if payload.email else None,
-        tenant_id=_effective_tenant_id(current_user),
+        gender=payload.gender,
+        is_member=bool(payload.is_member),
+        tenant_id=tenant_id,
     )
     await customer.insert()
     return success_response("Client created successfully", data=_customer_response(customer), status_code=201)
@@ -263,6 +345,7 @@ async def list_salon_services_for_appointments(
                 "salon_service_id": str(salon_service.id),
                 "service_name": service_name,
                 "price": salon_service.price,
+                "member_price": getattr(salon_service, "member_price", None),
                 "service_id": salon_service.service_id,
             }
         )
@@ -540,7 +623,7 @@ async def create_booking(
         notes=payload.notes,
         booking_source=payload.booking_source or "RECEPTIONIST"
     )
-    
+
     # Broadcast change live to the physical salon location branch
     await manager.broadcast_to_salon(
         tenant_id=_effective_tenant_id(current_user),
@@ -569,10 +652,10 @@ async def create_booking(
         source_event="APPOINTMENT_CREATED",
         metadata={"appointment_id": str(appt.id)},
     )
-    
+
     # Always trigger WhatsApp notification automatically on appointment creation
     background_tasks.add_task(whatsapp_service.send_on_appointment_submit, str(appt.id))
-    
+
     return appt
 
 
@@ -591,13 +674,13 @@ async def update_booking_status(
         # Enforce cancellation permissions
         from app.auth.permissions import verify_role_has_permission
         verify_role_has_permission(current_user.role, "appointments.cancel")
-        
+
     appt = await appointment_service.change_status(
         appointment_id=id,
         new_status=payload.status,
         reason=payload.reason
     )
-    
+
     # Broadcast state change live
     await manager.broadcast_to_salon(
         tenant_id=_effective_tenant_id(current_user),
@@ -630,7 +713,7 @@ async def update_booking_status(
 
     if appt.status == "COMPLETED":
         background_tasks.add_task(whatsapp_service.send_invoice_review_after_completion, str(appt.id))
-    
+
     return appt
 
 
@@ -648,7 +731,7 @@ async def get_salon_calendar(
     """
     start_dt = make_aware(start_range)
     end_dt = make_aware(end_range)
-    
+
     return await appointment_repo.get_branch_calendar(
         salon_id=salon_id,
         start_range=start_dt,

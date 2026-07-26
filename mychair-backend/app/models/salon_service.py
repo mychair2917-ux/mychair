@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import Field
 
 from app.models.base import BaseTenantDocument
@@ -8,6 +10,8 @@ class SalonService(BaseTenantDocument):
     service_id: str | None = Field(default=None, index=True)
     custom_service_name: str | None = Field(default=None, max_length=150)
     price: float = Field(..., gt=0)
+    # Optional member catalog price; None means members pay normal price
+    member_price: Optional[float] = Field(default=None, ge=0)
     status: str = Field(default="ACTIVE", max_length=20)
 
     class Settings:

@@ -22,10 +22,6 @@ ROLES_REQUIRING_SALON_SETUP = frozenset({ROLE_SALON_OWNER})
 ROLES_REQUIRING_TENANT = frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE, ROLE_SALON_ADMIN})
 ROLES_DIRECT_PASSWORD_SETUP = frozenset({ROLE_SALON_MANAGER, ROLE_EMPLOYEE})
 
-TENANT_INVITER_ROLES = frozenset(
-    {ROLE_SALON_OWNER, ROLE_SALON_ADMIN, ROLE_SALON_MANAGER}
-)
-
 
 def can_invite(actor_role: str) -> bool:
     return bool(INVITABLE_ROLES.get(actor_role))
@@ -54,11 +50,11 @@ def assert_can_invite_role(actor_role: str, target_role: str) -> None:
 def uses_direct_password_provisioning(actor_role: str, target_role: str) -> bool:
     """
     Manager and staff are always created with a password — no invitation email.
-    Salon owner invitations still use the email flow.
+    Salon owner invitations still use the email flow (super_admin only).
     """
-    if target_role not in ROLES_DIRECT_PASSWORD_SETUP:
-        return False
-    return actor_role in TENANT_INVITER_ROLES
+    # actor_role kept for call-site compatibility; permission is enforced separately.
+    _ = actor_role
+    return target_role in ROLES_DIRECT_PASSWORD_SETUP
 
 
 def resolve_tenant_id_for_invite(

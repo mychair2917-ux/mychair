@@ -25,6 +25,7 @@ const PAGE_SIZE = 10;
 const Invite: React.FC = () => {
   const user = useAppSelector((state) => state.auth.user);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [optionsTenantId, setOptionsTenantId] = useState<string | undefined>();
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -61,7 +62,10 @@ const Invite: React.FC = () => {
   });
 
   const { data: formOptionsData, isLoading: isLoadingOptions } =
-    useGetInvitationFormOptionsQuery(undefined, { skip: !isModalOpen });
+    useGetInvitationFormOptionsQuery(
+      { tenant_id: optionsTenantId },
+      { skip: !isModalOpen }
+    );
 
   const [createInvitation, { isLoading: isCreating }] = useCreateInvitationMutation();
   const [resendInvitation] = useResendInvitationMutation();
@@ -144,7 +148,10 @@ const Invite: React.FC = () => {
         <Button
           variant="primary"
           className="!bg-[var(--color-brand-gold)] hover:!bg-[var(--color-brand-gold-dark)] !px-6"
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setOptionsTenantId(undefined);
+            setIsModalOpen(true);
+          }}
         >
           <UserPlus className="h-4 w-4" />
           Invite User
@@ -257,10 +264,14 @@ const Invite: React.FC = () => {
 
       <InviteFormModal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setOptionsTenantId(undefined);
+        }}
         inviterRole={user?.role ?? ''}
         formOptions={formOptionsData?.data}
         isLoadingOptions={isLoadingOptions}
+        onTenantChange={setOptionsTenantId}
         onSubmit={handleCreate}
         isSubmitting={isCreating}
       />

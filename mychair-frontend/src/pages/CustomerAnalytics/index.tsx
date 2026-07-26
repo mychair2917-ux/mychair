@@ -26,11 +26,16 @@ import BulkClientUploadModal from '../../components/customerAnalytics/BulkClient
 import { cn } from '../../utils/cn';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
+import { applyApiFieldErrors, getApiErrorMessage } from '../../utils/apiErrors';
+import { useAppSelector } from '../../redux/hooks';
+import { normalizeRole } from '../../config/rbac';
+import { ROLES } from '../../constants';
 import {
   useGetCustomerAnalyticsOverviewQuery,
   useGetCustomersQuery,
   useGetCustomerByIdQuery,
   useCreateCustomerMutation,
+  useLazyCheckCustomerPhoneQuery,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
   useLazyDownloadCustomerImportTemplateQuery,
@@ -51,6 +56,22 @@ const TABS: Array<{ id: AnalyticsTab; label: string }> = [
   { id: 'customers', label: 'Customers' },
   { id: 'reward-settings', label: 'Reward Settings' },
 ];
+
+const canManageMembership = (role: string | undefined): boolean => {
+  const normalized = normalizeRole(role);
+  return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
+};
+
+const MembershipBadge: React.FC<{ isMember?: boolean }> = ({ isMember }) => (
+  <span
+    className={cn(
+      'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+      isMember ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-600'
+    )}
+  >
+    {isMember ? 'Member' : 'Non-member'}
+  </span>
+);
 
 const SectionCard: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -318,8 +339,11 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   onClose,
   editCustomer,
 }) => {
+  const userRole = useAppSelector((state) => state.auth.user?.role);
+  const allowMembership = canManageMembership(userRole);
   const [createCustomer, { isLoading: creating }] = useCreateCustomerMutation();
   const [updateCustomer, { isLoading: updating }] = useUpdateCustomerMutation();
+  const [checkCustomerPhone] = useLazyCheckCustomerPhoneQuery();
   const isEdit = !!editCustomer;
 
   const formik = useFormik({
@@ -333,6 +357,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
       dob: editCustomer?.dob ? toDateInputValue(editCustomer.dob) : '',
       address: editCustomer?.address ?? '',
       notes: editCustomer?.notes ?? '',
+      is_member: Boolean(editCustomer?.is_member),
     },
     validationSchema: CustomerSchema,
     onSubmit: async (values, helpers) => {
@@ -346,7 +371,18 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           dob: values.dob || undefined,
           address: values.address || undefined,
           notes: values.notes || undefined,
+          ...(allowMembership ? { is_member: Boolean(values.is_member) } : {}),
         };
+
+        const phoneCheck = await checkCustomerPhone({
+          phone: values.phone.trim(),
+          excludeId: isEdit && editCustomer ? editCustomer.id : undefined,
+        }).unwrap();
+        if (phoneCheck.data?.exists && phoneCheck.data.message) {
+          helpers.setFieldError('phone', phoneCheck.data.message);
+          showToast('error', phoneCheck.data.message);
+          return;
+        }
 
         if (isEdit && editCustomer) {
           await updateCustomer({ id: editCustomer.id, ...payload }).unwrap();
@@ -358,16 +394,39 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         helpers.resetForm();
         onClose();
       } catch (err: unknown) {
-        const e = err as { data?: { message?: string } };
-        showToast('error', e?.data?.message ?? 'Something went wrong. Please try again.');
+        applyApiFieldErrors(
+          (err as { data?: { errors?: Record<string, string[]> } })?.data?.errors,
+          helpers.setFieldError
+        );
+        showToast(
+          'error',
+          getApiErrorMessage(err, 'Something went wrong. Please try again.')
+        );
       }
     },
   });
 
+  const handlePhoneBlur = async (event: React.FocusEvent<HTMLInputElement>) => {
+    formik.handleBlur(event);
+    const phone = formik.values.phone.trim();
+    if (phone.length < 6) return;
+    try {
+      const result = await checkCustomerPhone({
+        phone,
+        excludeId: isEdit && editCustomer ? editCustomer.id : undefined,
+      }).unwrap();
+      if (result.data?.exists && result.data.message) {
+        formik.setFieldError('phone', result.data.message);
+      }
+    } catch {
+      // Backend create/update remains the source of truth.
+    }
+  };
+
   if (!open) return null;
 
   const field = (
-    name: keyof typeof formik.values,
+    name: Exclude<keyof typeof formik.values, 'is_member'>,
     label: string,
     type = 'text',
     required = false
@@ -382,7 +441,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         name={name}
         value={formik.values[name]}
         onChange={formik.handleChange}
-        onBlur={formik.handleBlur}
+        onBlur={name === 'phone' ? handlePhoneBlur : formik.handleBlur}
         className={cn(
           formik.touched[name] && formik.errors[name] ? 'border-red-400' : ''
         )}
@@ -432,6 +491,26 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
               {field('dob', 'Date of Birth', 'date')}
             </div>
             {field('address', 'Address')}
+            {allowMembership && (
+              <label className="flex items-center gap-2 text-sm text-[var(--color-text-primary)]">
+                <input
+                  type="checkbox"
+                  name="is_member"
+                  checked={formik.values.is_member}
+                  onChange={formik.handleChange}
+                  className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
+                />
+                Member
+              </label>
+            )}
+            {!allowMembership && isEdit && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Membership
+                </span>
+                <MembershipBadge isMember={editCustomer?.is_member} />
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Notes
@@ -522,6 +601,7 @@ const CustomerProfile: React.FC<CustomerProfileProps> = ({ customerId, onClose }
                     ['Gender', detail.gender ?? '—'],
                     ['DOB', detail.dob ? formatDateDMY(detail.dob) : '—'],
                     ['Address', detail.address ?? '—'],
+                    ['Membership', detail.is_member ? 'Member' : 'Non-member'],
                   ].map(([k, v]) => (
                     <div key={k}>
                       <dt className="text-xs font-medium text-gray-500">{k}</dt>
@@ -688,12 +768,19 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: 'Inactive' },
 ];
 
+const MEMBERSHIP_OPTIONS = [
+  { value: '', label: 'All' },
+  { value: 'members', label: 'Members' },
+  { value: 'non_members', label: 'Non-members' },
+];
+
 const CustomersTab: React.FC = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [gender, setGender] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [membershipFilter, setMembershipFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
@@ -727,6 +814,7 @@ const CustomersTab: React.FC = () => {
     search: debouncedSearch || undefined,
     gender: gender || undefined,
     status: statusFilter || undefined,
+    membership: membershipFilter || undefined,
   });
 
   const customers = res?.data?.items ?? [];
@@ -778,6 +866,11 @@ const CustomersTab: React.FC = () => {
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
               options={STATUS_OPTIONS}
             />
+            <Select
+              value={membershipFilter}
+              onChange={(e) => { setMembershipFilter(e.target.value); setPage(1); }}
+              options={MEMBERSHIP_OPTIONS}
+            />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -814,6 +907,7 @@ const CustomersTab: React.FC = () => {
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Name</th>
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Mobile</th>
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Gender</th>
+              <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Membership</th>
               <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Visits</th>
               <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Points</th>
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Last Visit</th>
@@ -824,12 +918,12 @@ const CustomersTab: React.FC = () => {
           <tbody className="divide-y divide-[var(--color-border-soft)]">
             {isLoading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-500">
                   Loading customers…
                 </td>
               </tr>
             ) : customers.length === 0 ? (
-              <EmptyRow cols={8} message="No customers found. Add your first customer." />
+              <EmptyRow cols={9} message="No customers found. Add your first customer." />
             ) : (
               customers.map((c) => (
                 <tr
@@ -849,6 +943,9 @@ const CustomersTab: React.FC = () => {
                   <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">{c.phone}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-gray-600">
                     {c.gender ? c.gender.charAt(0) + c.gender.slice(1).toLowerCase() : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <MembershipBadge isMember={c.is_member} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold">
                     {c.total_visits}

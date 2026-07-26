@@ -23,11 +23,17 @@ legacy_invitation_service = InvitationService()
 
 
 @router.get("/form-options")
-async def get_invitation_form_options(actor: User = Depends(get_invite_actor)):
+async def get_invitation_form_options(
+    tenant_id: Optional[str] = Query(
+        default=None,
+        description="Salon id — used by super_admin to load managers/branches for staff invites",
+    ),
+    actor: User = Depends(get_invite_actor),
+):
     """Dynamic form options based on inviter role."""
     return success_response(
         "Form options retrieved successfully",
-        data=await invite_service.get_form_options(actor),
+        data=await invite_service.get_form_options(actor, tenant_id=tenant_id),
     )
 
 

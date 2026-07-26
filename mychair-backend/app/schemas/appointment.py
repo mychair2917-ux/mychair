@@ -69,6 +69,16 @@ class CustomerQuickCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     phone: str = Field(..., min_length=5, max_length=20)
     email: Optional[str] = Field(default=None, max_length=120)
+    gender: str = Field(..., min_length=1, max_length=20)
+    is_member: bool = False
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str) -> str:
+        normalized = (v or "").strip().upper()
+        if normalized not in {"MALE", "FEMALE"}:
+            raise ValueError("Gender must be MALE or FEMALE")
+        return normalized
 
 
 class FrontDeskAppointmentCreate(BaseModel):
@@ -118,6 +128,7 @@ class AppointmentServiceResponse(BaseModel):
     price: float
     duration_minutes: int
     tax_rate: float
+    pricing_type: Optional[str] = None
     staff_id: Optional[str] = None
     staff_name: Optional[str] = None
 

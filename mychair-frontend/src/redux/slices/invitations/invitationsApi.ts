@@ -17,10 +17,14 @@ import {
 
 export const invitationsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    getInvitationFormOptions: builder.query<ApiResponse<InvitationFormOptionsData>, void>({
-      query: () => ({
+    getInvitationFormOptions: builder.query<
+      ApiResponse<InvitationFormOptionsData>,
+      { tenant_id?: string } | void
+    >({
+      query: (params) => ({
         url: API_PATHS.INVITATIONS.FORM_OPTIONS,
         method: HTTP_METHODS.GET,
+        params: params?.tenant_id ? { tenant_id: params.tenant_id } : undefined,
       }),
     }),
     listInvites: builder.query<ApiResponse<PaginatedInviteListData>, InviteListParams | void>({

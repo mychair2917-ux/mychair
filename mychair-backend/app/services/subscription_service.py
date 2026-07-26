@@ -296,6 +296,22 @@ class SubscriptionService:
             if self._date_only(subscription.end_date) < self._date_only(subscription.start_date):
                 return None, {"end_date": ["End date cannot be before start date"]}
 
+        # Activating with a past end date cannot stick (date reconciliation would
+        # force EXPIRED). Renew from today using the platform default period.
+        if (
+            "status" in payload
+            and payload.get("status") is not None
+            and str(payload["status"]).strip().upper() == "ACTIVE"
+            and now_utc().date() > self._date_only(subscription.end_date)
+        ):
+            default_days = await self._settings_service.get_default_subscription_days()
+            start = now_utc()
+            subscription.start_date = start
+            subscription.end_date = start + timedelta(days=default_days)
+            subscription.total_days = (subscription.total_days or 0) + default_days
+            subscription.status = "ACTIVE"
+            notes_parts.append(f"Auto-renewed for {default_days} days on activation")
+
         if subscription.status != "SUSPENDED":
             if now_utc().date() <= self._date_only(subscription.end_date):
                 subscription.status = "ACTIVE"

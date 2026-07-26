@@ -3,12 +3,15 @@ export interface AppointmentClient {
   name: string;
   phone: string;
   email?: string | null;
+  gender?: string | null;
+  is_member?: boolean;
 }
 
 export interface AppointmentServiceOption {
   salon_service_id: string;
   service_name: string;
   price: number;
+  member_price?: number | null;
   service_id?: string | null;
 }
 
@@ -33,6 +36,7 @@ export interface AppointmentServiceSnapshot {
   price: number;
   duration_minutes: number;
   tax_rate: number;
+  pricing_type?: string | null;
   staff_id?: string | null;
   staff_name?: string | null;
 }
@@ -132,10 +136,23 @@ export interface CreateAppointmentClientRequest {
   name: string;
   phone: string;
   email?: string;
+  gender: string;
+  is_member?: boolean;
 }
 
 export interface SearchClientsParams {
   search: string;
+}
+
+export interface CheckClientPhoneParams {
+  phone: string;
+}
+
+export interface PhoneAvailability {
+  exists: boolean;
+  clientName: string | null;
+  valid: boolean;
+  message: string | null;
 }
 
 export interface TodayAppointmentsParams {

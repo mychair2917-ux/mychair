@@ -72,6 +72,12 @@ export interface PayrollBreakdown {
 export interface SalarySlip extends PayrollBreakdown {
   salon_id?: string;
   salon_name?: string | null;
+  salon_phone?: string | null;
+  salon_email?: string | null;
+  salon_address?: string | null | Record<string, unknown>;
+  salon_logo_url?: string | null;
+  employee_phone?: string | null;
+  employee_code?: string | null;
   generated_at?: string | null;
 }
 

@@ -9,7 +9,6 @@ import {
   ReceiptText,
   Search,
   Trash2,
-  UserPlus,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 
@@ -22,7 +21,7 @@ import {
   useGetAppointmentSalonProductsQuery,
   useGetAppointmentSalonServicesQuery,
   useGetAppointmentStaffQuery,
-  useGetTodayAppointmentsQuery,
+  useLazyCheckAppointmentClientPhoneQuery,
   useLazyGetBillByAppointmentQuery,
   useLazySearchAppointmentClientsQuery,
   useListAppointmentsQuery,
@@ -30,14 +29,16 @@ import {
 import { useLazyGetBillDetailQuery } from '../../redux/slices/billing/billingApi';
 import {
   AppointmentClient,
-  AppointmentListItem,
   AppointmentProductOption,
+  AppointmentServiceOption,
 } from '../../redux/slices/appointments/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { cn } from '../../utils/cn';
 import { formatDateDMY } from '../../utils/utilities';
 import { downloadInvoicePDF } from '../../utils/invoicePdf';
 import { showToast } from '../../components/common/Toast/toastService';
+import { normalizeRole } from '../../config/rbac';
+import { ROLES } from '../../constants';
 
 /* ─── types ─────────────────────────────────────────────── */
 type Tab = 'entry' | 'list';
@@ -73,6 +74,11 @@ const paymentStatusOptions = [
   { value: 'PARTIALLY_PAID', label: 'Partially Paid' },
 ];
 
+const clientGenderOptions = [
+  { value: 'MALE', label: 'Male' },
+  { value: 'FEMALE', label: 'Female' },
+];
+
 const statusOptions = [
   { value: 'BOOKED', label: 'Booked' },
   { value: 'CHECKED_IN', label: 'Checked in' },
@@ -80,12 +86,6 @@ const statusOptions = [
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'CANCELLED', label: 'Cancelled' },
   { value: 'NO_SHOW', label: 'No show' },
-];
-
-const sourceOptions = [
-  { value: 'all', label: 'All entries' },
-  { value: 'WALK_IN', label: 'Walk-ins' },
-  { value: 'RECEPTIONIST', label: 'Appointments' },
 ];
 
 const statusStyles: Record<string, string> = {
@@ -97,18 +97,6 @@ const statusStyles: Record<string, string> = {
   NO_SHOW: 'bg-gray-100 text-gray-600',
 };
 
-const whatsappStatusStyles: Record<string, string> = {
-  sent: 'bg-emerald-50 text-emerald-700',
-  failed: 'bg-red-50 text-red-700',
-  pending: 'bg-amber-50 text-amber-700',
-};
-
-const whatsappStatusLabels: Record<string, string> = {
-  sent: 'Sent',
-  failed: 'Failed',
-  pending: 'Pending',
-};
-
 /* ─── helpers ────────────────────────────────────────────── */
 function createRow(): ServiceRow {
   return { id: crypto.randomUUID(), salon_service_id: '', service_id: '', staff_id: '', price: '' };
@@ -118,12 +106,36 @@ function createProductRow(): ProductRow {
   return { id: crypto.randomUUID(), salon_product_id: '', product_id: '', staff_id: '', price: '' };
 }
 
+function canManageMembership(role: string | undefined): boolean {
+  const normalized = normalizeRole(role);
+  return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
+}
+
+function resolveServicePriceForClient(
+  service: AppointmentServiceOption | undefined,
+  isMember: boolean | undefined
+): string {
+  if (!service) return '';
+  if (
+    isMember &&
+    service.member_price !== null &&
+    service.member_price !== undefined
+  ) {
+    return String(service.member_price);
+  }
+  return String(service.price);
+}
+
 function hasValidPrice(value: string): boolean {
   return value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
 }
 
 function isServiceRowComplete(row: ServiceRow): boolean {
   return Boolean(row.salon_service_id && row.staff_id && hasValidPrice(row.price));
+}
+
+function isServiceRowBlank(row: ServiceRow): boolean {
+  return !row.salon_service_id && !row.service_id && !row.staff_id && row.price.trim() === '';
 }
 
 function isProductRowBlank(row: ProductRow): boolean {
@@ -143,57 +155,10 @@ function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  BOOKED: 'Booked',
-  CHECKED_IN: 'Checked In',
-  IN_PROGRESS: 'In Progress',
-  COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
-  NO_SHOW: 'No Show',
-};
-
-/* ─── sub-components ────────────────────────────────────── */
-const AppointmentQueueCard: React.FC<{ appointment: AppointmentListItem }> = ({ appointment }) => (
-  <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-gray-900">{appointment.customer_name}</p>
-        <p className="text-sm text-gray-500">{appointment.customer_phone || '—'}</p>
-      </div>
-      <span
-        className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${statusStyles[appointment.status] ?? 'bg-gray-100 text-gray-600'}`}
-      >
-        {STATUS_LABELS[appointment.status] ?? appointment.status}
-      </span>
-    </div>
-    <div className="mt-3 flex items-center justify-between text-sm">
-      <span className="font-medium text-gray-900">{formatTime(appointment.start_datetime)}</span>
-      <span className="text-gray-500">₹{appointment.total_price}</span>
-    </div>
-    {appointment.staff_name && (
-      <p className="mt-1 text-xs text-gray-400">Staff: {appointment.staff_name}</p>
-    )}
-    <div className="mt-2">
-      <span
-        className={cn(
-          'inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium',
-          whatsappStatusStyles[appointment.whatsapp_status || 'pending'] ?? 'bg-gray-100 text-gray-600'
-        )}
-      >
-        WhatsApp: {whatsappStatusLabels[appointment.whatsapp_status || 'pending'] ?? appointment.whatsapp_status}
-      </span>
-    </div>
-    <p className="mt-2 line-clamp-2 text-xs text-gray-500">
-      {[...appointment.services.map((s) => s.name), ...appointment.products.map((p) => p.name)].join(', ') ||
-        'No services or products'}
-    </p>
-  </div>
-);
-
 /* ─── List tab skeleton row ─────────────────────────────── */
 const SkeletonRow: React.FC = () => (
   <tr>
-    {Array.from({ length: 9 }).map((_, i) => (
+    {Array.from({ length: 10 }).map((_, i) => (
       <td key={i} className="px-3 py-3">
         <div className="h-4 animate-pulse rounded bg-gray-200" />
       </td>
@@ -296,7 +261,8 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
               <th className="px-3 py-3 text-left font-semibold text-gray-500">ID</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Client</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Phone</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Items</th>
+              <th className="px-3 py-3 text-left font-semibold text-gray-500">Services</th>
+              <th className="px-3 py-3 text-left font-semibold text-gray-500">Products</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Staff</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Date & Time</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-500">Status</th>
@@ -309,13 +275,13 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
               Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
             ) : isError ? (
               <tr>
-                <td colSpan={9} className="px-3 py-12 text-center text-sm text-red-500">
+                <td colSpan={10} className="px-3 py-12 text-center text-sm text-red-500">
                   Failed to load appointments. Please try again.
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-16 text-center">
+                <td colSpan={10} className="px-3 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <CalendarDays className="h-10 w-10 text-gray-300" />
                     <p className="text-sm font-medium text-gray-500">No appointments found</p>
@@ -335,7 +301,12 @@ const AppointmentListTab: React.FC<{ salonId: string }> = ({ salonId }) => {
                   <td className="px-3 py-3 text-gray-600">{appt.customer_phone || '-'}</td>
                   <td className="px-3 py-3 text-gray-600 max-w-40">
                     <span className="line-clamp-2">
-                      {[...appt.services.map((s) => s.name), ...appt.products.map((p) => p.name)].join(', ') || '-'}
+                      {appt.services.map((s) => s.name).join(', ') || '-'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-gray-600 max-w-40">
+                    <span className="line-clamp-2">
+                      {appt.products.map((p) => p.name).join(', ') || '-'}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-gray-600">{appt.staff_name || '-'}</td>
@@ -473,6 +444,7 @@ const Appointments: React.FC = () => {
   const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
   const role = useAppSelector((state) => state.auth.user?.role);
   const isSuperAdmin = role === 'super_admin';
+  const allowMembership = canManageMembership(role);
   const salonId = (orgId ?? (isSuperAdmin ? selectedSalonId : storedOrgId) ?? '').trim();
 
   const [activeTab, setActiveTab] = useState<Tab>('entry');
@@ -483,14 +455,17 @@ const Appointments: React.FC = () => {
     return toDateTimeInputValue(date);
   }, []);
 
-  const [queueSearch, setQueueSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('all');
-  const [showCompleted, setShowCompleted] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<AppointmentClient | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [clientForm, setClientForm] = useState({ name: '', phone: '', email: '' });
+  const [clientForm, setClientForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    gender: '',
+    is_member: false,
+  });
+  const [clientPhoneError, setClientPhoneError] = useState('');
   const [serviceRows, setServiceRows] = useState<ServiceRow[]>([createRow()]);
   const [productRows, setProductRows] = useState<ProductRow[]>([]);
   const [invalidServiceRowIds, setInvalidServiceRowIds] = useState<string[]>([]);
@@ -502,10 +477,6 @@ const Appointments: React.FC = () => {
   const [startDateTime, setStartDateTime] = useState(defaultStart);
   const [notes, setNotes] = useState('');
 
-  const { data: todayData, isLoading: isTodayLoading } = useGetTodayAppointmentsQuery(
-    { salon_id: salonId, include_completed: showCompleted },
-    { skip: !salonId, pollingInterval: 60000 }
-  );
   const { data: servicesData, isLoading: isLoadingSalonServices } = useGetAppointmentSalonServicesQuery(
     { salon_id: salonId },
     { skip: !salonId }
@@ -521,6 +492,7 @@ const Appointments: React.FC = () => {
   );
   const [searchClients, { data: clientsData, isFetching: isSearchingClients }] =
     useLazySearchAppointmentClientsQuery();
+  const [checkClientPhone] = useLazyCheckAppointmentClientPhoneQuery();
   const [createClient, { isLoading: isCreatingClient }] = useCreateAppointmentClientMutation();
   const [createAppointment, { isLoading: isSubmitting }] = useCreateFrontDeskAppointmentMutation();
 
@@ -528,7 +500,6 @@ const Appointments: React.FC = () => {
   const products = productsData?.data ?? [];
   const staff = staffData?.data ?? [];
   const clients = clientsData?.data ?? [];
-  const appointments = useMemo(() => todayData?.data ?? [], [todayData?.data]);
   const history = historyData?.data ?? [];
 
   const serviceOptions = services.map((service) => ({
@@ -548,19 +519,6 @@ const Appointments: React.FC = () => {
     [productRows, serviceRows]
   );
 
-  const visibleAppointments = useMemo(() => {
-    const term = queueSearch.trim().toLowerCase();
-    return appointments.filter((appointment) => {
-      const matchesSearch =
-        !term ||
-        appointment.customer_name.toLowerCase().includes(term) ||
-        appointment.customer_phone.includes(term);
-      const matchesStatus = !statusFilter || appointment.status === statusFilter;
-      const matchesSource = sourceFilter === 'all' || appointment.booking_source === sourceFilter;
-      return matchesSearch && matchesStatus && matchesSource;
-    });
-  }, [appointments, queueSearch, sourceFilter, statusFilter]);
-
   if (isSuperAdmin && !salonId) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 md:p-6 xl:p-8">
@@ -578,8 +536,26 @@ const Appointments: React.FC = () => {
       showToast('warning', 'Enter at least 2 characters to search clients');
       return;
     }
-    const result = await searchClients({ search: term }).unwrap();
-    setQuickAddOpen((result.data ?? []).length === 0);
+    await searchClients({ search: term }).unwrap();
+  };
+
+  const handleClientPhoneBlur = async () => {
+    const phone = clientForm.phone.trim();
+    if (phone.length < 6) {
+      setClientPhoneError('');
+      return;
+    }
+    try {
+      const result = await checkClientPhone({ phone }).unwrap();
+      if (result.data?.exists && result.data.message) {
+        setClientPhoneError(result.data.message);
+      } else {
+        setClientPhoneError('');
+      }
+    } catch {
+      // Backend create remains the source of truth; ignore pre-check failures.
+      setClientPhoneError('');
+    }
   };
 
   const handleCreateClient = async (event: React.FormEvent) => {
@@ -588,21 +564,52 @@ const Appointments: React.FC = () => {
       showToast('warning', 'Name and phone number are required');
       return;
     }
+    if (!clientForm.gender) {
+      showToast('warning', 'Gender is required');
+      return;
+    }
     try {
+      const phoneCheck = await checkClientPhone({ phone: clientForm.phone.trim() }).unwrap();
+      if (phoneCheck.data?.exists && phoneCheck.data.message) {
+        setClientPhoneError(phoneCheck.data.message);
+        showToast('error', phoneCheck.data.message);
+        return;
+      }
       const response = await createClient({
         name: clientForm.name.trim(),
         phone: clientForm.phone.trim(),
         email: clientForm.email.trim() || undefined,
+        gender: clientForm.gender,
+        ...(allowMembership ? { is_member: Boolean(clientForm.is_member) } : {}),
       }).unwrap();
       if (response.data) {
         setSelectedClient(response.data);
-        setClientForm({ name: '', phone: '', email: '' });
+        setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
+        setClientPhoneError('');
         setQuickAddOpen(false);
         showToast('success', 'Client added');
       }
     } catch (err: unknown) {
-      showToast('error', getApiErrorMessage(err, 'Failed to add client'));
+      const message = getApiErrorMessage(err, 'Failed to add client');
+      setClientPhoneError(message);
+      showToast('error', message);
     }
+  };
+
+  const applyClientSelection = (client: AppointmentClient) => {
+    setSelectedClient(client);
+    setServiceRows((rows) =>
+      rows.map((row) => {
+        if (!row.salon_service_id) return row;
+        const selectedService = services.find(
+          (service) => service.salon_service_id === row.salon_service_id
+        );
+        return {
+          ...row,
+          price: resolveServicePriceForClient(selectedService, client.is_member),
+        };
+      })
+    );
   };
 
   const updateServiceRow = (rowId: string, field: keyof ServiceRow, value: string) => {
@@ -612,7 +619,7 @@ const Appointments: React.FC = () => {
         if (row.id !== rowId) return row;
         if (field === 'salon_service_id') {
           const selectedService = services.find((service) => service.salon_service_id === value);
-          const price = selectedService ? String(selectedService.price) : row.price;
+          const price = resolveServicePriceForClient(selectedService, selectedClient?.is_member);
           return {
             ...row,
             salon_service_id: value,
@@ -645,7 +652,7 @@ const Appointments: React.FC = () => {
   };
 
   const removeServiceRow = (rowId: string) => {
-    setServiceRows((rows) => (rows.length === 1 ? rows : rows.filter((row) => row.id !== rowId)));
+    setServiceRows((rows) => rows.filter((row) => row.id !== rowId));
     setInvalidServiceRowIds((ids) => ids.filter((id) => id !== rowId));
   };
   const removeProductRow = (rowId: string) => {
@@ -670,7 +677,7 @@ const Appointments: React.FC = () => {
     setNotes('');
     setClientSearch('');
     setQuickAddOpen(false);
-    setClientForm({ name: '', phone: '', email: '' });
+    setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
     setInvalidServiceRowIds([]);
     setInvalidProductRowIds([]);
   };
@@ -684,7 +691,8 @@ const Appointments: React.FC = () => {
       showToast('warning', 'Select or add a client first');
       return;
     }
-    const invalidServiceIds = serviceRows
+    const serviceRowsToSubmit = serviceRows.filter((row) => !isServiceRowBlank(row));
+    const invalidServiceIds = serviceRowsToSubmit
       .filter((row) => !isServiceRowComplete(row))
       .map((row) => row.id);
     const productRowsToSubmit = productRows.filter((row) => !isProductRowBlank(row));
@@ -697,6 +705,11 @@ const Appointments: React.FC = () => {
 
     if (invalidServiceIds.length || invalidProductIds.length) {
       showToast('warning', 'Complete the highlighted service or product rows before submitting');
+      return;
+    }
+
+    if (!serviceRowsToSubmit.length && !productRowsToSubmit.length) {
+      showToast('warning', 'Add at least one service or product');
       return;
     }
 
@@ -719,7 +732,7 @@ const Appointments: React.FC = () => {
         salon_id: salonId,
         customer_id: selectedClient.id,
         start_datetime: new Date(startDateTime).toISOString(),
-        services: serviceRows.map((row) => ({
+        services: serviceRowsToSubmit.map((row) => ({
           service_id: row.service_id || undefined,
           salon_service_id: row.salon_service_id,
           staff_id: row.staff_id,
@@ -756,7 +769,7 @@ const Appointments: React.FC = () => {
             Appointments
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Front-desk workspace for today&apos;s queue, walk-ins, services, and billing.
+            Front-desk workspace for walk-ins, services, and billing.
           </p>
         </div>
 
@@ -797,68 +810,7 @@ const Appointments: React.FC = () => {
 
       {/* ── Entry Tab ── */}
       {activeTab === 'entry' && (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[320px_minmax(420px,1fr)_320px]">
-          {/* Today's queue */}
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-100 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5 text-[var(--color-brand-gold)]" />
-                  <h2 className="font-semibold text-gray-900">Today&apos;s queue</h2>
-                </div>
-                <span className="rounded-full bg-[var(--color-brand-gold)] px-2 py-0.5 text-xs font-bold text-white">
-                  {visibleAppointments.length}
-                </span>
-              </div>
-              <div className="mt-4 space-y-3">
-                <Input
-                  placeholder="Search name or phone"
-                  value={queueSearch}
-                  onChange={(event) => setQueueSearch(event.target.value)}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Select
-                    value={sourceFilter}
-                    onChange={(event) => setSourceFilter(event.target.value)}
-                    options={sourceOptions}
-                    placeholder="Type"
-                  />
-                  <Select
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value)}
-                    options={[{ value: '', label: 'All status' }, ...statusOptions]}
-                    placeholder="Status"
-                  />
-                </div>
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-500">
-                  <input
-                    type="checkbox"
-                    checked={showCompleted}
-                    onChange={(e) => setShowCompleted(e.target.checked)}
-                    className="rounded"
-                  />
-                  Show completed &amp; cancelled
-                </label>
-              </div>
-            </div>
-            <div className="space-y-3 p-4">
-              {isTodayLoading ? (
-                <p className="py-8 text-center text-sm text-gray-400">Loading queue...</p>
-              ) : visibleAppointments.length === 0 ? (
-                <div className="py-8 text-center">
-                  <CalendarDays className="mx-auto mb-2 h-8 w-8 text-gray-200" />
-                  <p className="text-sm text-gray-400">
-                    {showCompleted ? 'No appointments today.' : 'No active queue items. Check "Show completed" to see all.'}
-                  </p>
-                </div>
-              ) : (
-                visibleAppointments.map((appointment) => (
-                  <AppointmentQueueCard key={appointment.id} appointment={appointment} />
-                ))
-              )}
-            </div>
-          </section>
-
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(420px,1fr)_320px]">
           {/* Entry form */}
           <main className="space-y-5">
             <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -867,7 +819,15 @@ const Appointments: React.FC = () => {
                   <h2 className="font-semibold text-gray-900">Client</h2>
                   <p className="text-sm text-gray-500">Search by phone or name, then select history.</p>
                 </div>
-                <UserPlus className="h-5 w-5 text-gray-400" />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={() => setQuickAddOpen((open) => !open)}
+                >
+                  Add
+                </Button>
               </div>
               <form onSubmit={handleClientSearch} className="flex gap-2">
                 <Input
@@ -886,7 +846,7 @@ const Appointments: React.FC = () => {
                     <button
                       key={client.id}
                       type="button"
-                      onClick={() => setSelectedClient(client)}
+                      onClick={() => applyClientSelection(client)}
                       className={`rounded-xl border p-3 text-left transition hover:border-[var(--color-brand-gold)] ${
                         selectedClient?.id === client.id
                           ? 'border-[var(--color-brand-gold)] bg-amber-50'
@@ -894,6 +854,9 @@ const Appointments: React.FC = () => {
                       }`}
                     >
                       <p className="font-medium text-gray-900">{client.name}</p>
+                      <p className="text-xs font-semibold text-indigo-700">
+                        {client.is_member ? 'Member' : 'Non-member'}
+                      </p>
                       <p className="text-sm text-gray-500">{client.phone}</p>
                     </button>
                   ))}
@@ -909,16 +872,54 @@ const Appointments: React.FC = () => {
                       value={clientForm.name}
                       onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })}
                     />
-                    <Input
-                      placeholder="Phone *"
-                      value={clientForm.phone}
-                      onChange={(event) => setClientForm({ ...clientForm, phone: event.target.value })}
-                    />
+                    <div>
+                      <Input
+                        placeholder="Phone *"
+                        value={clientForm.phone}
+                        onChange={(event) => {
+                          setClientPhoneError('');
+                          setClientForm({ ...clientForm, phone: event.target.value });
+                        }}
+                        onBlur={() => {
+                          void handleClientPhoneBlur();
+                        }}
+                        className={clientPhoneError ? 'border-red-400' : undefined}
+                      />
+                      {clientPhoneError && (
+                        <p className="mt-1 text-xs text-red-500">{clientPhoneError}</p>
+                      )}
+                    </div>
                     <Input
                       placeholder="Email optional"
                       value={clientForm.email}
                       onChange={(event) => setClientForm({ ...clientForm, email: event.target.value })}
                     />
+                    <div className="flex items-end gap-3">
+                      <div className="min-w-0 flex-1">
+                        <label className="mb-1 block text-xs font-medium text-gray-600">Gender *</label>
+                        <Select
+                          value={clientForm.gender}
+                          onChange={(event) =>
+                            setClientForm({ ...clientForm, gender: event.target.value })
+                          }
+                          options={clientGenderOptions}
+                          placeholder="Select Gender"
+                        />
+                      </div>
+                      {allowMembership && (
+                        <label className="mb-2 flex shrink-0 items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={clientForm.is_member}
+                            onChange={(event) =>
+                              setClientForm({ ...clientForm, is_member: event.target.checked })
+                            }
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          Member
+                        </label>
+                      )}
+                    </div>
                   </div>
                   <Button type="submit" className="mt-3" isLoading={isCreatingClient}>
                     Save client
@@ -944,56 +945,62 @@ const Appointments: React.FC = () => {
                 </Button>
               </div>
               <div className="space-y-3">
-                {serviceRows.map((row) => {
-                  const isInvalid = invalidServiceRowIds.includes(row.id);
+                {serviceRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                    No services added yet. You can sell products without a service.
+                  </p>
+                ) : (
+                  serviceRows.map((row) => {
+                    const isInvalid = invalidServiceRowIds.includes(row.id);
 
-                  return (
-                    <div
-                      key={row.id}
-                      className={cn(
-                        'grid gap-3 rounded-xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
-                        isInvalid
-                          ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
-                          : 'border-gray-100 bg-gray-50'
-                      )}
-                    >
-                      <CommonDropdown
-                        value={row.salon_service_id}
-                        onChange={(value) => updateServiceRow(row.id, 'salon_service_id', String(value))}
-                        options={serviceOptions}
-                        placeholder="Search service"
-                        searchable
-                        loading={isLoadingSalonServices}
-                      />
-                      <Select
-                        value={row.staff_id}
-                        onChange={(event) => updateServiceRow(row.id, 'staff_id', event.target.value)}
-                        options={staffOptions}
-                        placeholder="Staff"
-                      />
-                      <Input
-                        type="number"
-                        min="0"
-                        placeholder="Price"
-                        value={row.price}
-                        onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="!px-2"
-                        onClick={() => removeServiceRow(row.id)}
+                    return (
+                      <div
+                        key={row.id}
+                        className={cn(
+                          'grid gap-3 rounded-xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
+                          isInvalid
+                            ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
+                            : 'border-gray-100 bg-gray-50'
+                        )}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      {isInvalid && (
-                        <p className="text-xs font-medium text-red-600 md:col-span-4">
-                          Select a service, assign staff, and enter a valid price.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
+                        <CommonDropdown
+                          value={row.salon_service_id}
+                          onChange={(value) => updateServiceRow(row.id, 'salon_service_id', String(value))}
+                          options={serviceOptions}
+                          placeholder="Search service"
+                          searchable
+                          loading={isLoadingSalonServices}
+                        />
+                        <Select
+                          value={row.staff_id}
+                          onChange={(event) => updateServiceRow(row.id, 'staff_id', event.target.value)}
+                          options={staffOptions}
+                          placeholder="Staff"
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="Price"
+                          value={row.price}
+                          onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="!px-2"
+                          onClick={() => removeServiceRow(row.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                        {isInvalid && (
+                          <p className="text-xs font-medium text-red-600 md:col-span-4">
+                            Select a service, assign staff, and enter a valid price.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </section>
 
@@ -1110,6 +1117,11 @@ const Appointments: React.FC = () => {
                 <p className="mt-1 font-semibold text-gray-900">
                   {selectedClient?.name ?? 'No client selected'}
                 </p>
+                {selectedClient && (
+                  <p className="text-xs font-semibold text-indigo-700">
+                    {selectedClient.is_member ? 'Member' : 'Non-member'}
+                  </p>
+                )}
                 <p className="text-sm text-gray-500">{selectedClient?.phone}</p>
               </div>
               <div>

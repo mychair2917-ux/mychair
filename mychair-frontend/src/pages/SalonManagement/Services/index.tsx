@@ -41,6 +41,7 @@ type ServiceDraft = {
   serviceName: string;
   serviceId?: string;
   price: string;
+  memberPrice: string;
 };
 
 type ProductDraft = {
@@ -57,6 +58,7 @@ const emptyDraft: ServiceDraft = {
   serviceName: '',
   serviceId: undefined,
   price: '',
+  memberPrice: '',
 };
 
 const emptyProductDraft: ProductDraft = {
@@ -96,11 +98,13 @@ const Services: React.FC = () => {
     serviceName: string;
     serviceId?: string;
     price: string;
+    memberPrice: string;
     status: string;
   }>({
     serviceName: '',
     serviceId: undefined,
     price: '',
+    memberPrice: '',
     status: 'ACTIVE',
   });
   const [deletingService, setDeletingService] = useState<SalonServiceItem | null>(null);
@@ -282,6 +286,8 @@ const Services: React.FC = () => {
   const handleAddService = async () => {
     const serviceName = draft.serviceName.trim();
     const price = Number(draft.price);
+    const memberPriceRaw = draft.memberPrice.trim();
+    const memberPrice = memberPriceRaw === '' ? null : Number(memberPriceRaw);
 
     if (!serviceName) {
       showToast('warning', 'Select or create a service before adding');
@@ -289,6 +295,10 @@ const Services: React.FC = () => {
     }
     if (!draft.price || Number.isNaN(price) || price <= 0) {
       showToast('warning', 'Enter a valid price before adding');
+      return;
+    }
+    if (memberPriceRaw !== '' && (Number.isNaN(memberPrice) || (memberPrice as number) < 0)) {
+      showToast('warning', 'Enter a valid member price or leave it blank');
       return;
     }
     if (duplicateExists) {
@@ -307,10 +317,12 @@ const Services: React.FC = () => {
           ? {
               service_id: matchedService.value,
               price,
+              member_price: memberPrice,
             }
           : {
               custom_service_name: serviceName,
               price,
+              member_price: memberPrice,
             },
       }).unwrap();
       if (response.success) {
@@ -328,6 +340,10 @@ const Services: React.FC = () => {
       serviceName: service.service_name,
       serviceId: service.service_id ?? undefined,
       price: String(service.price),
+      memberPrice:
+        service.member_price === null || service.member_price === undefined
+          ? ''
+          : String(service.member_price),
       status: service.status,
     });
   };
@@ -554,6 +570,8 @@ const Services: React.FC = () => {
 
     const serviceName = editDraft.serviceName.trim();
     const price = Number(editDraft.price);
+    const memberPriceRaw = editDraft.memberPrice.trim();
+    const memberPrice = memberPriceRaw === '' ? null : Number(memberPriceRaw);
 
     if (!serviceName) {
       showToast('warning', 'Select or create a service before saving');
@@ -561,6 +579,10 @@ const Services: React.FC = () => {
     }
     if (!editDraft.price || Number.isNaN(price) || price <= 0) {
       showToast('warning', 'Enter a valid price before saving');
+      return;
+    }
+    if (memberPriceRaw !== '' && (Number.isNaN(memberPrice) || (memberPrice as number) < 0)) {
+      showToast('warning', 'Enter a valid member price or leave it blank');
       return;
     }
 
@@ -586,11 +608,13 @@ const Services: React.FC = () => {
           ? {
               service_id: matchedService.value,
               price,
+              member_price: memberPrice,
               status: editDraft.status,
             }
           : {
               custom_service_name: serviceName,
               price,
+              member_price: memberPrice,
               status: editDraft.status,
             },
       }).unwrap();
@@ -699,7 +723,7 @@ const Services: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_140px]">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_180px_180px_140px]">
               <FormField label="Service" name="serviceName" required>
                 <div className="space-y-2">
                   <CommonDropdown
@@ -734,7 +758,7 @@ const Services: React.FC = () => {
                 </div>
               </FormField>
 
-              <FormField label="Price" name="price" required>
+              <FormField label="Normal Price" name="price" required>
                 <Input
                   id="price"
                   type="number"
@@ -746,6 +770,23 @@ const Services: React.FC = () => {
                     setDraft((current) => ({
                       ...current,
                       price: event.target.value,
+                    }))
+                  }
+                />
+              </FormField>
+
+              <FormField label="Member Price" name="memberPrice">
+                <Input
+                  id="memberPrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Optional"
+                  value={draft.memberPrice}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      memberPrice: event.target.value,
                     }))
                   }
                 />
@@ -795,10 +836,23 @@ const Services: React.FC = () => {
               },
               {
                 key: 'price',
-                header: 'Price',
+                header: 'Normal Price',
                 accessor: (row) => formatCurrency(row.price),
                 sortable: true,
                 render: (row) => formatCurrency(row.price),
+              },
+              {
+                key: 'member_price',
+                header: 'Member Price',
+                accessor: (row) =>
+                  row.member_price === null || row.member_price === undefined
+                    ? ''
+                    : formatCurrency(row.member_price),
+                sortable: true,
+                render: (row) =>
+                  row.member_price === null || row.member_price === undefined
+                    ? '—'
+                    : formatCurrency(row.member_price),
               },
               {
                 key: 'created_at',
@@ -1109,7 +1163,7 @@ const Services: React.FC = () => {
           </FormField>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <FormField label="Price" name="editPrice" required>
+            <FormField label="Normal Price" name="editPrice" required>
               <Input
                 id="editPrice"
                 type="number"
@@ -1120,6 +1174,22 @@ const Services: React.FC = () => {
                   setEditDraft((current) => ({
                     ...current,
                     price: event.target.value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="Member Price" name="editMemberPrice">
+              <Input
+                id="editMemberPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Optional"
+                value={editDraft.memberPrice}
+                onChange={(event) =>
+                  setEditDraft((current) => ({
+                    ...current,
+                    memberPrice: event.target.value,
                   }))
                 }
               />

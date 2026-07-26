@@ -30,6 +30,9 @@ class Customer(BaseTenantDocument):
     total_spent: float = Field(default=0.0)
     last_visit_at: Optional[datetime] = Field(default=None)
 
+    # Membership — optional member pricing at the salon (not a subscription plan)
+    is_member: bool = Field(default=False)
+
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Settings:

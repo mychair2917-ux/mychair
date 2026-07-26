@@ -2,10 +2,14 @@
 import pytest
 
 from app.services.customer_import import (
-    REASON_DUPLICATE,
     REASON_INVALID_MOBILE,
     REASON_MISSING_MOBILE,
     REASON_MISSING_NAME,
+    CustomerImportError,
+    RowError,
+    build_csv_template,
+    build_error_report_csv,
+    build_xlsx_template,
     map_headers,
     normalize_email,
     normalize_gender,
@@ -15,11 +19,6 @@ from app.services.customer_import import (
     split_full_name,
     validate_data_rows,
     validate_upload_file,
-    CustomerImportError,
-    build_csv_template,
-    build_xlsx_template,
-    build_error_report_csv,
-    RowError,
 )
 
 
@@ -144,6 +143,8 @@ class TestHeadersAndCsv:
             parse_rows_from_bytes(raw, ".csv")
 
     def test_duplicate_in_file(self):
+        from app.services.customer_import import REASON_DUPLICATE_IN_UPLOAD
+
         raw = (
             "Full Name,Mobile Number\n"
             "A,9876543210\n"
@@ -152,7 +153,23 @@ class TestHeadersAndCsv:
         mapping, rows = parse_rows_from_bytes(raw, ".csv")
         valid, errors, reasons = validate_data_rows(mapping, rows)
         assert len(valid) == 1
-        assert reasons.get(REASON_DUPLICATE) == 1
+        assert reasons.get(REASON_DUPLICATE_IN_UPLOAD) == 1
+        assert errors[0].status == "skipped"
+        assert "duplicated in the upload" in errors[0].reason
+        assert "9876543210" in errors[0].reason
+
+    def test_duplicate_format_variants_in_file(self):
+        from app.services.customer_import import REASON_DUPLICATE_IN_UPLOAD
+
+        raw = (
+            "Full Name,Mobile Number\n"
+            "A,9876543210\n"
+            "B,+91 98765 43210\n"
+        ).encode("utf-8")
+        mapping, rows = parse_rows_from_bytes(raw, ".csv")
+        valid, errors, reasons = validate_data_rows(mapping, rows)
+        assert len(valid) == 1
+        assert reasons.get(REASON_DUPLICATE_IN_UPLOAD) == 1
         assert errors[0].status == "skipped"
 
     def test_missing_required(self):

@@ -11,6 +11,7 @@ import type {
   CustomerImportResult,
   OverviewKPIs,
   PaginatedCustomers,
+  PhoneAvailability,
   RewardSettings,
   RewardSegment,
   RewardSettingsUpdatePayload,
@@ -38,6 +39,7 @@ export const customerAnalyticsApi = baseApi.injectEndpoints({
         if (params.search) qp.search = params.search;
         if (params.gender) qp.gender = params.gender;
         if (params.status) qp.status = params.status;
+        if (params.membership) qp.membership = params.membership;
         return {
           url: API_PATHS.CUSTOMER_ANALYTICS.CUSTOMERS,
           method: HTTP_METHODS.GET,
@@ -62,6 +64,17 @@ export const customerAnalyticsApi = baseApi.injectEndpoints({
         body: payload,
       }),
       invalidatesTags: ['Customers', 'CustomerAnalytics'],
+    }),
+
+    checkCustomerPhone: builder.query<
+      ApiResponse<PhoneAvailability>,
+      { phone: string; excludeId?: string }
+    >({
+      query: ({ phone, excludeId }) => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.CHECK_PHONE,
+        method: HTTP_METHODS.GET,
+        params: excludeId ? { phone, exclude_id: excludeId } : { phone },
+      }),
     }),
 
     updateCustomer: builder.mutation<ApiResponse<Customer>, CustomerUpdatePayload>({
@@ -161,6 +174,7 @@ export const {
   useGetCustomersQuery,
   useGetCustomerByIdQuery,
   useCreateCustomerMutation,
+  useLazyCheckCustomerPhoneQuery,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
   useImportCustomersMutation,

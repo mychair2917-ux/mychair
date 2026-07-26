@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -15,6 +16,7 @@ class SalonServiceCreate(BaseModel):
     service_id: str | None = None
     custom_service_name: str | None = Field(default=None, max_length=150)
     price: float = Field(..., gt=0)
+    member_price: Optional[float] = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_service_source(self) -> "SalonServiceCreate":
@@ -33,6 +35,7 @@ class SalonServiceUpdate(BaseModel):
     service_id: str | None = None
     custom_service_name: str | None = Field(default=None, max_length=150)
     price: float = Field(..., gt=0)
+    member_price: Optional[float] = Field(default=None, ge=0)
     status: str = Field(default="ACTIVE", max_length=20)
 
     @model_validator(mode="after")
@@ -56,6 +59,7 @@ class SalonServiceListItem(BaseModel):
     custom_service_name: str | None = None
     service_name: str
     price: float
+    member_price: Optional[float] = None
     status: str
     created_by: str | None = None
     created_at: datetime

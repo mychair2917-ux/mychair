@@ -13,7 +13,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from email_validator import EmailNotValidError, validate_email
 from openpyxl import Workbook, load_workbook
@@ -21,8 +21,15 @@ from openpyxl import Workbook, load_workbook
 from app.models.audit import AuditLog
 from app.models.customer import Customer
 from app.models.user import User
+from app.services.customer_phone import (
+    customer_display_name,
+    duplicate_phone_exists_message,
+    duplicate_phone_in_upload_message,
+    map_existing_clients_by_phone,
+)
 from app.services.notifications import notification_service
-from app.utils.timezone import now_utc
+from app.utils.phone import PHONE_INVALID, PHONE_MISSING
+from app.utils.phone import normalize_mobile as _normalize_mobile_raw
 
 logger = logging.getLogger("customer_import")
 
@@ -75,6 +82,8 @@ _HEADER_ALIASES: Dict[str, str] = {
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
 REASON_DUPLICATE = "Duplicate Mobile"
+REASON_DUPLICATE_IN_UPLOAD = "Duplicate Mobile (in upload)"
+REASON_DUPLICATE_EXISTING = "Duplicate Mobile (already registered)"
 REASON_MISSING_NAME = "Missing Name"
 REASON_MISSING_MOBILE = "Missing Mobile"
 REASON_INVALID_MOBILE = "Invalid Mobile"
@@ -83,6 +92,19 @@ REASON_INVALID_EMAIL = "Invalid Email"
 REASON_INVALID_DOB = "Invalid DOB"
 REASON_INVALID_ANNIVERSARY = "Invalid Anniversary"
 REASON_INVALID_GENDER = "Invalid Gender"
+
+
+def normalize_mobile(raw: Any) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Strip spaces/dashes/brackets and optional +91 / 91 / leading 0.
+    Returns (normalized_digits, error_reason) using import reason strings.
+    """
+    phone, err = _normalize_mobile_raw(raw)
+    if err == PHONE_MISSING:
+        return None, REASON_MISSING_MOBILE
+    if err == PHONE_INVALID:
+        return None, REASON_INVALID_MOBILE
+    return phone, None
 
 
 @dataclass
@@ -141,38 +163,6 @@ class CustomerImportError(Exception):
 
 def _norm_header(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
-
-
-def normalize_mobile(raw: Any) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Strip spaces/dashes/brackets and optional +91 / 91 / leading 0.
-    Returns (normalized_digits, error_reason).
-    """
-    if raw is None:
-        return None, REASON_MISSING_MOBILE
-    text = str(raw).strip()
-    if not text:
-        return None, REASON_MISSING_MOBILE
-
-    # Excel may give floats like 9876543210.0
-    if isinstance(raw, float) and raw == int(raw):
-        text = str(int(raw))
-    elif re.fullmatch(r"\d+\.0+", text):
-        text = text.split(".", 1)[0]
-
-    cleaned = re.sub(r"[\s\-\(\)\.]", "", text)
-    if cleaned.startswith("+"):
-        cleaned = cleaned[1:]
-    if cleaned.startswith("91") and len(cleaned) > 10:
-        cleaned = cleaned[2:]
-    if cleaned.startswith("0") and len(cleaned) == 11:
-        cleaned = cleaned[1:]
-
-    if not cleaned.isdigit():
-        return None, REASON_INVALID_MOBILE
-    if len(cleaned) < 10 or len(cleaned) > 15:
-        return None, REASON_INVALID_MOBILE
-    return cleaned, None
 
 
 def split_full_name(raw: Any) -> Tuple[Optional[str], str, Optional[str]]:
@@ -547,17 +537,18 @@ def validate_data_rows(
         assert first is not None and phone is not None
 
         if phone in seen_phones:
+            detail = duplicate_phone_in_upload_message(phone)
             errors.append(
                 RowError(
                     row=row_number,
                     mobile=phone,
-                    reason=REASON_DUPLICATE,
+                    reason=detail,
                     status="skipped",
                     full_name=f"{first} {last}".strip(),
                     original=original,
                 )
             )
-            bump(REASON_DUPLICATE)
+            bump(REASON_DUPLICATE_IN_UPLOAD)
             continue
 
         email, email_err = normalize_email(_cell(row, mapping, "email"))
@@ -664,21 +655,6 @@ def validate_data_rows(
     return valid, errors, reasons
 
 
-async def _existing_phones(tenant_id: Optional[str], phones: Iterable[str]) -> Set[str]:
-    phone_list = list(phones)
-    existing: Set[str] = set()
-    for i in range(0, len(phone_list), BATCH_SIZE):
-        chunk = phone_list[i : i + BATCH_SIZE]
-        query: Dict[str, Any] = {"phone": {"$in": chunk}, "is_deleted": False}
-        if tenant_id:
-            query["tenant_id"] = tenant_id
-        docs = await Customer.find(query).to_list()
-        for doc in docs:
-            if doc.phone:
-                existing.add(doc.phone)
-    return existing
-
-
 async def import_customers_from_file(
     *,
     content: bytes,
@@ -705,25 +681,48 @@ async def import_customers_from_file(
         _log_import(current_user, tenant_id, result)
         return result
 
-    existing = await _existing_phones(tenant_id, (r.phone for r in valid_rows))
+    existing_by_phone = await map_existing_clients_by_phone(
+        tenant_id, (r.phone for r in valid_rows)
+    )
+    # Track phones accepted in this upload so first occurrence wins vs later rows
+    accepted_in_upload: Set[str] = set(existing_by_phone.keys())
 
     to_insert: List[_ValidatedRow] = []
     for vr in valid_rows:
-        if vr.phone in existing:
+        if vr.phone in existing_by_phone:
+            existing_client = existing_by_phone[vr.phone]
+            detail = duplicate_phone_exists_message(
+                vr.phone, customer_display_name(existing_client)
+            )
             result.duplicates += 1
-            result.bump_reason(REASON_DUPLICATE)
+            result.bump_reason(REASON_DUPLICATE_EXISTING)
             result.errors.append(
                 RowError(
                     row=vr.row_number,
                     mobile=vr.phone,
-                    reason=REASON_DUPLICATE,
+                    reason=detail,
                     status="skipped",
                     full_name=f"{vr.first_name} {vr.last_name}".strip(),
                     original=vr.original,
                 )
             )
             continue
-        existing.add(vr.phone)  # prevent dupes within remaining insert set vs DB
+        if vr.phone in accepted_in_upload:
+            detail = duplicate_phone_in_upload_message(vr.phone)
+            result.duplicates += 1
+            result.bump_reason(REASON_DUPLICATE_IN_UPLOAD)
+            result.errors.append(
+                RowError(
+                    row=vr.row_number,
+                    mobile=vr.phone,
+                    reason=detail,
+                    status="skipped",
+                    full_name=f"{vr.first_name} {vr.last_name}".strip(),
+                    original=vr.original,
+                )
+            )
+            continue
+        accepted_in_upload.add(vr.phone)
         to_insert.append(vr)
 
     user_id = str(current_user.id) if current_user.id else None
