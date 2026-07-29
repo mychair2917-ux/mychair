@@ -89,6 +89,10 @@ class InventoryTransaction(BaseTenantDocument):
     reference_id: Optional[str] = Field(default=None, index=True)
     notes: Optional[str] = Field(default=None)
 
+    stock_before: Optional[int] = Field(default=None)
+    stock_after: Optional[int] = Field(default=None)
+    sold_while_out_of_stock: Optional[bool] = Field(default=None)
+
     class Settings:
         name = "inventory_transactions"
         indexes = [

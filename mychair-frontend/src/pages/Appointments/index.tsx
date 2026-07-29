@@ -17,6 +17,7 @@ import { Button, CommonDropdown, Input, Modal, Select } from '../../components/c
 import ModalBody from '../../components/common/Modal/ModalBody';
 import ModalFooter from '../../components/common/Modal/ModalFooter';
 import ModalHeader from '../../components/common/Modal/ModalHeader';
+import { useDebouncedSearch } from '../../hooks';
 import { useAppSelector } from '../../redux/hooks';
 import {
   useCreateAppointmentClientMutation,
@@ -37,6 +38,7 @@ import {
   AppointmentListItem,
   AppointmentProductOption,
   AppointmentServiceOption,
+  CreateFrontDeskAppointmentRequest,
 } from '../../redux/slices/appointments/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { cn } from '../../utils/cn';
@@ -791,6 +793,9 @@ const Appointments: React.FC = () => {
   const [totalAmount, setTotalAmount] = useState('');
   const [startDateTime, setStartDateTime] = useState(defaultStart);
   const [notes, setNotes] = useState('');
+  const [showOosConfirmModal, setShowOosConfirmModal] = useState(false);
+  const [oosProductsToConfirm, setOosProductsToConfirm] = useState<string[]>([]);
+  const [pendingSubmitData, setPendingSubmitData] = useState<CreateFrontDeskAppointmentRequest | null>(null);
 
   const { data: servicesData, isLoading: isLoadingSalonServices } = useGetAppointmentSalonServicesQuery(
     { salon_id: salonId },
@@ -811,6 +816,83 @@ const Appointments: React.FC = () => {
   const [createClient, { isLoading: isCreatingClient }] = useCreateAppointmentClientMutation();
   const [createAppointment, { isLoading: isSubmitting }] = useCreateFrontDeskAppointmentMutation();
 
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [isFullSearch, setIsFullSearch] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const isProgrammaticChange = useRef(false);
+
+  const debouncedClientSearch = useDebouncedSearch(clientSearch, 250);
+
+  useEffect(() => {
+    if (isProgrammaticChange.current) {
+      isProgrammaticChange.current = false;
+      return;
+    }
+
+    const term = debouncedClientSearch.trim();
+    if (!term) {
+      setClientSearchResults([]);
+      setHasClientSearched(false);
+      setIsFullSearch(false);
+      setSelectedClient(null);
+      setShowDropdown(false);
+      return;
+    }
+
+    const fetchSuggestions = async () => {
+      try {
+        const response = await searchClients({ search: term }).unwrap();
+        setClientSearchResults(response.data ?? []);
+        setHasClientSearched(true);
+        setShowDropdown(true);
+        setHighlightedIndex(-1);
+      } catch {
+        setClientSearchResults([]);
+        setHasClientSearched(true);
+      }
+    };
+
+    void fetchSuggestions();
+  }, [debouncedClientSearch, searchClients, setSelectedClient]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showDropdown) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlightedIndex((prevIndex) =>
+        prevIndex < clientSearchResults.length - 1 ? prevIndex + 1 : 0
+      );
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlightedIndex((prevIndex) =>
+        prevIndex > 0 ? prevIndex - 1 : clientSearchResults.length - 1
+      );
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < clientSearchResults.length) {
+        applyClientSelection(clientSearchResults[highlightedIndex]);
+      } else if (clientSearch.trim()) {
+        void handleClientSearch(event);
+      }
+    } else if (event.key === 'Escape') {
+      setShowDropdown(false);
+    }
+  };
+
   const services = servicesData?.data ?? [];
   const products = productsData?.data ?? [];
   const staff = staffData?.data ?? [];
@@ -820,10 +902,13 @@ const Appointments: React.FC = () => {
     value: service.salon_service_id,
     label: service.service_name,
   }));
-  const productOptions = products.map((product: AppointmentProductOption) => ({
-    value: product.salon_product_id,
-    label: product.product_name,
-  }));
+  const productOptions = products.map((product: AppointmentProductOption) => {
+    const isOos = product.stock_quantity !== undefined && product.stock_quantity <= 0;
+    return {
+      value: product.salon_product_id,
+      label: isOos ? `${product.product_name} (Out of Stock)` : product.product_name,
+    };
+  });
   const staffOptions = staff.map((member) => ({ value: member.id, label: member.name }));
 
   const calculatedTotal = useMemo(
@@ -867,6 +952,8 @@ const Appointments: React.FC = () => {
       const matches = response.data ?? [];
       setClientSearchResults(matches);
       setHasClientSearched(true);
+      setIsFullSearch(true);
+      setShowDropdown(false);
       if (matches.length === 0) {
         prefillQuickAddFromSearch(term);
       } else {
@@ -875,6 +962,8 @@ const Appointments: React.FC = () => {
     } catch {
       setClientSearchResults([]);
       setHasClientSearched(true);
+      setIsFullSearch(true);
+      setShowDropdown(false);
       showToast('error', 'Failed to search clients');
     }
   };
@@ -923,6 +1012,7 @@ const Appointments: React.FC = () => {
         ...(allowMembership ? { is_member: Boolean(clientForm.is_member) } : {}),
       }).unwrap();
       if (response.data) {
+        isProgrammaticChange.current = true;
         setSelectedClient(response.data);
         setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
         setClientPhoneError('');
@@ -940,7 +1030,12 @@ const Appointments: React.FC = () => {
   };
 
   const applyClientSelection = (client: AppointmentClient) => {
+    isProgrammaticChange.current = true;
     setSelectedClient(client);
+    setClientSearch(client.name || '');
+    setShowDropdown(false);
+    setClientSearchResults([]);
+    setHasClientSearched(false);
     setServiceRows((rows) =>
       rows.map((row) => {
         if (!row.salon_service_id) return row;
@@ -1010,6 +1105,7 @@ const Appointments: React.FC = () => {
       : 0;
 
   const resetEntryForm = () => {
+    isProgrammaticChange.current = true;
     setSelectedClient(null);
     setServiceRows([createRow()]);
     setProductRows([]);
@@ -1023,6 +1119,18 @@ const Appointments: React.FC = () => {
     setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
     setInvalidServiceRowIds([]);
     setInvalidProductRowIds([]);
+  };
+
+  const executeSubmit = async (payload: CreateFrontDeskAppointmentRequest) => {
+    try {
+      const response = await createAppointment(payload).unwrap();
+      if (response.success) {
+        showToast('success', response.message || 'Appointment created successfully');
+        resetEntryForm();
+      }
+    } catch (err: unknown) {
+      showToast('error', getApiErrorMessage(err, 'Failed to create appointment'));
+    }
   };
 
   const handleSubmit = async () => {
@@ -1070,38 +1178,49 @@ const Appointments: React.FC = () => {
       }
     }
 
-    try {
-      const response = await createAppointment({
-        salon_id: salonId,
-        customer_id: selectedClient.id,
-        start_datetime: new Date(startDateTime).toISOString(),
-        services: serviceRowsToSubmit.map((row) => ({
-          service_id: row.service_id || undefined,
-          salon_service_id: row.salon_service_id,
-          staff_id: row.staff_id,
-          price: Number(row.price || 0),
-        })),
-        products: productRowsToSubmit.map((row) => ({
-          product_id: row.product_id || undefined,
-          salon_product_id: row.salon_product_id,
-          staff_id: row.staff_id,
-          price: Number(row.price || 0),
-          quantity: Math.max(1, Number(row.quantity || 1)),
-        })),
-        payment_type: paymentMethod,
-        payment_status: paymentStatus,
-        paid_amount: paymentStatus === 'PARTIALLY_PAID' ? Number(paidAmount) : undefined,
-        total_amount: finalTotal,
-        booking_source: 'WALK_IN',
-        notes: notes.trim() || undefined,
-      }).unwrap();
-      if (response.success) {
-        showToast('success', response.message || 'Appointment created successfully');
-        resetEntryForm();
-      }
-    } catch (err: unknown) {
-      showToast('error', getApiErrorMessage(err, 'Failed to create appointment'));
+    const payload = {
+      salon_id: salonId,
+      customer_id: selectedClient.id,
+      start_datetime: new Date(startDateTime).toISOString(),
+      services: serviceRowsToSubmit.map((row) => ({
+        service_id: row.service_id || undefined,
+        salon_service_id: row.salon_service_id,
+        staff_id: row.staff_id,
+        price: Number(row.price || 0),
+      })),
+      products: productRowsToSubmit.map((row) => ({
+        product_id: row.product_id || undefined,
+        salon_product_id: row.salon_product_id,
+        staff_id: row.staff_id,
+        price: Number(row.price || 0),
+        quantity: Math.max(1, Number(row.quantity || 1)),
+      })),
+      payment_type: paymentMethod,
+      payment_status: paymentStatus,
+      paid_amount: paymentStatus === 'PARTIALLY_PAID' ? Number(paidAmount) : undefined,
+      total_amount: finalTotal,
+      booking_source: 'WALK_IN',
+      notes: notes.trim() || undefined,
+    };
+
+    const oosProducts = productRowsToSubmit
+      .map((row) => {
+        const item = products.find((p) => p.salon_product_id === row.salon_product_id);
+        if (item && item.stock_quantity !== undefined && item.stock_quantity <= 0) {
+          return item.product_name;
+        }
+        return null;
+      })
+      .filter((name): name is string => name !== null);
+
+    if (oosProducts.length > 0) {
+      setOosProductsToConfirm(oosProducts);
+      setPendingSubmitData(payload);
+      setShowOosConfirmModal(true);
+      return;
     }
+
+    await executeSubmit(payload);
   };
 
   return (
@@ -1173,24 +1292,134 @@ const Appointments: React.FC = () => {
                   Add
                 </Button>
               </div>
-              <form onSubmit={handleClientSearch} className="flex gap-2">
-                <Input
-                  placeholder="Phone number or client name"
-                  value={clientSearch}
-                  onChange={(event) => {
-                    setClientSearch(event.target.value);
-                    if (hasClientSearched) {
-                      setHasClientSearched(false);
-                      setClientSearchResults([]);
-                    }
-                  }}
-                />
+              <form onSubmit={handleClientSearch} className="flex gap-2 relative">
+                <div ref={dropdownRef} className="relative flex-1">
+                  <Input
+                    placeholder="Phone number or client name"
+                    value={clientSearch}
+                    onChange={(event) => {
+                      setClientSearch(event.target.value);
+                      setIsFullSearch(false);
+                      if (hasClientSearched) {
+                        setHasClientSearched(false);
+                        setClientSearchResults([]);
+                      }
+                    }}
+                    onKeyDown={handleKeyDown}
+                    onFocus={() => {
+                      if (clientSearchResults.length > 0) {
+                        setShowDropdown(true);
+                      }
+                    }}
+                  />
+
+                  {isSearchingClients && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                      <svg className="animate-spin h-4 w-4 text-[var(--color-brand-gold)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    </div>
+                  )}
+
+                  {!isSearchingClients && selectedClient && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                        ✓
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientSearch('');
+                          setSelectedClient(null);
+                          setClientSearchResults([]);
+                          setHasClientSearched(false);
+                          setShowDropdown(false);
+                          setIsFullSearch(false);
+                        }}
+                        className="text-gray-400 hover:text-gray-600 font-medium text-sm transition"
+                        title="Clear selection"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {showDropdown && (clientSearchResults.length > 0 || (hasClientSearched && clientSearch.trim().length > 0)) && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100">
+                      {clientSearchResults.map((client, index) => (
+                        <div
+                          key={client.id}
+                          onClick={() => applyClientSelection(client)}
+                          onMouseEnter={() => setHighlightedIndex(index)}
+                          className={cn(
+                            "p-3 cursor-pointer transition text-left",
+                            index === highlightedIndex ? "bg-amber-50" : "bg-white"
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-gray-900 text-sm">
+                              {client.name}
+                              {client.is_member && (
+                                <span className="ml-2 text-xs font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                  Member
+                                </span>
+                              )}
+                            </span>
+                            {client.gender && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 capitalize">
+                                {client.gender.toLowerCase()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                            <span>{client.phone}</span>
+                            {client.email && <span className="truncate max-w-[200px]">{client.email}</span>}
+                          </div>
+                        </div>
+                      ))}
+                      {clientSearchResults.length === 0 && (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          No clients found
+                          {!quickAddOpen && (
+                            <button
+                              type="button"
+                              className="mt-2 block w-full text-[var(--color-brand-gold)] font-medium hover:underline text-center text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                prefillQuickAddFromSearch(clientSearch.trim());
+                                setShowDropdown(false);
+                              }}
+                            >
+                              + Add New Client
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {clientSearchResults.length >= 10 && (
+                        <div className="p-2 bg-gray-50 text-center border-t border-gray-100">
+                          <button
+                            type="button"
+                            className="text-xs text-[var(--color-brand-gold)] font-medium hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsFullSearch(true);
+                              setShowDropdown(false);
+                            }}
+                          >
+                            View all matching clients
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <Button type="submit" isLoading={isSearchingClients} icon={<Search className="h-4 w-4" />}>
                   Search
                 </Button>
               </form>
 
-              {hasClientSearched && clientSearchResults.length > 0 && (
+              {isFullSearch && clientSearchResults.length > 0 && (
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
                   {clientSearchResults.map((client) => (
                     <button
@@ -1213,7 +1442,7 @@ const Appointments: React.FC = () => {
                 </div>
               )}
 
-              {hasClientSearched && clientSearchResults.length === 0 && !isSearchingClients && (
+              {isFullSearch && clientSearchResults.length === 0 && !isSearchingClients && (
                 <div className="mt-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
                   <p className="text-sm text-gray-600">
                     No client found for &ldquo;{clientSearch.trim()}&rdquo;.
@@ -1654,6 +1883,53 @@ const Appointments: React.FC = () => {
           }}
         />
       )}
+
+      {/* Out of Stock Confirmation Modal */}
+      <Modal open={showOosConfirmModal} onClose={() => setShowOosConfirmModal(false)}>
+        <ModalHeader>
+          Confirm Out of Stock Sale
+        </ModalHeader>
+        <ModalBody>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              The following products are currently marked as **Out of Stock**:
+            </p>
+            <ul className="list-inside list-disc space-y-1 text-sm font-semibold text-red-600">
+              {oosProductsToConfirm.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+            <p className="text-sm text-gray-500">
+              Would you like to proceed with the checkout anyway? The system will record these as out-of-stock sales and adjust the inventory accordingly.
+            </p>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setShowOosConfirmModal(false);
+                setPendingSubmitData(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowOosConfirmModal(false);
+                if (pendingSubmitData) {
+                  void executeSubmit(pendingSubmitData);
+                }
+              }}
+            >
+              Continue Anyway
+            </Button>
+          </div>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 };

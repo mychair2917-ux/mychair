@@ -4,10 +4,14 @@ import {
   AlertTriangle,
   BarChart3,
   Boxes,
+  ClipboardCheck,
   Download,
   Layers3,
   PackagePlus,
+  Sliders,
   TrendingDown,
+  Upload,
+  FileText,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 
@@ -19,13 +23,17 @@ import {
   FormField,
   Input,
   showToast,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
 } from '../../components/common';
 import { isSuperAdmin } from '../../config/rbac';
 import { useDebouncedSearch } from '../../hooks';
 import { useAppSelector } from '../../redux/hooks';
 import {
   useGetBrandsQuery,
-  useGetMasterProductsQuery,
+  useGetSalonProductsQuery,
 } from '../../redux/slices/salonProducts/salonProductsApi';
 import {
   useCreateInventoryPurchaseMutation,
@@ -46,7 +54,7 @@ const tabs: Array<{ key: InventoryTab; label: string }> = [
   { key: 'overview', label: 'Overview' },
   { key: 'stocks', label: 'Stock Management' },
   { key: 'purchase', label: 'Purchase Entry' },
-  { key: 'usage', label: 'Usage & Deduction' },
+  { key: 'usage', label: 'Usage & Sales' },
   { key: 'reports', label: 'Reports' },
 ];
 
@@ -89,6 +97,8 @@ const MetricCard: React.FC<{
   </div>
 );
 
+
+
 const ProductsInventory: React.FC = () => {
   const { orgId } = useParams<{ orgId: string }>();
   const user = useAppSelector((state) => state.auth.user);
@@ -102,6 +112,8 @@ const ProductsInventory: React.FC = () => {
   const [brandFilter, setBrandFilter] = useState('');
   const [purchaseDraft, setPurchaseDraft] = useState(emptyPurchase);
   const [usageDraft, setUsageDraft] = useState(emptyUsage);
+  const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false);
+  const [billFile, setBillFile] = useState<File | null>(null);
   const [reportStart, setReportStart] = useState('');
   const [reportEnd, setReportEnd] = useState('');
   const debouncedSearch = useDebouncedSearch(search, 300);
@@ -130,7 +142,10 @@ const ProductsInventory: React.FC = () => {
     },
     { skip }
   );
-  const { data: productsData, isLoading: isLoadingProducts } = useGetMasterProductsQuery();
+  const { data: productsData, isLoading: isLoadingProducts } = useGetSalonProductsQuery(
+    { salon_id: salonId || '' },
+    { skip: !salonId }
+  );
   const { data: brandsData, isLoading: isLoadingBrands } = useGetBrandsQuery(
     salonId ? { salon_id: salonId } : undefined,
     { skip }
@@ -146,7 +161,7 @@ const ProductsInventory: React.FC = () => {
     () =>
       (productsData?.data ?? []).map((product) => ({
         value: product.id,
-        label: product.name,
+        label: product.brand_name ? `${product.product_name} (${product.brand_name})` : product.product_name,
       })),
     [productsData]
   );
@@ -193,11 +208,14 @@ const ProductsInventory: React.FC = () => {
   );
 
   const updatePurchaseProduct = (value: string) => {
-    const matched = productOptions.find((option) => option.value === value);
+    const matched = (productsData?.data ?? []).find((p) => p.id === value);
     setPurchaseDraft((current) => ({
       ...current,
-      productName: matched?.label ?? value,
-      productId: matched?.value,
+      productName: matched?.product_name ?? value,
+      productId: matched?.product_id || undefined,
+      brandName: matched?.brand_name ?? '',
+      brandId: matched?.brand_id || undefined,
+      buyingPrice: matched?.price ? String(matched.price) : current.buyingPrice,
     }));
   };
 
@@ -227,6 +245,13 @@ const ProductsInventory: React.FC = () => {
     }
 
     try {
+      let finalNotes = purchaseDraft.notes.trim();
+      if (billFile) {
+        finalNotes = finalNotes
+          ? `${finalNotes} (Attached Bill: ${billFile.name})`
+          : `Attached Bill: ${billFile.name}`;
+      }
+
       const response = await createPurchase({
         salon_id: salonId,
         body: {
@@ -242,12 +267,19 @@ const ProductsInventory: React.FC = () => {
           quantity,
           category: purchaseDraft.category,
           min_threshold: Number.isNaN(minThreshold) ? 0 : minThreshold,
-          notes: purchaseDraft.notes.trim() || undefined,
+          notes: finalNotes || undefined,
         },
       }).unwrap();
       if (response.success) {
-        showToast('success', response.message || 'Inventory purchase recorded');
+        showToast(
+          'success',
+          billFile
+            ? `Inventory purchase recorded and bill "${billFile.name}" submitted successfully!`
+            : response.message || 'Inventory purchase recorded'
+        );
         setPurchaseDraft(emptyPurchase);
+        setBillFile(null);
+        setIsAddStockModalOpen(false);
       }
     } catch (err: unknown) {
       showToast('error', getApiErrorMessage(err, 'Failed to record purchase'));
@@ -273,7 +305,7 @@ const ProductsInventory: React.FC = () => {
         },
       }).unwrap();
       if (response.success) {
-        showToast('success', response.message || 'Inventory deduction recorded');
+        showToast('success', response.message || 'Inventory transaction recorded');
         setUsageDraft(emptyUsage);
       }
     } catch (err: unknown) {
@@ -284,7 +316,7 @@ const ProductsInventory: React.FC = () => {
   const exportReports = () => {
     const rows = reports?.transactions ?? [];
     const csv = [
-      ['Date', 'Type', 'Product ID', 'Brand ID', 'Quantity', 'Price', 'Reference', 'Notes'],
+      ['Date', 'Type', 'Product ID', 'Brand ID', 'Quantity', 'Price', 'Reference', 'Notes', 'Stock Before', 'Stock After', 'Sold Out of Stock'],
       ...rows.map((row) => [
         formatDateDMY(row.created_at, ''),
         row.type,
@@ -294,6 +326,9 @@ const ProductsInventory: React.FC = () => {
         row.price ?? '',
         row.reference_id ?? '',
         row.notes ?? '',
+        row.stock_before ?? '',
+        row.stock_after ?? '',
+        row.sold_while_out_of_stock ? 'Yes' : 'No',
       ]),
     ]
       .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -307,18 +342,22 @@ const ProductsInventory: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const statusBadge = (status: InventoryStockItem['status']) => (
-    <span
-      className={cn(
-        'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
-        status === 'OK' && 'bg-emerald-50 text-emerald-700',
-        status === 'LOW' && 'bg-amber-50 text-amber-700',
-        status === 'CRITICAL' && 'bg-red-50 text-red-700'
-      )}
-    >
-      {status}
-    </span>
-  );
+  const statusBadge = (row: InventoryStockItem) => {
+    const isOos = row.stock_quantity <= 0;
+    return (
+      <span
+        className={cn(
+          'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+          isOos && 'bg-red-100 text-red-800 border border-red-200',
+          !isOos && row.status === 'OK' && 'bg-emerald-50 text-emerald-700',
+          !isOos && row.status === 'LOW' && 'bg-amber-50 text-amber-700',
+          !isOos && row.status === 'CRITICAL' && 'bg-red-50 text-red-700'
+        )}
+      >
+        {isOos ? 'OUT OF STOCK' : row.status}
+      </span>
+    );
+  };
 
   if (!salonId && isSuperAdmin(user?.role)) {
     return (
@@ -342,7 +381,7 @@ const ProductsInventory: React.FC = () => {
             Products & Inventory
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Track stock, purchases, usage deductions, and inventory reports for this salon.
+            Track stock, purchases, usage & sales, and inventory reports for this salon.
           </p>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 shadow-sm">
@@ -456,41 +495,57 @@ const ProductsInventory: React.FC = () => {
           rowKey="id"
           loading={isLoadingStocks}
           title="Stock management"
-          subtitle="Track salon-wise stock by product and brand combination."
+          subtitle="Track salon stock by product and brand combination."
           enableGlobalSearch={false}
           filters={
-            <div className="grid w-full gap-3 md:grid-cols-3">
-              <Input
-                placeholder="Search product, brand, category"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              <Input
-                placeholder="Filter category"
-                value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value)}
-              />
-              <CommonDropdown
-                options={brandOptions}
-                value={
-                  brandOptions.find((option) => option.label === brandFilter)?.value ?? brandFilter
-                }
-                onChange={(value) => {
-                  const matched = brandOptions.find((option) => option.value === String(value));
-                  setBrandFilter(matched?.label ?? String(value));
+            <div className="flex flex-col gap-3 w-full sm:flex-row sm:items-center">
+              <div className="grid flex-1 gap-3 md:grid-cols-3">
+                <Input
+                  placeholder="Search product, brand, category"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+                <Input
+                  placeholder="Filter category"
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value)}
+                />
+                <CommonDropdown
+                  options={brandOptions}
+                  value={
+                    brandOptions.find((option) => option.label === brandFilter)?.value ?? brandFilter
+                  }
+                  onChange={(value) => {
+                    const matched = brandOptions.find((option) => option.value === String(value));
+                    setBrandFilter(matched?.label ?? String(value));
+                  }}
+                  placeholder="Filter by brand"
+                  searchable
+                  loading={isLoadingBrands}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => {
+                  setPurchaseDraft(emptyPurchase);
+                  setBillFile(null);
+                  setIsAddStockModalOpen(true);
                 }}
-                placeholder="Filter by brand"
-                searchable
-                loading={isLoadingBrands}
-              />
+                icon={<PackagePlus className="h-4 w-4" />}
+              >
+                Add Stock
+              </Button>
             </div>
           }
           columns={[
             { key: 'display_name', header: 'Product Name', accessor: 'display_name', sortable: true },
             { key: 'category', header: 'Category', accessor: 'category', sortable: true },
             { key: 'stock_quantity', header: 'Current Stock', accessor: 'stock_quantity', sortable: true },
-            { key: 'min_threshold', header: 'Minimum Threshold', accessor: 'min_threshold', sortable: true },
-            { key: 'status', header: 'Status', render: (row) => statusBadge(row.status), sortable: true },
+            { key: 'buying_price', header: 'Buying Price', render: (row) => formatCurrency(row.buying_price), sortable: true },
+            { key: 'selling_price', header: 'Selling Price', render: (row) => formatCurrency(row.selling_price), sortable: true },
+            { key: 'min_threshold', header: 'Low Stock Alert Level', accessor: 'min_threshold', sortable: true },
+            { key: 'status', header: 'Status', render: (row) => statusBadge(row), sortable: true },
             {
               key: 'last_updated',
               header: 'Last Updated',
@@ -502,6 +557,7 @@ const ProductsInventory: React.FC = () => {
             {
               type: 'custom',
               label: 'Mark as Used',
+              icon: <ClipboardCheck className="h-4 w-4" />,
               onClick: (row) => {
                 setUsageDraft((current) => ({ ...current, inventoryId: row.id, type: 'USAGE' }));
                 setActiveTab('usage');
@@ -510,6 +566,7 @@ const ProductsInventory: React.FC = () => {
             {
               type: 'custom',
               label: 'Update Stock',
+              icon: <PackagePlus className="h-4 w-4" />,
               onClick: (row) => {
                 setPurchaseDraft((current) => ({
                   ...current,
@@ -521,12 +578,14 @@ const ProductsInventory: React.FC = () => {
                   category: row.category,
                   minThreshold: String(row.min_threshold),
                 }));
-                setActiveTab('purchase');
+                setBillFile(null);
+                setIsAddStockModalOpen(true);
               },
             },
             {
               type: 'custom',
               label: 'Adjust Quantity',
+              icon: <Sliders className="h-4 w-4" />,
               onClick: (row) => {
                 setUsageDraft((current) => ({ ...current, inventoryId: row.id, type: 'USAGE' }));
                 setActiveTab('usage');
@@ -631,7 +690,7 @@ const ProductsInventory: React.FC = () => {
                 clearable={false}
               />
             </FormField>
-            <FormField label="Minimum Threshold" name="minThreshold">
+            <FormField label="Low Stock Alert Level" name="minThreshold">
               <Input
                 type="number"
                 min="0"
@@ -639,7 +698,11 @@ const ProductsInventory: React.FC = () => {
                 onChange={(event) =>
                   setPurchaseDraft((current) => ({ ...current, minThreshold: event.target.value }))
                 }
+                placeholder="e.g. 5"
               />
+              <span className="text-[11px] text-gray-500 mt-0.5">
+                Alerts you when stock falls below this quantity.
+              </span>
             </FormField>
             <FormField label="Notes" name="notes">
               <Input
@@ -671,7 +734,7 @@ const ProductsInventory: React.FC = () => {
       {activeTab === 'usage' && (
         <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">Usage & deduction</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Usage & Sales</h2>
             <div className="mt-5 space-y-4">
               <FormField label="Product" name="usageProduct" required>
                 <CommonDropdown
@@ -683,7 +746,7 @@ const ProductsInventory: React.FC = () => {
                   placeholder="Select stock item"
                 />
               </FormField>
-              <FormField label="Deduction Type" name="usageType" required>
+              <FormField label="Type" name="usageType" required>
                 <CommonDropdown
                   options={[
                     { value: 'USAGE', label: 'Product used in service' },
@@ -705,6 +768,7 @@ const ProductsInventory: React.FC = () => {
                   onChange={(event) =>
                     setUsageDraft((current) => ({ ...current, quantity: event.target.value }))
                   }
+                  placeholder="Enter quantity"
                 />
               </FormField>
               <FormField label="Appointment / customer reference" name="referenceId">
@@ -713,6 +777,7 @@ const ProductsInventory: React.FC = () => {
                   onChange={(event) =>
                     setUsageDraft((current) => ({ ...current, referenceId: event.target.value }))
                   }
+                  placeholder="Optional reference ID"
                 />
               </FormField>
               <FormField label="Notes" name="usageNotes">
@@ -721,10 +786,11 @@ const ProductsInventory: React.FC = () => {
                   onChange={(event) =>
                     setUsageDraft((current) => ({ ...current, notes: event.target.value }))
                   }
+                  placeholder="Optional additional notes"
                 />
               </FormField>
               <Button fullWidth onClick={handleUse} isLoading={isCreatingUse}>
-                Mark as Used
+                {usageDraft.type === 'SALE' ? 'Record Sale' : 'Record Usage'}
               </Button>
             </div>
           </div>
@@ -733,15 +799,63 @@ const ProductsInventory: React.FC = () => {
             data={reports?.transactions ?? []}
             rowKey="id"
             loading={isLoadingReports}
-            title="Deduction logs"
+            title="Usage & Sales History"
             subtitle="Includes manual usage, product sale, and linked appointment/customer references."
             enableGlobalSearch
             columns={[
-              { key: 'type', header: 'Type', accessor: 'type' },
-              { key: 'quantity', header: 'Quantity', accessor: 'quantity' },
-              { key: 'reference_id', header: 'Reference', render: (row) => row.reference_id || '-' },
-              { key: 'notes', header: 'Notes', render: (row) => row.notes || '-' },
               { key: 'created_at', header: 'Date', render: (row) => formatDateDMY(row.created_at, '-') },
+              {
+                key: 'product_name',
+                header: 'Product Name',
+                render: (row) => (
+                  <span className="font-medium text-gray-900">
+                    {row.product_name || '-'}
+                    {row.brand_name ? (
+                      <span className="ml-1 text-xs text-gray-500 font-normal">
+                        ({row.brand_name})
+                      </span>
+                    ) : null}
+                  </span>
+                ),
+              },
+              {
+                key: 'type',
+                header: 'Type',
+                render: (row) => (
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      row.type === 'SALE'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    {row.type === 'SALE' ? 'Sale' : 'Usage'}
+                  </span>
+                ),
+              },
+              { key: 'quantity', header: 'Quantity', accessor: 'quantity' },
+              {
+                key: 'stock_movement',
+                header: 'Stock Movement',
+                render: (row) =>
+                  row.stock_before !== null && row.stock_before !== undefined &&
+                  row.stock_after !== null && row.stock_after !== undefined
+                    ? `${row.stock_before} → ${row.stock_after}`
+                    : '-',
+              },
+              {
+                key: 'sold_while_out_of_stock',
+                header: 'Sold OOS?',
+                render: (row) =>
+                  row.sold_while_out_of_stock ? (
+                    <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                      Yes
+                    </span>
+                  ) : (
+                    'No'
+                  ),
+              },
+              { key: 'notes', header: 'Notes', render: (row) => row.notes || '-' },
             ]}
           />
         </div>
@@ -818,6 +932,213 @@ const ProductsInventory: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Add Stock Modal */}
+      <Modal open={isAddStockModalOpen} onClose={() => {
+        setIsAddStockModalOpen(false);
+        setBillFile(null);
+      }}>
+        <ModalHeader>Purchase Entry & Add Stock</ModalHeader>
+        <ModalBody>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-500">
+              Fill in the purchase details for the salon product. Only configured products are available.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Product" name="purchaseProduct" required>
+                <CommonDropdown
+                  options={productOptions}
+                  value={purchaseDraft.productId}
+                  onChange={(value) => updatePurchaseProduct(String(value))}
+                  placeholder="Select product"
+                  loading={isLoadingProducts}
+                />
+                <Input
+                  className="mt-2"
+                  placeholder="Or type new product name"
+                  value={purchaseDraft.productName}
+                  onChange={(event) =>
+                    setPurchaseDraft((current) => ({
+                      ...current,
+                      productName: event.target.value,
+                      productId: undefined,
+                    }))
+                  }
+                />
+              </FormField>
+              
+              <FormField label="Brand" name="purchaseBrand">
+                <div className="space-y-2">
+                  <CommonDropdown
+                    options={brandOptions}
+                    value={purchaseDraft.brandId}
+                    onChange={(value) => updatePurchaseBrand(String(value))}
+                    placeholder="Select brand"
+                    searchable
+                    loading={isLoadingBrands}
+                  />
+                  <Input
+                    placeholder="Or type new brand name"
+                    value={purchaseDraft.brandName}
+                    onChange={(event) =>
+                      setPurchaseDraft((current) => ({
+                        ...current,
+                        brandName: event.target.value,
+                        brandId: undefined,
+                      }))
+                    }
+                  />
+                  {purchaseDraft.brandName.trim() &&
+                    !brandOptions.some(
+                      (option) =>
+                        option.label.trim().toLowerCase() ===
+                        purchaseDraft.brandName.trim().toLowerCase()
+                    ) && (
+                      <p className="text-xs text-[var(--color-brand-gold-dark)]">
+                        Create new brand: "{purchaseDraft.brandName.trim()}"
+                      </p>
+                    )}
+                </div>
+              </FormField>
+
+              <FormField label="Buying Price" name="buyingPrice" required>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={purchaseDraft.buyingPrice}
+                  onChange={(event) =>
+                    setPurchaseDraft((current) => ({ ...current, buyingPrice: event.target.value }))
+                  }
+                />
+              </FormField>
+
+              <FormField label="Quantity" name="quantity" required>
+                <Input
+                  type="number"
+                  min="1"
+                  value={purchaseDraft.quantity}
+                  onChange={(event) =>
+                    setPurchaseDraft((current) => ({ ...current, quantity: event.target.value }))
+                  }
+                />
+              </FormField>
+
+              <FormField label="Category" name="category" required>
+                <CommonDropdown
+                  options={categories.map((category) => ({ value: category, label: category }))}
+                  value={purchaseDraft.category}
+                  onChange={(value) =>
+                    setPurchaseDraft((current) => ({ ...current, category: String(value) }))
+                  }
+                  searchable={false}
+                  clearable={false}
+                />
+              </FormField>
+
+              <FormField label="Low Stock Alert Level" name="minThreshold">
+                <Input
+                  type="number"
+                  min="0"
+                  value={purchaseDraft.minThreshold}
+                  onChange={(event) =>
+                    setPurchaseDraft((current) => ({ ...current, minThreshold: event.target.value }))
+                  }
+                  placeholder="e.g. 5"
+                />
+                <span className="text-[11px] text-gray-500 mt-0.5 block">
+                  Alerts you when stock falls below this quantity.
+                </span>
+              </FormField>
+            </div>
+
+            <FormField label="Notes" name="notes">
+              <Input
+                value={purchaseDraft.notes}
+                onChange={(event) =>
+                  setPurchaseDraft((current) => ({ ...current, notes: event.target.value }))
+                }
+                placeholder="Optional notes about this purchase..."
+              />
+            </FormField>
+
+            <FormField label="Submit Purchasing Bill (Receipt/Invoice)" name="billFile">
+              <div className="mt-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 px-6 py-4 transition hover:border-[var(--color-brand-gold)] bg-gray-50/50">
+                <input
+                  type="file"
+                  id="bill-file-upload"
+                  className="sr-only"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setBillFile(file);
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="bill-file-upload"
+                  className="flex flex-col items-center justify-center cursor-pointer text-center text-sm w-full h-full"
+                >
+                  <Upload className="mb-2 h-8 w-8 text-gray-400" />
+                  <span className="font-medium text-[var(--color-brand-gold-dark)] hover:underline">
+                    Click to upload
+                  </span>
+                  <span className="text-xs text-gray-500 mt-1">PNG, JPG, PDF up to 5MB</span>
+                </label>
+                {billFile && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-white border border-gray-200 p-2 text-xs font-medium text-gray-700 w-full justify-between shadow-sm">
+                    <div className="flex items-center gap-2 truncate">
+                      <FileText className="h-4 w-4 text-[var(--color-brand-gold-dark)] flex-shrink-0" />
+                      <span className="truncate">{billFile.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBillFile(null)}
+                      className="text-red-500 hover:text-red-700 ml-1 font-semibold flex-shrink-0"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            </FormField>
+
+            {purchaseDraft.productName.trim() && (
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                Preview:{' '}
+                <span className="font-semibold text-[var(--color-text-primary)]">
+                  {purchaseDraft.productName.trim()}
+                  {purchaseDraft.brandName.trim() ? ` (${purchaseDraft.brandName.trim()})` : ''} -{' '}
+                  {formatCurrency(Number(purchaseDraft.buyingPrice || 0))}
+                </span>
+              </p>
+            )}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setIsAddStockModalOpen(false);
+                setBillFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              icon={<PackagePlus className="h-4 w-4" />}
+              onClick={handlePurchase}
+              isLoading={isCreatingPurchase}
+            >
+              Record Purchase
+            </Button>
+          </div>
+        </ModalFooter>
+      </Modal>
+
       </div>
     </div>
   );

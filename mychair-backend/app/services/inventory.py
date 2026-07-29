@@ -41,7 +41,7 @@ class InventoryService:
             return "LOW"
         return "OK"
 
-    def _inventory_to_item(self, item: ProductInventory) -> InventoryStockItem:
+    def _inventory_to_item(self, item: ProductInventory, selling_price: float = 0.0) -> InventoryStockItem:
         return InventoryStockItem(
             id=str(item.id),
             salon_id=item.salon_id,
@@ -57,12 +57,18 @@ class InventoryService:
             stock_quantity=item.stock_quantity,
             min_threshold=item.min_threshold,
             buying_price=item.buying_price,
+            selling_price=selling_price,
             total_value=item.total_value,
             status=self._stock_status(item.stock_quantity, item.min_threshold),
             last_updated=item.updated_at,
         )
 
-    def _transaction_to_item(self, tx: InventoryTransaction) -> InventoryTransactionItem:
+    def _transaction_to_item(
+        self,
+        tx: InventoryTransaction,
+        product_name: str | None = None,
+        brand_name: str | None = None,
+    ) -> InventoryTransactionItem:
         tx_type = tx.type or tx.transaction_type or "ADJUSTMENT"
         quantity = tx.quantity
         if quantity is None:
@@ -78,7 +84,97 @@ class InventoryService:
             price=tx.price if tx.price is not None else tx.unit_cost,
             notes=tx.notes,
             created_at=tx.created_at,
+            stock_before=tx.stock_before,
+            stock_after=tx.stock_after,
+            sold_while_out_of_stock=tx.sold_while_out_of_stock,
+            product_name=product_name,
+            brand_name=brand_name,
         )
+
+    async def _ensure_salon_products_inventory(self, salon_id: str) -> None:
+        """
+        Ensures that every active, non-deleted SalonProduct for the given salon
+        has a corresponding ProductInventory record with 0 stock if none exists.
+        """
+        from app.models.salon_product import SalonProduct
+        from app.models.product import Product
+        from app.models.brand import Brand
+        from beanie import PydanticObjectId
+        
+        salon_products = await SalonProduct.find(
+            {"salon_id": salon_id, "is_deleted": False, "status": "ACTIVE"}
+        ).to_list()
+        
+        if not salon_products:
+            return
+            
+        # Get all master products in one query
+        product_ids = []
+        for sp in salon_products:
+            if sp.product_id:
+                try:
+                    product_ids.append(PydanticObjectId(sp.product_id))
+                except Exception:
+                    continue
+        products = await Product.find({"_id": {"$in": product_ids}, "is_deleted": False}).to_list() if product_ids else []
+        product_map = {str(p.id): p.name for p in products}
+        
+        # Get all brands in one query
+        brand_ids = []
+        for sp in salon_products:
+            if sp.brand_id:
+                try:
+                    brand_ids.append(PydanticObjectId(sp.brand_id))
+                except Exception:
+                    continue
+        brands = await Brand.find({"_id": {"$in": brand_ids}, "is_deleted": False}).to_list() if brand_ids else []
+        brand_map = {str(b.id): b.name for b in brands}
+        
+        # Load existing inventories
+        existing_inventories = await ProductInventory.find(
+            {"salon_id": salon_id, "is_deleted": False}
+        ).sort("-updated_at").to_list()
+        
+        existing_keys = set()
+        duplicates_to_delete = []
+        for inv in existing_inventories:
+            key = (inv.product_id, inv.brand_id)
+            if key in existing_keys:
+                duplicates_to_delete.append(inv)
+            else:
+                existing_keys.add(key)
+
+        if duplicates_to_delete:
+            dup_ids = [dup.id for dup in duplicates_to_delete]
+            await ProductInventory.find({"_id": {"$in": dup_ids}}).update({"$set": {"is_deleted": True}})
+        
+        to_create = []
+        seen_keys = set()
+        for sp in salon_products:
+            key = (sp.product_id, sp.brand_id)
+            if key not in existing_keys and key not in seen_keys:
+                seen_keys.add(key)
+                product_name = product_map.get(sp.product_id) or sp.custom_product_name or "Unknown Product"
+                brand_name = brand_map.get(sp.brand_id) or sp.custom_brand_name or None
+                
+                to_create.append(
+                    ProductInventory(
+                        salon_id=salon_id,
+                        product_id=sp.product_id,
+                        brand_id=sp.brand_id,
+                        product_name_snapshot=product_name,
+                        brand_name_snapshot=brand_name,
+                        category="General",
+                        stock_quantity=0,
+                        min_threshold=5,
+                        buying_price=0.0,
+                        total_value=0.0,
+                        tenant_id=sp.tenant_id or tenant_context.get_tenant_id(),
+                    )
+                )
+                
+        if to_create:
+            await ProductInventory.insert_many(to_create)
 
     async def _resolve_product_for_inventory(
         self,
@@ -133,6 +229,31 @@ class InventoryService:
             },
         )
 
+    async def _create_sold_out_of_stock_alert(
+        self,
+        tx: InventoryTransaction,
+        display_name: str,
+        actor_id: str | None = None,
+    ) -> None:
+        await notification_service.create_business_alert(
+            tenant_id=tx.tenant_id or tenant_context.get_tenant_id(),
+            salon_id=tx.salon_id,
+            alert_type="SOLD_OUT_OF_STOCK",
+            category="INVENTORY",
+            title="Product Sold While Out of Stock",
+            message=f"{display_name} was sold while out of stock (Stock before: {tx.stock_before}, stock after: {tx.stock_after}). Reference: {tx.reference_id or 'None'}.",
+            priority="HIGH",
+            source_id=str(tx.id),
+            metadata={
+                "product_id": tx.product_id,
+                "brand_id": tx.brand_id,
+                "stock_before": tx.stock_before,
+                "stock_after": tx.stock_after,
+                "reference_id": tx.reference_id,
+                "actor_id": actor_id or tx.created_by,
+            },
+        )
+
     async def calculate_product_stock(
         self,
         salon_id: str,
@@ -168,6 +289,18 @@ class InventoryService:
         category: str | None = None,
         brand: str | None = None,
     ) -> list[InventoryStockItem]:
+        # Ensure all active salon products have inventory entries
+        await self._ensure_salon_products_inventory(salon_id)
+
+        # Load active, non-deleted SalonProducts to get selling price and check presence
+        from app.models.salon_product import SalonProduct
+        salon_products = await SalonProduct.find(
+            {"salon_id": salon_id, "is_deleted": False, "status": "ACTIVE"}
+        ).to_list()
+        
+        configured_keys = {(sp.product_id, sp.brand_id) for sp in salon_products}
+        price_map = {(sp.product_id, sp.brand_id): sp.price for sp in salon_products}
+
         query: dict[str, Any] = {"salon_id": salon_id, "is_deleted": False}
         active_tenant = tenant_context.get_tenant_id()
         if active_tenant:
@@ -184,7 +317,24 @@ class InventoryService:
                 {"category": {"$regex": term, "$options": "i"}},
             ]
         items = await ProductInventory.find(query).sort("-updated_at").to_list()
-        return [self._inventory_to_item(item) for item in items]
+        
+        # Filter: only keep items corresponding to currently active, configured salon products
+        # and deduplicate by (product_id, brand_id) so we never return duplicate rows for the same product
+        filtered_items = []
+        seen_filtered_keys = set()
+        for item in items:
+            key = (item.product_id, item.brand_id)
+            if key in configured_keys and key not in seen_filtered_keys:
+                seen_filtered_keys.add(key)
+                filtered_items.append(item)
+
+        return [
+            self._inventory_to_item(
+                item,
+                price_map.get((item.product_id, item.brand_id), 0.0)
+            )
+            for item in filtered_items
+        ]
 
     async def record_purchase(
         self,
@@ -248,6 +398,13 @@ class InventoryService:
             inventory.updated_by = str(actor.id)
             await inventory.save()
 
+        stock_before = await self.calculate_product_stock(
+            salon_id,
+            resolved_product_id,
+            resolved_brand_id,
+        )
+        stock_after = stock_before + quantity
+
         tx = InventoryTransaction(
             salon_id=salon_id,
             product_id=resolved_product_id,
@@ -260,6 +417,9 @@ class InventoryService:
             unit_cost=buying_price,
             notes=notes,
             created_by=str(actor.id),
+            stock_before=stock_before,
+            stock_after=stock_after,
+            sold_while_out_of_stock=False,
         )
         await tx.insert()
         inventory = await self._sync_product_inventory(inventory)
@@ -273,7 +433,7 @@ class InventoryService:
             }
         )
         if not salon_product:
-            await self.salon_product_service.create_salon_product(
+            salon_product = await self.salon_product_service.create_salon_product(
                 actor,
                 SalonProductCreate(
                     product_id=resolved_product_id,
@@ -283,7 +443,8 @@ class InventoryService:
                 salon_id=salon_id,
             )
 
-        return self._inventory_to_item(inventory)
+        selling_price = salon_product.price if salon_product else buying_price
+        return self._inventory_to_item(inventory, selling_price)
 
     async def record_use(
         self,
@@ -297,6 +458,7 @@ class InventoryService:
         reference_id: str | None = None,
         notes: str | None = None,
     ) -> InventoryStockItem:
+        await self._ensure_salon_products_inventory(salon_id)
         normalized_type = (tx_type or "USAGE").upper()
         if normalized_type not in {"USAGE", "SALE"}:
             normalized_type = "USAGE"
@@ -325,10 +487,14 @@ class InventoryService:
             inventory.product_id,
             inventory.brand_id,
         )
-        if current_stock < quantity:
+        if normalized_type != "SALE" and current_stock < quantity:
             raise InsufficientStockException(
                 f"Insufficient stock for {self._display_name(inventory.product_name_snapshot, inventory.brand_name_snapshot)}. Available: {current_stock}, requested: {quantity}"
             )
+
+        stock_before = current_stock
+        stock_after = stock_before - quantity
+        sold_while_out_of_stock = (normalized_type == "SALE" and stock_before <= 0)
 
         tx = InventoryTransaction(
             salon_id=salon_id,
@@ -343,10 +509,34 @@ class InventoryService:
             reference_id=reference_id,
             notes=notes,
             created_by=str(actor.id),
+            stock_before=stock_before,
+            stock_after=stock_after,
+            sold_while_out_of_stock=sold_while_out_of_stock,
         )
         await tx.insert()
         inventory = await self._sync_product_inventory(inventory)
-        return self._inventory_to_item(inventory)
+
+        if sold_while_out_of_stock:
+            display_name = self._display_name(
+                inventory.product_name_snapshot,
+                inventory.brand_name_snapshot,
+            )
+            await self._create_sold_out_of_stock_alert(
+                tx,
+                display_name,
+                actor_id=str(actor.id),
+            )
+
+        salon_product = await SalonProduct.find_one(
+            {
+                "salon_id": salon_id,
+                "product_id": inventory.product_id,
+                "brand_id": inventory.brand_id,
+                "is_deleted": False,
+            }
+        )
+        selling_price = salon_product.price if salon_product else inventory.buying_price
+        return self._inventory_to_item(inventory, selling_price)
 
     async def deduct_sold_product(
         self,
@@ -356,6 +546,7 @@ class InventoryService:
         quantity: int,
         reference_id: str | None,
     ) -> None:
+        await self._ensure_salon_products_inventory(salon_id)
         inventory = await ProductInventory.find_one(
             {
                 "salon_id": salon_id,
@@ -371,10 +562,11 @@ class InventoryService:
             inventory.product_id,
             inventory.brand_id,
         )
-        if current_stock < quantity:
-            raise InsufficientStockException(
-                f"Insufficient stock for {self._display_name(inventory.product_name_snapshot, inventory.brand_name_snapshot)}"
-            )
+        
+        stock_before = current_stock
+        stock_after = stock_before - quantity
+        sold_while_out_of_stock = (stock_before <= 0)
+
         tx = InventoryTransaction(
             salon_id=salon_id,
             product_id=inventory.product_id,
@@ -387,9 +579,24 @@ class InventoryService:
             unit_cost=inventory.buying_price,
             reference_id=reference_id,
             notes="Auto deducted from appointment billing",
+            created_by=tenant_context.get_user_id(),
+            stock_before=stock_before,
+            stock_after=stock_after,
+            sold_while_out_of_stock=sold_while_out_of_stock,
         )
         await tx.insert()
         await self._sync_product_inventory(inventory)
+
+        if sold_while_out_of_stock:
+            display_name = self._display_name(
+                inventory.product_name_snapshot,
+                inventory.brand_name_snapshot,
+            )
+            await self._create_sold_out_of_stock_alert(
+                tx,
+                display_name,
+                actor_id=tenant_context.get_user_id(),
+            )
 
     async def overview(self, salon_id: str) -> InventoryOverview:
         stocks = await self.list_stocks(salon_id)
@@ -498,6 +705,13 @@ class InventoryService:
         stocks = await self.list_stocks(salon_id, category=category, brand=brand)
         product_lookup = {(item.product_id, item.brand_id): item for item in stocks}
 
+        # Build name lookup for all inventory items (including inactive/deleted ones for logs)
+        all_inventories = await ProductInventory.find({"salon_id": salon_id}).to_list()
+        inventory_name_map = {
+            (inv.product_id, inv.brand_id): (inv.product_name_snapshot, inv.brand_name_snapshot)
+            for inv in all_inventories
+        }
+
         total_purchase_cost = 0.0
         usage_cost_summary = 0.0
         category_consumption: dict[str, int] = {}
@@ -533,7 +747,14 @@ class InventoryService:
                 {"brand": key, "amount": round(value, 2)}
                 for key, value in sorted(brand_spending.items())
             ],
-            transactions=[self._transaction_to_item(tx) for tx in filtered_transactions],
+            transactions=[
+                self._transaction_to_item(
+                    tx,
+                    product_name=inventory_name_map.get((tx.product_id, tx.brand_id), (None, None))[0],
+                    brand_name=inventory_name_map.get((tx.product_id, tx.brand_id), (None, None))[1],
+                )
+                for tx in filtered_transactions
+            ],
         )
 
     async def _update_cached_stock(self, item_id: str, salon_id: str) -> int:

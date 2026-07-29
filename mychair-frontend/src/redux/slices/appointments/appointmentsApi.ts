@@ -106,7 +106,7 @@ export const appointmentsApi = baseApi.injectEndpoints({
         method: HTTP_METHODS.POST,
         body,
       }),
-      invalidatesTags: ['Appointments'],
+      invalidatesTags: ['Appointments', 'Inventory'],
     }),
     updateAppointmentPayment: builder.mutation<
       ApiResponse<AppointmentListItem>,
@@ -117,7 +117,7 @@ export const appointmentsApi = baseApi.injectEndpoints({
         method: HTTP_METHODS.PUT,
         body,
       }),
-      invalidatesTags: ['Appointments', 'Bills'],
+      invalidatesTags: ['Appointments', 'Bills', 'Inventory'],
     }),
     listAppointments: builder.query<ApiResponse<PaginatedAppointmentData>, AppointmentListParams>({
       query: (params) => {

@@ -22,6 +22,7 @@ from app.schemas.expense import (
 )
 from app.utils.image_type import detect_image_type
 from app.utils.timezone import now_utc
+from app.utils.url import normalize_public_url
 
 ALLOWED_RECEIPT_MIME_TYPES = {
     "image/jpeg",
@@ -92,7 +93,7 @@ class ExpenseService:
             expense_date=expense.expense_date,
             vendor_name=expense.vendor_name,
             description=expense.description,
-            receipt_url=expense.receipt_url,
+            receipt_url=normalize_public_url(expense.receipt_url),
             created_by=expense.created_by,
             created_by_name=expense.created_by_name,
             created_at=expense.created_at,
@@ -219,7 +220,7 @@ class ExpenseService:
         file_path = self.receipt_dir / file_name
         with open(file_path, "wb") as output:
             output.write(content)
-        public_base = settings.API_V1_STR.rstrip("/")
+        public_base = f"{settings.BACKEND_PUBLIC_URL.rstrip('/')}{settings.API_V1_STR.rstrip('/')}"
         return f"{public_base}/expenses/receipt-files/{file_name}"
 
     def _delete_receipt_file(self, receipt_path: Optional[str]) -> None:

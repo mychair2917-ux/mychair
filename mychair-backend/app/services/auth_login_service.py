@@ -6,6 +6,7 @@ from app.models.user import User
 from app.services.permission_service import PermissionService
 from app.utils.timezone import now_utc
 from app.utils.user_name import user_display_name
+from app.utils.url import normalize_public_url
 
 EMAIL_LOGIN_ROLES = frozenset(
     {"super_admin", "salon_owner", "salon_admin", "salon_manager", "employee"}
@@ -88,7 +89,7 @@ class AuthLoginService:
             "last_name": user.last_name or "",
             "phone": user.phone or "",
             "alternate_phone": user.alternate_phone or "",
-            "avatar": user.avatar,
+            "avatar": normalize_public_url(user.avatar),
             "employee_id": user.employee_id or "",
             "employee_code": user.employee_code or "",
             "branch_name": user.branch_name or "",

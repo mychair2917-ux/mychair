@@ -8,6 +8,7 @@ from app.utils.timezone import now_utc
 
 
 from app.utils.user_name import user_display_name
+from app.utils.url import normalize_public_url
 
 
 def _full_name_from_user(user: User) -> str:
@@ -67,7 +68,7 @@ class SalonOwnerAuthService:
             "last_name": user.last_name or "",
             "phone": user.phone or "",
             "alternate_phone": user.alternate_phone or "",
-            "avatar": user.avatar,
+            "avatar": normalize_public_url(user.avatar),
             "employee_id": user.employee_id or "",
             "employee_code": user.employee_code or "",
             "branch_name": user.branch_name or "",

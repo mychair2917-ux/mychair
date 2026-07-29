@@ -59,6 +59,7 @@ class InventoryStockItem(BaseModel):
     stock_quantity: int
     min_threshold: int
     buying_price: float
+    selling_price: float
     total_value: float
     status: str
     last_updated: datetime
@@ -75,6 +76,11 @@ class InventoryTransactionItem(BaseModel):
     price: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
+    stock_before: Optional[int] = None
+    stock_after: Optional[int] = None
+    sold_while_out_of_stock: Optional[bool] = None
+    product_name: Optional[str] = None
+    brand_name: Optional[str] = None
 
 
 class InventoryOverview(BaseModel):

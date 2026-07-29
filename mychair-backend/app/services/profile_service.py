@@ -17,6 +17,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.profile import ChangePasswordRequest, ProfileResponse, ProfileUpdateRequest
 from app.services.permission_service import PermissionService
 from app.utils.image_type import detect_image_type
+from app.utils.url import normalize_public_url
 
 
 ALLOWED_IMAGE_TYPES = {"jpeg", "png"}
@@ -79,7 +80,7 @@ class ProfileService:
             alternate_phone=user.alternate_phone,
             gender=user.gender,
             dob=user.dob,
-            avatar=user.avatar,
+            avatar=normalize_public_url(user.avatar),
             address=user.address,
             city=user.city,
             state=user.state,
@@ -197,7 +198,7 @@ class ProfileService:
         file_path = self.avatar_dir / file_name
         with open(file_path, "wb") as output:
             output.write(content)
-        public_base = settings.API_V1_STR.rstrip("/")
+        public_base = f"{settings.BACKEND_PUBLIC_URL.rstrip('/')}{settings.API_V1_STR.rstrip('/')}"
         return f"{public_base}/profile/avatar-files/{file_name}"
 
     def _delete_avatar_file(self, avatar_path: Optional[str]) -> None:

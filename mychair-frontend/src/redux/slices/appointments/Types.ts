@@ -22,6 +22,7 @@ export interface AppointmentProductOption {
   product_id?: string | null;
   brand_id?: string | null;
   brand_name?: string | null;
+  stock_quantity?: number;
 }
 
 export interface AppointmentStaffOption {

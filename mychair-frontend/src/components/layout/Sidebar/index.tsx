@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { ChevronDown, LogOut, Menu, PanelLeftClose } from 'lucide-react';
 
-import { getSidebarNavItems } from '../../../config/rbac';
+import { canApproveLeave, getSidebarNavItems } from '../../../config/rbac';
 import { useAuthActions } from '../../../hooks/useAuthActions';
 import { useAppSelector } from '../../../redux/hooks';
 import { getUserDisplayName } from '../../../redux/slices/auth/authSlice';
+import { useListPendingLeaveQuery } from '../../../redux/slices/leave/leaveApi';
 import { cn } from '../../../utils/cn';
 import {
   SIDEBAR_WIDTH_COLLAPSED,
@@ -41,11 +42,37 @@ const Sidebar: React.FC = () => {
   const user = useAppSelector((state) => state.auth.user);
   const storedOrgId = useAppSelector((state) => state.auth.orgId);
   const permissions = useAppSelector((state) => state.auth.permissions);
+  const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
   const { isLoggingOut, logoutUser } = useAuthActions();
   const effectiveOrgId = orgId ?? storedOrgId ?? undefined;
   const displayName = getUserDisplayName(user);
 
-  const navItems = getSidebarNavItems(user?.role, effectiveOrgId, permissions);
+  const canApprove = canApproveLeave(user?.role);
+  const { data: pendingLeaveData } = useListPendingLeaveQuery(
+    {
+      page: 1,
+      limit: 1,
+      salon_id: selectedSalonId || undefined,
+    },
+    { skip: !canApprove }
+  );
+  const pendingCount = pendingLeaveData?.data?.total ?? 0;
+
+  const navItems = useMemo(() => {
+    const items = getSidebarNavItems(user?.role, effectiveOrgId, permissions);
+    if (pendingCount > 0) {
+      return items.map((item) => {
+        if (item.name === 'Leave') {
+          return {
+            ...item,
+            badge: String(pendingCount),
+          };
+        }
+        return item;
+      });
+    }
+    return items;
+  }, [user?.role, effectiveOrgId, permissions, pendingCount]);
 
   const isPathActive = useCallback(
     (path: string) =>
@@ -312,15 +339,22 @@ const Sidebar: React.FC = () => {
                       isSidebarOpen ? 'flex-1' : 'justify-center'
                     )}
                   >
-                    <item.icon
-                      className={cn(
-                        iconClass,
-                        'transition-colors duration-200',
-                        linkActive
-                          ? 'text-[var(--color-brand-gold-light)]'
-                          : 'text-[var(--color-sidebar-icon)] group-hover:text-[var(--color-brand-gold-light)]'
+                    <div className="relative">
+                      <item.icon
+                        className={cn(
+                          iconClass,
+                          'transition-colors duration-200',
+                          linkActive
+                            ? 'text-[var(--color-brand-gold-light)]'
+                            : 'text-[var(--color-sidebar-icon)] group-hover:text-[var(--color-brand-gold-light)]'
+                        )}
+                      />
+                      {!isSidebarOpen && item.badge && (
+                        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--color-brand-gold)] text-[9px] font-bold text-white ring-2 ring-[var(--color-sidebar-bg)]">
+                          {item.badge}
+                        </span>
                       )}
-                    />
+                    </div>
                     {isSidebarOpen && (
                       <span className={cn(labelClass, 'ml-3')}>{item.name}</span>
                     )}

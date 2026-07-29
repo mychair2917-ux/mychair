@@ -237,8 +237,56 @@ async def search_clients(
     effective_tenant_id = _effective_tenant_id(current_user)
     if effective_tenant_id:
         query["tenant_id"] = effective_tenant_id
-    customers = await Customer.find(query).limit(8).to_list()
-    return success_response("Clients retrieved successfully", data=[_customer_response(c) for c in customers])
+    
+    customers = await Customer.find(query).limit(50).to_list()
+
+    def get_relevance_score(c: Customer) -> tuple:
+        term_lower = term.lower()
+        full_name_lower = c.full_name.strip().lower()
+        first_name_lower = (c.first_name or "").strip().lower()
+        last_name_lower = (c.last_name or "").strip().lower()
+        phone = c.phone or ""
+        email_lower = (c.email or "").strip().lower()
+        
+        digits_term = re.sub(r"\D", "", term)
+        
+        # 1. Exact phone number match
+        if digits_term and (phone == term or phone == digits_term):
+            return (0, 0, len(phone))
+        
+        # 2. Phone number starts with search text
+        if digits_term and phone.startswith(digits_term):
+            return (1, 0, len(phone))
+        if phone.startswith(term):
+            return (1, 1, len(phone))
+            
+        # 3. Exact client name match
+        if full_name_lower == term_lower:
+            return (2, 0, len(full_name_lower))
+            
+        # 4. Client name starts with search text
+        if full_name_lower.startswith(term_lower) or first_name_lower.startswith(term_lower):
+            return (3, 0, len(full_name_lower))
+        if last_name_lower.startswith(term_lower):
+            return (3, 1, len(full_name_lower))
+            
+        # 5. Client name contains search text
+        if term_lower in full_name_lower:
+            idx = full_name_lower.find(term_lower)
+            return (4, idx, len(full_name_lower))
+            
+        # 6. Other partial matches
+        if term_lower in phone or (digits_term and digits_term in phone):
+            return (5, 0, len(phone))
+        if term_lower in email_lower:
+            return (5, 1, len(email_lower))
+            
+        return (6, 0, len(full_name_lower))
+
+    customers.sort(key=get_relevance_score)
+    top_customers = customers[:10]
+
+    return success_response("Clients retrieved successfully", data=[_customer_response(c) for c in top_customers])
 
 
 @router.get("/clients/check-phone")
@@ -418,6 +466,12 @@ async def list_salon_products_for_appointments(
     current_user: User = Depends(PermissionChecker("appointments.view")),
 ):
     resolved_salon_id = _resolve_salon_scope(current_user, salon_id)
+    
+    # Ensure inventory is created and synchronized
+    from app.services.inventory import InventoryService
+    inventory_service = InventoryService()
+    await inventory_service._ensure_salon_products_inventory(resolved_salon_id)
+
     salon_products = await SalonProduct.find(
         SalonProduct.salon_id == resolved_salon_id,
         SalonProduct.is_deleted == False,
@@ -451,6 +505,12 @@ async def list_salon_products_for_appointments(
         brands = await Brand.find({"_id": {"$in": brand_ids}, "is_deleted": False}).to_list()
     brand_map = {str(item.id): item for item in brands}
 
+    from app.models.inventory import ProductInventory
+    inventories = await ProductInventory.find(
+        {"salon_id": resolved_salon_id, "is_deleted": False}
+    ).to_list()
+    inventory_map = {(inv.product_id, inv.brand_id): inv.stock_quantity for inv in inventories}
+
     payload = []
     for salon_product in salon_products:
         base_product_name = (
@@ -466,6 +526,7 @@ async def list_salon_products_for_appointments(
         product_name = (
             f"{base_product_name} ({brand_name})" if brand_name else base_product_name
         )
+        stock_qty = inventory_map.get((salon_product.product_id, salon_product.brand_id), 0)
         payload.append(
             {
                 "salon_product_id": str(salon_product.id),
@@ -474,6 +535,7 @@ async def list_salon_products_for_appointments(
                 "product_id": salon_product.product_id,
                 "brand_id": salon_product.brand_id,
                 "brand_name": brand_name,
+                "stock_quantity": stock_qty,
             }
         )
 

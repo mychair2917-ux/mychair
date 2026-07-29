@@ -388,6 +388,10 @@ const Services: React.FC = () => {
       showToast('warning', 'Select or create a product before adding');
       return;
     }
+    if (!brandName) {
+      showToast('warning', 'Select or enter a brand before adding');
+      return;
+    }
     if (!productDraft.price || Number.isNaN(price) || price < 0) {
       showToast('warning', 'Enter a valid price before adding');
       return;
@@ -478,6 +482,10 @@ const Services: React.FC = () => {
 
     if (!productName) {
       showToast('warning', 'Select or create a product before saving');
+      return;
+    }
+    if (!brandName) {
+      showToast('warning', 'Select or enter a brand before saving');
       return;
     }
     if (!editProductDraft.price || Number.isNaN(price) || price < 0) {
@@ -945,7 +953,7 @@ const Services: React.FC = () => {
                 </div>
               </FormField>
 
-              <FormField label="Brand" name="brandName">
+              <FormField label="Brand" name="brandName" required>
                 <div className="space-y-2">
                   <CommonDropdown
                     options={brandOptions}
@@ -1257,7 +1265,7 @@ const Services: React.FC = () => {
             </div>
           </FormField>
 
-          <FormField label="Brand" name="editBrandName">
+          <FormField label="Brand" name="editBrandName" required>
             <div className="space-y-2">
               <CommonDropdown
                 options={brandOptions}

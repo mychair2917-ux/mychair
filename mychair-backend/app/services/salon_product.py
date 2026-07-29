@@ -315,6 +315,9 @@ class SalonProductService:
         if not item:
             raise ResourceNotFoundException("Salon product not found")
 
+        old_product_id = item.product_id
+        old_brand_id = item.brand_id
+
         resolved_product_id, product_name = await self._get_or_create_product(
             actor, payload, resolved_salon_id
         )
@@ -342,6 +345,47 @@ class SalonProductService:
         item.status = payload.status
         item.updated_by = str(actor.id)
         await item.save()
+
+        # Sync to ProductInventory snapshot
+        from app.models.inventory import ProductInventory
+        
+        # Check if new inventory key already exists
+        existing_new_inventory = await ProductInventory.find_one({
+            "salon_id": resolved_salon_id,
+            "product_id": resolved_product_id,
+            "brand_id": resolved_brand_id,
+            "is_deleted": False,
+        })
+        
+        old_inventory = await ProductInventory.find_one({
+            "salon_id": resolved_salon_id,
+            "product_id": old_product_id,
+            "brand_id": old_brand_id,
+            "is_deleted": False,
+        })
+        
+        if old_inventory:
+            if existing_new_inventory and existing_new_inventory.id != old_inventory.id:
+                # Merge old inventory into the existing new inventory
+                existing_new_inventory.stock_quantity += old_inventory.stock_quantity
+                existing_new_inventory.product_name_snapshot = product_name
+                existing_new_inventory.brand_name_snapshot = brand_name
+                existing_new_inventory.buying_price = payload.price
+                existing_new_inventory.total_value = round(existing_new_inventory.stock_quantity * payload.price, 2)
+                await existing_new_inventory.save()
+                
+                # Soft delete the old inventory
+                old_inventory.is_deleted = True
+                await old_inventory.save()
+            else:
+                # Update old inventory with new key and snapshots
+                old_inventory.product_id = resolved_product_id
+                old_inventory.brand_id = resolved_brand_id
+                old_inventory.product_name_snapshot = product_name
+                old_inventory.brand_name_snapshot = brand_name
+                old_inventory.buying_price = payload.price
+                old_inventory.total_value = round(old_inventory.stock_quantity * payload.price, 2)
+                await old_inventory.save()
 
         return SalonProductListItem(
             id=str(item.id),
@@ -374,3 +418,15 @@ class SalonProductService:
         item.is_deleted = True
         item.updated_by = str(actor.id)
         await item.save()
+
+        # Soft delete the corresponding ProductInventory as well
+        from app.models.inventory import ProductInventory
+        inventory = await ProductInventory.find_one({
+            "salon_id": resolved_salon_id,
+            "product_id": item.product_id,
+            "brand_id": item.brand_id,
+            "is_deleted": False,
+        })
+        if inventory:
+            inventory.is_deleted = True
+            await inventory.save()

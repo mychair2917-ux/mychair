@@ -25,6 +25,7 @@ export interface InventoryStockItem {
   stock_quantity: number;
   min_threshold: number;
   buying_price: number;
+  selling_price: number;
   total_value: number;
   status: 'OK' | 'LOW' | 'CRITICAL';
   last_updated: string;
@@ -41,6 +42,11 @@ export interface InventoryTransactionItem {
   price?: number | null;
   notes?: string | null;
   created_at: string;
+  stock_before?: number | null;
+  stock_after?: number | null;
+  sold_while_out_of_stock?: boolean | null;
+  product_name?: string | null;
+  brand_name?: string | null;
 }
 
 export interface InventoryReports {
