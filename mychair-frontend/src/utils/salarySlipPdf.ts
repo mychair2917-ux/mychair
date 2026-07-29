@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 
 import { SalarySlip } from '../redux/slices/payroll/Types';
 import { formatDateDMY } from './utilities';
+import { resolveMediaUrl } from './media';
 import { formatCurrencyPdf, stringifyAddress, wrapText } from './pdfHelpers';
 
 const INK = [28, 28, 28] as [number, number, number];
@@ -41,7 +42,7 @@ export function downloadSalarySlipPDF(slip: SalarySlip): void {
   const salonPhone = (slip.salon_phone || '').trim();
   const salonEmail = (slip.salon_email || '').trim();
   const salonAddress = stringifyAddress(slip.salon_address);
-  const salonLogo = slip.salon_logo_url || '';
+  const salonLogo = resolveMediaUrl(slip.salon_logo_url);
   const period = `${MONTH_LABELS[slip.month - 1] ?? slip.month} ${slip.year}`;
 
   let y = MARGIN;

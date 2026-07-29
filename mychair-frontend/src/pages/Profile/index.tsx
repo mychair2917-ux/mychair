@@ -22,6 +22,7 @@ import { ProfileData, UpdateProfileRequest } from '../../redux/slices/profile/Ty
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { formatPersonName } from '../../utils/personName';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
+import { resolveMediaUrl } from '../../utils/media';
 
 type ProfileFormState = {
   first_name: string;
@@ -122,7 +123,7 @@ const Profile: React.FC = () => {
     }
   }, [profile]);
 
-  const displayAvatar = avatarPreview || profile?.avatar || authUser?.avatar || null;
+  const displayAvatar = avatarPreview || resolveMediaUrl(profile?.avatar) || resolveMediaUrl(authUser?.avatar) || null;
   const displayName = formatPersonName(
     {
       full_name: profile?.full_name,

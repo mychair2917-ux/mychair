@@ -21,6 +21,8 @@ import { useGetUnreadNotificationCountQuery } from '../../../redux/slices/notifi
 import { useSidebar } from '../SidebarContext';
 import { cn } from '../../../utils/cn';
 
+import { resolveMediaUrl } from '../../../utils/media';
+
 const Header: React.FC = () => {
   const dispatch = useAppDispatch();
   const { isSidebarOpen, isDesktop } = useSidebar();
@@ -160,7 +162,7 @@ const Header: React.FC = () => {
               <div className="flex h-full w-full items-center justify-center rounded-full border-2 border-white bg-white">
                 {user?.avatar ? (
                   <img
-                    src={user.avatar}
+                    src={resolveMediaUrl(user.avatar)}
                     alt={displayName || 'User avatar'}
                     className="h-full w-full rounded-full object-cover"
                   />

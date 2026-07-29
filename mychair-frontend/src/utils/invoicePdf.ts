@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { BillDetail, BillListItem } from '../redux/slices/billing/Types';
 import { formatDateDMY } from './utilities';
+import { resolveMediaUrl } from './media';
 import { formatCurrencyPdf, stringifyAddress, wrapText } from './pdfHelpers';
 
 const INK = [28, 28, 28] as [number, number, number];
@@ -44,7 +45,7 @@ export function downloadInvoicePDF(bill: BillListItem | BillDetail): void {
   const salonAddress = stringifyAddress(detail.salon?.address || bill.salon_address);
   const salonEmail = (detail.salon?.email || '').trim();
   const salonGst = (detail.salon?.gst_number || '').trim();
-  const salonLogo = detail.salon?.logo_url || '';
+  const salonLogo = resolveMediaUrl(detail.salon?.logo_url);
 
   const customerName = detail.customer?.name || bill.customer_name || 'Customer';
   const customerPhone = detail.customer?.phone || bill.customer_phone || '-';

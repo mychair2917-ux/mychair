@@ -33,6 +33,7 @@ import { cn } from '../../utils/cn';
 import { formatCurrency } from '../../utils/currency';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
+import { resolveMediaUrl } from '../../utils/media';
 
 const LIMIT = 20;
 
@@ -83,7 +84,7 @@ const ReceiptUploadBox: React.FC<{
   onSelect: (file: File | null) => void;
 }> = ({ file, previewUrl, existingUrl, onSelect }) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const displayUrl = previewUrl || existingUrl || null;
+  const displayUrl = previewUrl || resolveMediaUrl(existingUrl) || null;
   const isPdf = file?.type === 'application/pdf' || existingUrl?.toLowerCase().endsWith('.pdf');
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,7 +136,7 @@ const ReceiptUploadBox: React.FC<{
         </Button>
         {existingUrl && (
           <a
-            href={existingUrl}
+            href={resolveMediaUrl(existingUrl)}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-border-soft)] px-3 py-2 text-xs font-semibold text-[var(--color-brand-gold-dark)]"
@@ -299,7 +300,7 @@ const ViewExpenseModal: React.FC<{
           )}
           {expense.receipt_url && (
             <a
-              href={expense.receipt_url}
+              href={resolveMediaUrl(expense.receipt_url)}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-xl bg-[var(--color-brand-gold-light)]/20 px-3 py-2 text-sm font-semibold text-[var(--color-brand-gold-dark)]"
@@ -627,7 +628,7 @@ const ExpensesSection: React.FC<{ activeTab: string; salonId: string }> = ({ act
                     <td className="px-4 py-4">
                       {row.receipt_url ? (
                         <a
-                          href={row.receipt_url}
+                          href={resolveMediaUrl(row.receipt_url)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-brand-gold-dark)]"

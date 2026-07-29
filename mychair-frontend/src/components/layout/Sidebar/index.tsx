@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { ChevronDown, LogOut, Menu, PanelLeftClose } from 'lucide-react';
 
 import { canApproveLeave, getSidebarNavItems } from '../../../config/rbac';
+import { resolveMediaUrl } from '../../../utils/media';
 import { useAuthActions } from '../../../hooks/useAuthActions';
 import { useAppSelector } from '../../../redux/hooks';
 import { getUserDisplayName } from '../../../redux/slices/auth/authSlice';
@@ -389,7 +390,7 @@ const Sidebar: React.FC = () => {
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.08)]">
               {user?.avatar ? (
                 <img
-                  src={user.avatar}
+                  src={resolveMediaUrl(user.avatar)}
                   alt={displayName || 'User avatar'}
                   className="h-full w-full object-cover"
                 />
