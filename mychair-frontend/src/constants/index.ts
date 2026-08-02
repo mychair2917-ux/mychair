@@ -26,6 +26,8 @@ export const ROUTE_PATHS = {
   ROOT: '',
   LOGIN: 'auth/login',
   LEGACY_LOGIN: 'login',
+  FORGOT_PASSWORD: 'forgot-password',
+  RESET_PASSWORD: 'reset-password',
   NOT_FOUND: '404',
   CATCH_ALL: '*',
 
@@ -116,4 +118,6 @@ export const PUBLIC_ROUTES = [
   `/${ROUTE_PATHS.ROOT}`,
   `/${ROUTE_PATHS.CREATE_PASSWORD}`,
   `/${ROUTE_PATHS.SALON_OWNER_LOGIN}`,
+  `/${ROUTE_PATHS.FORGOT_PASSWORD}`,
+  `/${ROUTE_PATHS.RESET_PASSWORD}`,
 ];

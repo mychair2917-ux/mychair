@@ -63,6 +63,30 @@ export interface ResetPasswordResponse {
   detail?: string;
 }
 
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface ValidateResetTokenResponse {
+  valid: boolean;
+}
+
+export interface ResetPasswordSubmitRequest {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface ResetPasswordSubmitResponse {
+  success: boolean;
+  message: string;
+}
+
 export interface GetLogOutUserResponse {
   message: string;
 }
@@ -70,3 +94,4 @@ export interface GetLogOutUserResponse {
 export interface GetLogOutUserParams {
   refresh_token: string | null;
 }
+

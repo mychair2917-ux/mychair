@@ -21,3 +21,8 @@ export { default as RolesPermissions } from './RolesPermissions';
 export { default as SubscriptionManagement } from './SubscriptionManagement';
 export { default as SubscriptionExpired } from './SubscriptionExpired';
 export { default as NotificationsCommunication } from './NotificationsCommunication';
+export { default as ForgotPassword } from './ForgotPassword';
+export { default as ResetPassword } from './ResetPassword';
+
+
+

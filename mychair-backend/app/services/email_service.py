@@ -380,3 +380,89 @@ async def send_invitation_email(
         subject=f"MyChair — Invitation to manage {salon_name}",
         html=html_content,
     )
+
+
+def _build_password_reset_email_html(
+    *,
+    recipient_name: str,
+    reset_link: str,
+) -> str:
+    greeting_name = recipient_name.strip() or "there"
+    support_email = settings.RESEND_FROM_EMAIL.strip() or "support@mychair.com"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reset your password</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f4f5;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:32px 40px;text-align:center;">
+              <h1 style="margin:0;color:#d4a853;font-size:28px;font-weight:700;letter-spacing:1px;">MyChair</h1>
+              <p style="margin:8px 0 0;color:#a0a0b0;font-size:13px;letter-spacing:2px;text-transform:uppercase;">Salon Management System</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px;">
+              <h2 style="margin:0 0 16px;color:#1a1a2e;font-size:22px;font-weight:600;">Reset your password</h2>
+              <p style="margin:0 0 16px;color:#4a4a5a;font-size:15px;line-height:1.6;">
+                Hello {greeting_name},
+              </p>
+              <p style="margin:0 0 24px;color:#4a4a5a;font-size:15px;line-height:1.6;">
+                We received a request to reset your password. Click the button below.
+              </p>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto 28px;">
+                <tr>
+                  <td style="border-radius:8px;background:linear-gradient(135deg,#d4a853,#b8923f);">
+                    <a href="{reset_link}" target="_blank"
+                       style="display:inline-block;padding:14px 36px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;">
+                      Reset Password
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 12px;color:#8a8a9a;font-size:13px;line-height:1.5;">
+                This link expires in 15 minutes.
+              </p>
+              <p style="margin:0;color:#8a8a9a;font-size:13px;line-height:1.5;">
+                If you didn't request this, simply ignore this email.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 40px;background:#f8f8fa;border-top:1px solid #e8e8ec;text-align:center;">
+              <p style="margin:0;color:#8a8a9a;font-size:12px;">
+                &copy; MyChair Salon Management &mdash; Need help? Contact {support_email}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+async def send_password_reset_email(
+    to_email: str,
+    reset_link: str,
+    recipient_name: str = "",
+) -> Tuple[bool, Optional[str]]:
+    """Send responsive password reset email via Resend API."""
+    html_content = _build_password_reset_email_html(
+        recipient_name=recipient_name,
+        reset_link=reset_link,
+    )
+    return await _send_templated_email(
+        to_email=to_email,
+        subject="Reset your password",
+        html=html_content,
+    )
+

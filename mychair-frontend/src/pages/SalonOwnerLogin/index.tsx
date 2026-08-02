@@ -11,6 +11,8 @@ import { useSalonOwnerLoginMutation } from '../../redux/slices/salonOwner/salonO
 import { SalonOwnerLoginRequest } from '../../redux/slices/salonOwner/Types';
 import { SalonOwnerLoginSchema } from '../../validations/InvitationSchema';
 
+import { hashPassword } from '../../utils/crypto';
+
 const SalonOwnerLogin: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,7 +25,8 @@ const SalonOwnerLogin: React.FC = () => {
     { setSubmitting }: { setSubmitting: (v: boolean) => void }
   ) => {
     try {
-      const response = await salonOwnerLogin(values).unwrap();
+      const hashedPassword = await hashPassword(values.password);
+      const response = await salonOwnerLogin({ ...values, password: hashedPassword }).unwrap();
       if (response.success && response.data) {
         const { access_token, refresh_token, role, salon_id, email, username, id } = response.data;
         dispatch(

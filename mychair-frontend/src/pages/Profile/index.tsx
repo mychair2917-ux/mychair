@@ -23,6 +23,7 @@ import { getApiErrorMessage } from '../../utils/apiErrors';
 import { formatPersonName } from '../../utils/personName';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
 import { resolveMediaUrl } from '../../utils/media';
+import { hashPassword } from '../../utils/crypto';
 
 type ProfileFormState = {
   first_name: string;
@@ -299,7 +300,14 @@ const Profile: React.FC = () => {
     event.preventDefault();
     if (!validatePassword()) return;
     try {
-      await changePassword(passwordState).unwrap();
+      const hashedCurrentPassword = await hashPassword(passwordState.current_password);
+      const hashedNewPassword = await hashPassword(passwordState.new_password);
+      const hashedConfirmPassword = await hashPassword(passwordState.confirm_password);
+      await changePassword({
+        current_password: hashedCurrentPassword,
+        new_password: hashedNewPassword,
+        confirm_password: hashedConfirmPassword,
+      }).unwrap();
       showToast('success', 'Password changed successfully');
       setPasswordState(initialPasswordState);
       setPasswordErrors({});

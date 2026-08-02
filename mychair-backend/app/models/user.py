@@ -25,6 +25,9 @@ class User(BaseTenantDocument):
     is_active: bool = Field(default=True)
     last_login: Optional[datetime] = Field(default=None)
     refresh_token_version: int = Field(default=0)
+    resetPasswordTokenHash: Optional[str] = Field(default=None)
+    resetPasswordExpiresAt: Optional[datetime] = Field(default=None)
+    passwordChangedAt: Optional[datetime] = Field(default=None)
 
     # Optional display names (not required for auth)
     first_name: Optional[str] = Field(default=None, max_length=50)
@@ -74,5 +77,6 @@ class User(BaseTenantDocument):
             [("tenant_id", 1), ("employee_id", 1)],
             [("tenant_id", 1), ("employee_code", 1)],
             [("tenant_id", 1), ("branch_id", 1)],
+            [("resetPasswordTokenHash", 1)],
             "is_deleted",
         ]

@@ -11,6 +11,8 @@ import { useCreatePasswordMutation, useValidateInvitationQuery } from '../../red
 import { ApiErrorResponse } from '../../redux/slices/api/Types';
 import { CreatePasswordSchema } from '../../validations/InvitationSchema';
 
+import { hashPassword } from '../../utils/crypto';
+
 interface CreatePasswordFormValues {
   password: string;
   confirm_password: string;
@@ -141,10 +143,12 @@ const CreatePassword: React.FC = () => {
     { setSubmitting }: { setSubmitting: (v: boolean) => void }
   ) => {
     try {
+      const hashedPassword = await hashPassword(values.password);
+      const hashedConfirmPassword = await hashPassword(values.confirm_password);
       const response = await createPassword({
         token,
-        password: values.password,
-        confirm_password: values.confirm_password,
+        password: hashedPassword,
+        confirm_password: hashedConfirmPassword,
       }).unwrap();
 
       if (response.success) {

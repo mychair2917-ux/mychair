@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Any, Dict, Optional
 
 
@@ -61,3 +61,41 @@ class TokenData(BaseModel):
             role=claims.get("role", ""),
             exp=claims.get("exp"),
         )
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    success: bool = True
+    message: str = "If an account exists, a password reset link has been sent."
+
+
+class ValidateResetTokenResponse(BaseModel):
+    valid: bool
+
+
+class ResetPasswordFormRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=8)
+    confirmPassword: str = Field(..., min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long.")
+        return v
+
+    @model_validator(mode="after")
+    def validate_passwords_match(self) -> "ResetPasswordFormRequest":
+        if self.password != self.confirmPassword:
+            raise ValueError("Passwords do not match.")
+        return self
+
+
+class ResetPasswordFormResponse(BaseModel):
+    success: bool = True
+    message: str = "Password updated successfully."
+

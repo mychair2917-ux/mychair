@@ -7,6 +7,7 @@ export const API_PATHS = {
     RESET_PASSWORD: '/auth/reset-password',
     LOGOUT_USER: '/auth/logout',
     RESET_PASSWORD_LINK: '/auth/forgot-password',
+    VALIDATE_RESET_TOKEN: '/auth/validate-reset-token',
   },
   INVITATIONS: {
     CREATE: '/invites',

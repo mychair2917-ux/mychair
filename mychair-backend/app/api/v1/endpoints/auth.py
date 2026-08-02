@@ -1,15 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.api.dependencies.auth import get_current_user
 from app.core.exceptions import AuthException
 from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest
+from app.schemas.auth import (
+    LoginRequest,
+    TokenResponse,
+    RefreshRequest,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ValidateResetTokenResponse,
+    ResetPasswordFormRequest,
+    ResetPasswordFormResponse,
+)
 from app.schemas.invitation import SalonOwnerLoginRequest, TeamLoginRequest
 from app.services.auth_login_service import AuthLoginService
 from app.services.salon_owner_auth_service import SalonOwnerAuthService
 from app.services.team_auth_service import TeamAuthService
 from app.services.auth_refresh_service import AuthRefreshService
+from app.services.forgot_password_service import ForgotPasswordService
+from app.core.rate_limit import get_client_ip
 from app.utils.api_response import success_response, error_response
 from app.core import tenant_context
 from pydantic import BaseModel, EmailStr
@@ -20,6 +31,7 @@ auth_login_service = AuthLoginService()
 salon_owner_auth_service = SalonOwnerAuthService()
 team_auth_service = TeamAuthService()
 auth_refresh_service = AuthRefreshService()
+forgot_password_service = ForgotPasswordService()
 
 class BootstrapTenantRequest(BaseModel):
     tenant_name: str
@@ -165,3 +177,38 @@ async def logout(
     current_user.last_login = now_utc()
     await current_user.save()
     return success_response("Logged out successfully")
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(payload: ForgotPasswordRequest, request: Request):
+    """
+    Sends password reset link to user's registered email.
+    Always returns success to prevent email enumeration.
+    """
+    client_ip = get_client_ip(request)
+    return await forgot_password_service.request_password_reset(
+        email=payload.email,
+        client_ip=client_ip,
+    )
+
+
+@router.get("/validate-reset-token", response_model=ValidateResetTokenResponse)
+async def validate_reset_token(token: str = ""):
+    """
+    Validates whether the provided password reset token is valid and not expired.
+    """
+    return await forgot_password_service.validate_reset_token(raw_token=token)
+
+
+@router.post("/reset-password", response_model=ResetPasswordFormResponse)
+async def reset_password(payload: ResetPasswordFormRequest):
+    """
+    Resets the user's password using a valid reset token.
+    Invalidates all active user sessions upon success.
+    """
+    return await forgot_password_service.reset_password(
+        raw_token=payload.token,
+        password=payload.password,
+        confirm_password=payload.confirmPassword,
+    )
+

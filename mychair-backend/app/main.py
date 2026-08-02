@@ -112,7 +112,10 @@ async def salon_erp_exception_handler(request: Request, exc: SalonERPException) 
     )
 
 
+from app.api.v1.endpoints import auth
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth Direct"])
 
 
 @app.get("/health")

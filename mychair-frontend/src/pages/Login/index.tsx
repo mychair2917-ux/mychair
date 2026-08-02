@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 
@@ -7,6 +7,8 @@ import { Button } from '../../components/common';
 import { ROLES, ROUTE_PATHS } from '../../constants';
 import { setCredentials } from '../../redux/slices/auth/authSlice';
 import { useLoginMutation } from '../../redux/slices/auth/authApi';
+
+import { hashPassword } from '../../utils/crypto';
 
 interface LoginProps {
   isLoggedOut?: boolean;
@@ -41,7 +43,8 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
     setErrorMsg('');
 
     try {
-      const response = await login({ email, password }).unwrap();
+      const hashedPassword = await hashPassword(password);
+      const response = await login({ email, password: hashedPassword }).unwrap();
 
       // Store credentials
       dispatch(
@@ -193,12 +196,20 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="login-password"
-                  className="text-sm font-medium tracking-[-0.01em] text-[var(--color-text-primary)]"
-                >
-                  Password
-                </label>
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="login-password"
+                    className="text-sm font-medium tracking-[-0.01em] text-[var(--color-text-primary)]"
+                  >
+                    Password
+                  </label>
+                  <Link
+                    to={`/${ROUTE_PATHS.FORGOT_PASSWORD}`}
+                    className="text-xs font-medium text-[var(--color-brand-gold-dark)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-gold)] rounded"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
                 <div className="relative">
                   <Lock
                     className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-tertiary)]"

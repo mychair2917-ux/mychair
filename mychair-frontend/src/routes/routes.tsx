@@ -55,6 +55,13 @@ const SubscriptionExpired = lazy(() =>
 const NotificationsCommunication = lazy(() =>
   import('../pages').then((module) => ({ default: module.NotificationsCommunication }))
 );
+const ForgotPassword = lazy(() =>
+  import('../pages').then((module) => ({ default: module.ForgotPassword }))
+);
+const ResetPassword = lazy(() =>
+  import('../pages').then((module) => ({ default: module.ResetPassword }))
+);
+
 
 const protectOrg = (module: (typeof MODULES)[keyof typeof MODULES], element: React.ReactNode) => (
   <ProtectedRoute module={module}>
@@ -95,6 +102,13 @@ export const routes: RouteObject[] = [
       { path: ROUTE_PATHS.LOGIN, element: <Login /> },
       { path: ROUTE_PATHS.CREATE_PASSWORD, element: <CreatePassword /> },
       { path: ROUTE_PATHS.SALON_OWNER_LOGIN, element: <SalonOwnerLogin /> },
+      { path: ROUTE_PATHS.FORGOT_PASSWORD, element: <ForgotPassword /> },
+      { path: ROUTE_PATHS.RESET_PASSWORD, element: <ResetPassword /> },
+      { path: 'auth/forgot-password', element: <ForgotPassword /> },
+      { path: 'auth/reset-password', element: <ResetPassword /> },
+
+
+
 
       {
         path: ROUTE_PATHS.ADMIN_DASHBOARD,

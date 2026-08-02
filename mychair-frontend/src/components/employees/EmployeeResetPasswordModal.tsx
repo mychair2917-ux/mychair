@@ -6,6 +6,7 @@ import ModalBody from '../common/Modal/ModalBody';
 import ModalFooter from '../common/Modal/ModalFooter';
 import ModalHeader from '../common/Modal/ModalHeader';
 import { EmployeeListItem } from '../../redux/slices/employees/Types';
+import { hashPassword } from '../../utils/crypto';
 
 interface EmployeeResetPasswordModalProps {
   open: boolean;
@@ -47,7 +48,9 @@ const EmployeeResetPasswordModal: React.FC<EmployeeResetPasswordModalProps> = ({
       return;
     }
     setError('');
-    await onSubmit(password, confirmPassword);
+    const hashedPassword = await hashPassword(password);
+    const hashedConfirmPassword = await hashPassword(confirmPassword);
+    await onSubmit(hashedPassword, hashedConfirmPassword);
   };
 
   return (

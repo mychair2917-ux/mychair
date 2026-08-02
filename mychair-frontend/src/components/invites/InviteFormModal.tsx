@@ -28,6 +28,7 @@ import { formatDateDMY } from '../../utils/utilities';
 import { cn } from '../../utils/cn';
 import SalonLocationPicker, { type SalonLocation } from '../attendance/SalonLocationPicker';
 import WeekOffSelector from '../common/WeekOffSelector';
+import { hashPassword } from '../../utils/crypto';
 
 const SALARY_TYPE_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
@@ -61,15 +62,15 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
   const roleOptions = formOptions?.invitable_roles ?? [];
   const initialRole = roleOptions[0]?.value ?? '';
 
-  const buildPayload = (values: InviteFormValues): CreateInviteRequest => {
+  const buildPayload = async (values: InviteFormValues): Promise<CreateInviteRequest> => {
     const payload: CreateInviteRequest = {
       role: values.role,
       full_name: values.full_name.trim(),
       email: values.email.trim(),
     };
     if (values.phone?.trim()) payload.phone = values.phone.trim();
-    if (values.password) payload.password = values.password;
-    if (values.confirm_password) payload.confirm_password = values.confirm_password;
+    if (values.password) payload.password = await hashPassword(values.password);
+    if (values.confirm_password) payload.confirm_password = await hashPassword(values.confirm_password);
     if (values.username?.trim()) payload.username = values.username.trim();
     if (values.tenant_id) payload.tenant_id = values.tenant_id;
     if (values.branch_name?.trim()) payload.branch_name = values.branch_name.trim();
@@ -112,7 +113,8 @@ const InviteFormModal: React.FC<InviteFormModalProps> = ({
   ) => {
     const { setFieldError, setSubmitting, resetForm } = helpers;
     try {
-      const result = await onSubmit(buildPayload(values));
+      const payload = await buildPayload(values);
+      const result = await onSubmit(payload);
       if (result.success) {
         const directSetup = usesDirectPasswordProvisioning(inviterRole, values.role);
         // Stop submitting state BEFORE closing to avoid state update on unmounted component
