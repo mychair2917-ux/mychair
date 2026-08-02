@@ -20,7 +20,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return False
 
 def get_password_hash(password: str) -> str:
-    return password
+    if not password:
+        return ""
+    return pwd_context.hash(password)
 
 def create_access_token(subject: Union[str, Any], tenant_id: str, role: str, expires_delta: timedelta = None) -> str:
     if expires_delta:
