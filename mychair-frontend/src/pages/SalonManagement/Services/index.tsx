@@ -700,6 +700,7 @@ const Services: React.FC = () => {
   const handleExcelImport = async (data: { serviceName: string; price: number; memberPrice?: number }[]) => {
     setIsImporting(true);
     let successCount = 0;
+    let skippedCount = 0;
     try {
       for (const item of data) {
         const matchedService = serviceOptions.find(
@@ -708,7 +709,10 @@ const Services: React.FC = () => {
         const duplicate = salonServices.some(
           (s) => s.service_name.trim().toLowerCase() === item.serviceName.toLowerCase()
         );
-        if (duplicate) continue; // Skip duplicates
+        if (duplicate) {
+          skippedCount++;
+          continue; // Skip duplicates
+        }
 
         await createSalonService({
           salon_id: salonId,
@@ -726,7 +730,13 @@ const Services: React.FC = () => {
         }).unwrap();
         successCount++;
       }
-      showToast('success', `Successfully imported ${successCount} services.`);
+      if (successCount > 0) {
+        showToast('success', `Successfully imported ${successCount} services.` + (skippedCount > 0 ? ` Skipped ${skippedCount} duplicate(s).` : ''));
+      } else if (skippedCount > 0) {
+        showToast('warning', `No new services imported. All ${skippedCount} were duplicates.`);
+      } else {
+        showToast('info', 'No services were imported.');
+      }
       setIsImportModalOpen(false);
     } catch (err: unknown) {
       showToast('error', getApiErrorMessage(err, 'Failed to import services.'));

@@ -29,10 +29,10 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
   const handleDownloadDemo = () => {
     const wsData = [
-      ['Service Name', 'Price', 'Member Price'],
-      ['Haircut - Men', 20, 15],
-      ['Haircut - Women', 30, 25],
-      ['Hair Coloring', 50, ''],
+      ['Service', 'Member Price', 'Non Member Price'],
+      ['Haircut - Men', 15, 20],
+      ['Haircut - Women', 25, 30],
+      ['Hair Coloring', '', 50],
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -54,13 +54,33 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json<any>(ws);
 
-        const formattedData: ParsedServiceData[] = data
-          .map((row) => ({
-            serviceName: row['Service Name']?.toString().trim() || '',
-            price: Number(row['Price']) || 0,
-            memberPrice: row['Member Price'] ? Number(row['Member Price']) : undefined,
-          }))
-          .filter((item) => item.serviceName && item.price > 0);
+        const formattedData: ParsedServiceData[] = [];
+        const seenServices = new Set<string>();
+        let hasDuplicates = false;
+
+        data.forEach((row) => {
+          const serviceName = row['Service']?.toString().trim() || '';
+          const nonMemberPrice = Number(row['Non Member Price']) || 0;
+          const memberPrice = row['Member Price'] ? Number(row['Member Price']) : undefined;
+
+          if (serviceName && nonMemberPrice > 0) {
+            const lowerName = serviceName.toLowerCase();
+            if (seenServices.has(lowerName)) {
+              hasDuplicates = true;
+            } else {
+              seenServices.add(lowerName);
+              formattedData.push({
+                serviceName,
+                price: nonMemberPrice,
+                memberPrice,
+              });
+            }
+          }
+        });
+
+        if (hasDuplicates) {
+          showToast('warning', 'Duplicate services found in excel sheet. Only the first occurrence was kept.');
+        }
 
         if (formattedData.length === 0) {
           showToast('error', 'No valid data found in excel file.');
@@ -105,7 +125,7 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                   <p className="font-semibold mb-1">Instructions:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Download the demo excel template.</li>
-                    <li>Fill in the service details. Required columns: "Service Name", "Price".</li>
+                    <li>Fill in the service details. Required columns: "Service", "Non Member Price".</li>
                     <li>Upload the filled excel sheet below.</li>
                   </ul>
                 </div>
@@ -161,17 +181,17 @@ const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               <table className="w-full text-left text-sm">
                 <thead className="sticky top-0 bg-gray-100 text-gray-600 font-semibold border-b border-gray-200 shadow-sm">
                   <tr>
-                    <th className="py-2.5 px-4">Service Name</th>
-                    <th className="py-2.5 px-4">Price</th>
+                    <th className="py-2.5 px-4">Service</th>
                     <th className="py-2.5 px-4">Member Price</th>
+                    <th className="py-2.5 px-4">Non Member Price</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
                   {parsedData.map((row, idx) => (
                     <tr key={idx} className="hover:bg-gray-50 transition-colors">
                       <td className="py-2.5 px-4 font-medium text-gray-900">{row.serviceName}</td>
-                      <td className="py-2.5 px-4">{row.price.toFixed(2)}</td>
                       <td className="py-2.5 px-4">{row.memberPrice ? row.memberPrice.toFixed(2) : '-'}</td>
+                      <td className="py-2.5 px-4">{row.price.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
