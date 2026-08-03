@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, status
 from app.api.dependencies.rbac import require_module
 from app.auth.rbac_config import Module
 from app.models.user import User
-from app.schemas.salon_product import SalonProductCreate, SalonProductUpdate
+from app.schemas.salon_product import SalonProductCreate, SalonProductUpdate, SalonProductBulkDelete
 from app.services.salon_product import SalonProductService
 from app.utils.api_response import success_response
 
@@ -79,3 +79,15 @@ async def delete_salon_product(
         current_user, salon_product_id, salon_id=salon_id
     )
     return success_response("Salon product deleted successfully", data=None)
+
+
+@router.post("/salon-products/bulk-delete")
+async def bulk_delete_salon_products(
+    payload: SalonProductBulkDelete,
+    salon_id: str | None = Query(default=None),
+    current_user: User = Depends(require_module(Module.PRODUCTS_INVENTORY)),
+):
+    await salon_product_service.bulk_delete_salon_products(
+        current_user, payload, salon_id=salon_id
+    )
+    return success_response("Salon products deleted successfully", data=None)

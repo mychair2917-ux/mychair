@@ -64,3 +64,7 @@ class SalonServiceListItem(BaseModel):
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class SalonServiceBulkDelete(BaseModel):
+    ids: list[str] = Field(..., min_length=1)

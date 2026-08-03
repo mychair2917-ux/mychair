@@ -39,11 +39,13 @@ export const API_PATHS = {
     MASTER_LIST: '/services',
     LIST: '/salon-services',
     DETAIL: (id: string) => `/salon-services/${id}`,
+    BULK_DELETE: '/salon-services/bulk-delete',
   },
   SALON_PRODUCTS: {
     MASTER_LIST: '/products',
     LIST: '/salon-products',
     DETAIL: (id: string) => `/salon-products/${id}`,
+    BULK_DELETE: '/salon-products/bulk-delete',
   },
   BRANDS: {
     LIST: '/brands',

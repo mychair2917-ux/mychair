@@ -21,6 +21,7 @@ import {
   useGetMasterProductsQuery,
   useGetSalonProductsQuery,
   useUpdateSalonProductMutation,
+  useBulkDeleteSalonProductsMutation,
 } from '../../../redux/slices/salonProducts/salonProductsApi';
 import { SalonProductItem } from '../../../redux/slices/salonProducts/Types';
 import {
@@ -29,6 +30,7 @@ import {
   useGetMasterServicesQuery,
   useGetSalonServicesQuery,
   useUpdateSalonServiceMutation,
+  useBulkDeleteSalonServicesMutation,
 } from '../../../redux/slices/salonServices/salonServicesApi';
 import { SalonServiceItem } from '../../../redux/slices/salonServices/Types';
 import { getApiErrorMessage } from '../../../utils/apiErrors';
@@ -133,6 +135,11 @@ const Services: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
+  const [selectedServiceIds, setSelectedServiceIds] = useState<React.Key[]>([]);
+  const [selectedProductIds, setSelectedProductIds] = useState<React.Key[]>([]);
+  const [isBulkDeletingServicesModalOpen, setIsBulkDeletingServicesModalOpen] = useState(false);
+  const [isBulkDeletingProductsModalOpen, setIsBulkDeletingProductsModalOpen] = useState(false);
+
   const debouncedSearch = useDebouncedSearch(search, 300);
 
   const { data: masterServicesData, isLoading: isLoadingMasterServices } =
@@ -165,6 +172,8 @@ const Services: React.FC = () => {
   const [createSalonProduct, { isLoading: isCreatingProduct }] = useCreateSalonProductMutation();
   const [updateSalonProduct, { isLoading: isUpdatingProduct }] = useUpdateSalonProductMutation();
   const [deleteSalonProduct, { isLoading: isDeletingProduct }] = useDeleteSalonProductMutation();
+  const [bulkDeleteSalonServices, { isLoading: isBulkDeletingServices }] = useBulkDeleteSalonServicesMutation();
+  const [bulkDeleteSalonProducts, { isLoading: isBulkDeletingProducts }] = useBulkDeleteSalonProductsMutation();
 
   const masterServices = masterServicesData?.data ?? [];
   const salonServices = salonServicesData?.data ?? [];
@@ -654,6 +663,40 @@ const Services: React.FC = () => {
     }
   };
 
+  const handleBulkDeleteServices = async () => {
+    if (!selectedServiceIds.length) return;
+    try {
+      const response = await bulkDeleteSalonServices({
+        salon_id: salonId,
+        body: { ids: selectedServiceIds.map(String) },
+      }).unwrap();
+      if (response.success) {
+        showToast('success', response.message || 'Selected services deleted successfully');
+        setSelectedServiceIds([]);
+        setIsBulkDeletingServicesModalOpen(false);
+      }
+    } catch (err: unknown) {
+      showToast('error', getApiErrorMessage(err, 'Failed to delete services'));
+    }
+  };
+
+  const handleBulkDeleteProducts = async () => {
+    if (!selectedProductIds.length) return;
+    try {
+      const response = await bulkDeleteSalonProducts({
+        salon_id: salonId,
+        body: { ids: selectedProductIds.map(String) },
+      }).unwrap();
+      if (response.success) {
+        showToast('success', response.message || 'Selected products deleted successfully');
+        setSelectedProductIds([]);
+        setIsBulkDeletingProductsModalOpen(false);
+      }
+    } catch (err: unknown) {
+      showToast('error', getApiErrorMessage(err, 'Failed to delete products'));
+    }
+  };
+
   const handleExcelImport = async (data: { serviceName: string; price: number; memberPrice?: number }[]) => {
     setIsImporting(true);
     let successCount = 0;
@@ -942,20 +985,37 @@ const Services: React.FC = () => {
           <CommonTable
             data={paginatedServices}
             rowKey="id"
+            selectable
+            selectedRowKeys={selectedServiceIds}
+            onSelectionChange={(keys) => setSelectedServiceIds(keys)}
             loading={isLoadingSalonServices}
             title="Salon services"
             subtitle="Selected services for this salon with pricing and status."
             enableGlobalSearch={false}
             filters={
-              <div className="w-full sm:w-80">
-                <Input
-                  placeholder="Search services..."
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setCurrentPage(1);
-                  }}
-                />
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="w-full sm:w-80">
+                  <Input
+                    placeholder="Search services..."
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+                {selectedServiceIds.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    className="!py-1.5 text-xs font-semibold shrink-0"
+                    leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+                    onClick={() => setIsBulkDeletingServicesModalOpen(true)}
+                  >
+                    Delete Selected ({selectedServiceIds.length})
+                  </Button>
+                )}
               </div>
             }
             columns={[
@@ -1232,34 +1292,51 @@ const Services: React.FC = () => {
           <CommonTable
             data={paginatedProducts}
             rowKey="id"
+            selectable
+            selectedRowKeys={selectedProductIds}
+            onSelectionChange={(keys) => setSelectedProductIds(keys)}
             loading={isLoadingSalonProducts}
             title="Salon products"
             subtitle="Selected products for this salon with pricing and status."
             enableGlobalSearch={false}
             filters={
-              <div className="grid w-full gap-3 sm:grid-cols-2">
-                <Input
-                  placeholder="Search products..."
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setCurrentPage(1);
-                  }}
-                />
-                <CommonDropdown
-                  options={brandOptions}
-                  value={
-                    brandOptions.find((option) => option.label === brandFilter)?.value ?? brandFilter
-                  }
-                  onChange={(value) => {
-                    const matched = brandOptions.find((option) => option.value === String(value));
-                    setBrandFilter(matched?.label ?? String(value));
-                    setCurrentPage(1);
-                  }}
-                  placeholder="Filter by brand"
-                  searchable
-                  loading={isLoadingBrands}
-                />
+              <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="grid w-full gap-3 sm:grid-cols-2">
+                  <Input
+                    placeholder="Search products..."
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                  <CommonDropdown
+                    options={brandOptions}
+                    value={
+                      brandOptions.find((option) => option.label === brandFilter)?.value ?? brandFilter
+                    }
+                    onChange={(value) => {
+                      const matched = brandOptions.find((option) => option.value === String(value));
+                      setBrandFilter(matched?.label ?? String(value));
+                      setCurrentPage(1);
+                    }}
+                    placeholder="Filter by brand"
+                    searchable
+                    loading={isLoadingBrands}
+                  />
+                </div>
+                {selectedProductIds.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    className="!py-1.5 text-xs font-semibold shrink-0"
+                    leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+                    onClick={() => setIsBulkDeletingProductsModalOpen(true)}
+                  >
+                    Delete Selected ({selectedProductIds.length})
+                  </Button>
+                )}
               </div>
             }
             columns={[
@@ -1592,6 +1669,58 @@ const Services: React.FC = () => {
             {deletingProduct?.product_name ?? '-'}
           </span>
           ?
+        </p>
+      </CommonModal>
+
+      <CommonModal
+        open={isBulkDeletingServicesModalOpen}
+        title="Delete Selected Services"
+        subtitle={`This will remove ${selectedServiceIds.length} selected services from this salon.`}
+        onClose={() => setIsBulkDeletingServicesModalOpen(false)}
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setIsBulkDeletingServicesModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleBulkDeleteServices}
+              isLoading={isBulkDeletingServices}
+            >
+              Delete {selectedServiceIds.length} Items
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          Are you sure you want to delete these services? This action cannot be undone.
+        </p>
+      </CommonModal>
+
+      <CommonModal
+        open={isBulkDeletingProductsModalOpen}
+        title="Delete Selected Products"
+        subtitle={`This will remove ${selectedProductIds.length} selected products from this salon.`}
+        onClose={() => setIsBulkDeletingProductsModalOpen(false)}
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setIsBulkDeletingProductsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleBulkDeleteProducts}
+              isLoading={isBulkDeletingProducts}
+            >
+              Delete {selectedProductIds.length} Items
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          Are you sure you want to delete these products? This action cannot be undone.
         </p>
       </CommonModal>
 

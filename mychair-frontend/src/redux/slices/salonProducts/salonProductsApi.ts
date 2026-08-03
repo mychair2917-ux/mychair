@@ -75,6 +75,18 @@ export const salonProductsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['SalonProducts'],
     }),
+    bulkDeleteSalonProducts: builder.mutation<
+      ApiResponse<null>,
+      { body: { ids: string[] }; salon_id?: string }
+    >({
+      query: ({ body, salon_id }) => ({
+        url: API_PATHS.SALON_PRODUCTS.BULK_DELETE,
+        method: HTTP_METHODS.POST,
+        params: salon_id ? { salon_id } : undefined,
+        body,
+      }),
+      invalidatesTags: ['SalonProducts', 'Inventory'],
+    }),
   }),
 });
 
@@ -85,4 +97,5 @@ export const {
   useCreateSalonProductMutation,
   useUpdateSalonProductMutation,
   useDeleteSalonProductMutation,
+  useBulkDeleteSalonProductsMutation,
 } = salonProductsApi;

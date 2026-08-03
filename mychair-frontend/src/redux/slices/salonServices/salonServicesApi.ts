@@ -62,6 +62,18 @@ export const salonServicesApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['SalonServices'],
     }),
+    bulkDeleteSalonServices: builder.mutation<
+      ApiResponse<null>,
+      { body: { ids: string[] }; salon_id?: string }
+    >({
+      query: ({ body, salon_id }) => ({
+        url: API_PATHS.SALON_SERVICES.BULK_DELETE,
+        method: HTTP_METHODS.POST,
+        params: salon_id ? { salon_id } : undefined,
+        body,
+      }),
+      invalidatesTags: ['SalonServices'],
+    }),
   }),
 });
 
@@ -71,4 +83,5 @@ export const {
   useCreateSalonServiceMutation,
   useUpdateSalonServiceMutation,
   useDeleteSalonServiceMutation,
+  useBulkDeleteSalonServicesMutation,
 } = salonServicesApi;

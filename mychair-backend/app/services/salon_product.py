@@ -13,6 +13,7 @@ from app.schemas.salon_product import (
     SalonProductCreate,
     SalonProductListItem,
     SalonProductUpdate,
+    SalonProductBulkDelete,
 )
 from app.services.brand import BrandService
 
@@ -430,3 +431,36 @@ class SalonProductService:
         if inventory:
             inventory.is_deleted = True
             await inventory.save()
+
+    async def bulk_delete_salon_products(
+        self, actor: User, payload: SalonProductBulkDelete, salon_id: str | None = None
+    ) -> None:
+        resolved_salon_id = await self._resolve_actor_salon_scope(actor, salon_id)
+        
+        try:
+            object_ids = [PydanticObjectId(id_) for id_ in payload.ids]
+        except Exception:
+            return
+
+        items = await SalonProduct.find(
+            {"_id": {"$in": object_ids}},
+            SalonProduct.salon_id == resolved_salon_id,
+            SalonProduct.is_deleted == False,
+        ).to_list()
+
+        from app.models.inventory import ProductInventory
+
+        for item in items:
+            item.is_deleted = True
+            item.updated_by = str(actor.id)
+            await item.save()
+
+            inventory = await ProductInventory.find_one({
+                "salon_id": resolved_salon_id,
+                "product_id": item.product_id,
+                "brand_id": item.brand_id,
+                "is_deleted": False,
+            })
+            if inventory:
+                inventory.is_deleted = True
+                await inventory.save()

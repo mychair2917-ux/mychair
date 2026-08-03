@@ -12,6 +12,7 @@ from app.schemas.salon_service import (
     SalonServiceCreate,
     SalonServiceListItem,
     SalonServiceUpdate,
+    SalonServiceBulkDelete,
 )
 
 
@@ -262,3 +263,24 @@ class SalonServiceService:
         item.is_deleted = True
         item.updated_by = str(actor.id)
         await item.save()
+
+    async def bulk_delete_salon_services(
+        self, actor: User, payload: SalonServiceBulkDelete, salon_id: str | None = None
+    ) -> None:
+        resolved_salon_id = await self._resolve_actor_salon_scope(actor, salon_id)
+        
+        try:
+            object_ids = [PydanticObjectId(id_) for id_ in payload.ids]
+        except Exception:
+            return
+
+        items = await SalonService.find(
+            {"_id": {"$in": object_ids}},
+            SalonService.salon_id == resolved_salon_id,
+            SalonService.is_deleted == False,
+        ).to_list()
+
+        for item in items:
+            item.is_deleted = True
+            item.updated_by = str(actor.id)
+            await item.save()

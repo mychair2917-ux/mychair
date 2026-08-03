@@ -73,6 +73,9 @@ export interface CommonTableProps<T> {
   onSearchChange?: (value: string) => void;
   onColumnSearchChange?: (key: string, value: string) => void;
   className?: string;
+  selectable?: boolean;
+  selectedRowKeys?: React.Key[];
+  onSelectionChange?: (selectedKeys: React.Key[], selectedRows: T[]) => void;
 }
 
 const alignClasses: Record<Align, string> = {
@@ -130,6 +133,9 @@ const CommonTable = <T,>({
   onSearchChange,
   onColumnSearchChange,
   className,
+  selectable = false,
+  selectedRowKeys = [],
+  onSelectionChange,
 }: CommonTableProps<T>) => {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection | null>(null);
@@ -140,6 +146,29 @@ const CommonTable = <T,>({
 
   const currentPage = page ?? internalPage;
   const currentPageSize = pageSize ?? internalPageSize;
+
+  const handleSelectAll = (checked: boolean) => {
+    if (!onSelectionChange) return;
+    if (checked) {
+      const keys = visibleData.map((row, index) => resolveRowKey(row, index));
+      onSelectionChange(keys, visibleData);
+    } else {
+      onSelectionChange([], []);
+    }
+  };
+
+  const handleSelectRow = (checked: boolean, row: T, index: number) => {
+    if (!onSelectionChange) return;
+    const key = resolveRowKey(row, index);
+    if (checked) {
+      onSelectionChange([...selectedRowKeys, key], [...visibleData.filter((r, i) => selectedRowKeys.includes(resolveRowKey(r, i))), row]);
+    } else {
+      onSelectionChange(
+        selectedRowKeys.filter((k) => k !== key),
+        visibleData.filter((r, i) => selectedRowKeys.includes(resolveRowKey(r, i)) && resolveRowKey(r, i) !== key)
+      );
+    }
+  };
 
   const processedData = useMemo(() => {
     let nextData = [...data];
@@ -271,6 +300,16 @@ const CommonTable = <T,>({
         <table className="min-w-full divide-y divide-[var(--color-border-soft)] text-sm">
           <thead className={cn('bg-[#fbf8f1]', stickyHeader && 'sticky top-0 z-10')}>
             <tr>
+              {selectable && (
+                <th className="w-12 px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
+                    checked={visibleData.length > 0 && selectedRowKeys.length === visibleData.length}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                  />
+                </th>
+              )}
               {columns.map((column) => {
                 const isActiveSort = sortKey === column.key && sortDirection;
                 const align = column.align ?? 'left';
@@ -325,6 +364,16 @@ const CommonTable = <T,>({
             ) : visibleData.length ? (
               visibleData.map((row, rowIndex) => (
                 <tr key={resolveRowKey(row, rowIndex)} className="transition hover:bg-[var(--color-surface-bg)]">
+                  {selectable && (
+                    <td className="w-12 whitespace-nowrap px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
+                        checked={selectedRowKeys.includes(resolveRowKey(row, rowIndex))}
+                        onChange={(e) => handleSelectRow(e.target.checked, row, rowIndex)}
+                      />
+                    </td>
+                  )}
                   {columns.map((column) => {
                     const align = column.align ?? 'left';
                     const value = getValue(row, column);
