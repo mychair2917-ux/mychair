@@ -8,6 +8,7 @@ import {
   PayrollBreakdown,
   PayrollHistoryParams,
   PayrollItem,
+  PayrollPreviewResponse,
   SalarySlip,
   SalaryStructureItem,
   SalaryStructureUpdateRequest,
@@ -40,6 +41,13 @@ export const payrollApi = baseApi.injectEndpoints({
         params: { month, year },
       }),
       providesTags: ['Payroll'],
+    }),
+    previewPayroll: builder.mutation<ApiResponse<PayrollPreviewResponse>, MonthlyPayrollParams>({
+      query: (body) => ({
+        url: API_PATHS.PAYROLL.PREVIEW,
+        method: HTTP_METHODS.POST,
+        body,
+      }),
     }),
     generatePayroll: builder.mutation<ApiResponse<PayrollItem[]>, MonthlyPayrollParams>({
       query: (body) => ({
@@ -97,6 +105,7 @@ export const {
   useListSalaryStructureQuery,
   useUpdateSalaryStructureMutation,
   useListMonthlyPayrollQuery,
+  usePreviewPayrollMutation,
   useGeneratePayrollMutation,
   useMarkPayrollPaidMutation,
   useLazyGetPayrollBreakdownQuery,

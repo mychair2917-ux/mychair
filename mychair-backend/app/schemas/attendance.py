@@ -7,20 +7,24 @@ from app.constants.attendance_options import ATTENDANCE_STATUSES
 
 
 class LocationPayload(BaseModel):
-    latitude: float = Field(..., ge=-90, le=90)
-    longitude: float = Field(..., ge=-180, le=180)
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
 
 
 class CheckInRequest(LocationPayload):
-    pass
+    employee_id: Optional[str] = Field(default=None)
+    date: Optional[str] = Field(default=None)
 
 
 class CheckOutRequest(LocationPayload):
-    pass
+    employee_id: Optional[str] = Field(default=None)
+    date: Optional[str] = Field(default=None)
 
 
 class ManualAttendanceUpdate(BaseModel):
-    attendance_id: str
+    attendance_id: Optional[str] = Field(default=None)
+    employee_id: Optional[str] = Field(default=None)
+    attendance_date: Optional[str] = Field(default=None)
     status: Optional[str] = Field(default=None)
     check_in_time: Optional[datetime] = Field(default=None)
     check_out_time: Optional[datetime] = Field(default=None)

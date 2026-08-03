@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Clock, Navigation, Save } from 'lucide-react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -129,29 +130,48 @@ const AttendanceLocationSettings: React.FC = () => {
 
   return (
     <CommonCard
-      title="Attendance Location"
-      subtitle="Set salon coordinates and attendance radius for staff check-ins"
+      title="Salon GPS & Geofence Settings"
+      subtitle="Set salon coordinates and allowable check-in radius for staff attendance validation"
+      className="border border-gray-200/80 shadow-xs rounded-2xl"
       actions={
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={handleUseCurrentLocation}>
-            Use My Location
+          <Button
+            variant="secondary"
+            onClick={handleUseCurrentLocation}
+            leftIcon={<Navigation className="h-4 w-4" />}
+            className="rounded-xl font-semibold"
+          >
+            Use My GPS Location
           </Button>
-          <Button isLoading={isSaving} onClick={handleSave}>
-            Save Location
+          <Button
+            isLoading={isSaving}
+            onClick={handleSave}
+            leftIcon={<Save className="h-4 w-4" />}
+            className="rounded-xl font-semibold"
+          >
+            Save Settings
           </Button>
         </div>
       }
       loading={isLoading || isResolvingCoords}
     >
-      <div className="space-y-4 p-5">
-        <FormField label="Shift Start (HH:MM)" name="shift_start">
-          <Input
-            id="shift_start"
-            value={shiftStart}
-            onChange={(event) => setShiftStart(event.target.value)}
-            placeholder="09:00"
-          />
-        </FormField>
+      <div className="space-y-5 p-5 sm:p-6">
+        <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+          <FormField label="Standard Shift Start Time (HH:MM)" name="shift_start">
+            <div className="relative max-w-xs">
+              <Clock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                id="shift_start"
+                type="time"
+                value={shiftStart}
+                onChange={(event) => setShiftStart(event.target.value)}
+                placeholder="09:00"
+                className="pl-9.5 rounded-xl border-gray-200 bg-white"
+              />
+            </div>
+          </FormField>
+        </div>
+
         <LocationSetupPanel
           latitude={latitude}
           longitude={longitude}

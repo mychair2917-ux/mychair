@@ -111,15 +111,29 @@ async def list_salary_history_by_employee(
 
 
 # --------------------------------------------------------------------------- #
-# Tab 2 — Monthly Salary
+# Tab 2 — Monthly Salary & Preview
 # --------------------------------------------------------------------------- #
+@router.post("/preview")
+async def preview_payroll(
+    payload: GeneratePayrollRequest,
+    current_user: User = Depends(require_module(Module.BILLING_FINANCE)),
+):
+    data = await payroll_service.preview_payroll(
+        current_user, payload.month, payload.year
+    )
+    return success_response(
+        "Payroll preview calculated successfully",
+        data=data.model_dump(mode="json"),
+    )
+
+
 @router.post("/generate")
 async def generate_payroll(
     payload: GeneratePayrollRequest,
     current_user: User = Depends(require_module(Module.BILLING_FINANCE)),
 ):
     items = await payroll_service.generate_payroll(
-        current_user, payload.month, payload.year
+        current_user, payload.month, payload.year, force_regenerate=payload.force_regenerate
     )
     return success_response(
         "Payroll generated successfully",

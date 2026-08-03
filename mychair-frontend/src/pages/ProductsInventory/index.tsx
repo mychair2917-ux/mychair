@@ -177,7 +177,7 @@ const ProductsInventory: React.FC = () => {
     () =>
       stocks.map((stock) => ({
         value: stock.id,
-        label: `${stock.display_name} - ${stock.stock_quantity} in stock`,
+        label: `${stock.display_name} (${stock.stock_quantity} in stock)`,
       })),
     [stocks]
   );
@@ -541,7 +541,23 @@ const ProductsInventory: React.FC = () => {
           columns={[
             { key: 'display_name', header: 'Product Name', accessor: 'display_name', sortable: true },
             { key: 'category', header: 'Category', accessor: 'category', sortable: true },
-            { key: 'stock_quantity', header: 'Current Stock', accessor: 'stock_quantity', sortable: true },
+            {
+              key: 'stock_quantity',
+              header: 'Current Stock',
+              render: (row) => (
+                <span
+                  className={cn(
+                    'tabular-nums font-semibold',
+                    row.stock_quantity < 0
+                      ? 'inline-flex items-center rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800 border border-red-200'
+                      : 'text-gray-900'
+                  )}
+                >
+                  {row.stock_quantity}
+                </span>
+              ),
+              sortable: true,
+            },
             { key: 'buying_price', header: 'Buying Price', render: (row) => formatCurrency(row.buying_price), sortable: true },
             { key: 'selling_price', header: 'Selling Price', render: (row) => formatCurrency(row.selling_price), sortable: true },
             { key: 'min_threshold', header: 'Low Stock Alert Level', accessor: 'min_threshold', sortable: true },

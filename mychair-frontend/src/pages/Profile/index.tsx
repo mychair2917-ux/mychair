@@ -113,14 +113,12 @@ const Profile: React.FC = () => {
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [passwordErrors, setPasswordErrors] = useState<FormErrors>({});
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (profile) {
       setFormState(createFormState(profile));
       setFormErrors({});
       setAvatarPreview(null);
-      setAvatarFile(null);
     }
   }, [profile]);
 
@@ -199,31 +197,41 @@ const Profile: React.FC = () => {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleAvatarSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
-      showToast('error', 'Only PNG and JPEG images are allowed');
+
+    // Reset input so re-selecting same file triggers event
+    event.target.value = '';
+
+    const allowedTypes = [
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/webp',
+      'image/pjpeg',
+      'image/x-png',
+    ];
+    if (file.type && !allowedTypes.includes(file.type.toLowerCase())) {
+      showToast('error', 'Only PNG, JPEG, and WEBP images are allowed');
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
       showToast('error', 'Avatar image must be 2MB or smaller');
       return;
     }
-    setAvatarFile(file);
-    setAvatarPreview(URL.createObjectURL(file));
-    setFormErrors((current) => ({ ...current, avatar: undefined }));
-  };
 
-  const handleAvatarUpload = async () => {
-    if (!avatarFile) return;
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    setFormErrors((current) => ({ ...current, avatar: undefined }));
+
     try {
-      await uploadAvatar(avatarFile).unwrap();
+      await uploadAvatar(file).unwrap();
       showToast('success', 'Profile image updated successfully');
-      setAvatarFile(null);
       setAvatarPreview(null);
       refetch();
     } catch (error) {
+      setAvatarPreview(null);
       showToast('error', getApiErrorMessage(error, 'Failed to update profile image'));
     }
   };
@@ -232,7 +240,6 @@ const Profile: React.FC = () => {
     try {
       await removeAvatar({ remove: true }).unwrap();
       showToast('success', 'Profile image removed successfully');
-      setAvatarFile(null);
       setAvatarPreview(null);
       refetch();
     } catch (error) {
@@ -347,8 +354,12 @@ const Profile: React.FC = () => {
       <CommonCard className="overflow-hidden">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="relative h-24 w-24 shrink-0 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] p-0.5 shadow-sm">
-              {displayAvatar ? (
+            <div className="relative h-24 w-24 shrink-0 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] p-0.5 shadow-sm overflow-hidden">
+              {isAvatarBusy ? (
+                <div className="flex h-full w-full items-center justify-center rounded-full bg-[var(--color-surface-bg)] text-[var(--color-brand-gold-dark)]">
+                  <span className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-brand-gold-dark)] border-t-transparent" />
+                </div>
+              ) : displayAvatar ? (
                 <img
                   src={displayAvatar}
                   alt={displayName}
@@ -379,40 +390,23 @@ const Profile: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--color-text-primary)] transition hover:bg-[var(--color-surface-bg)]">
+            <label
+              className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[var(--color-border-strong)] bg-white px-3.5 py-2 text-sm font-medium text-[var(--color-text-primary)] transition hover:bg-[var(--color-surface-bg)] ${
+                isAvatarBusy ? 'pointer-events-none opacity-60' : ''
+              }`}
+            >
               <Camera className="h-4 w-4 text-[var(--color-text-secondary)]" />
-              <span>{avatarFile ? 'Change photo' : 'Upload photo'}</span>
-              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleAvatarSelect} />
+              <span>{isUploadingAvatar ? 'Uploading...' : profile.avatar || avatarPreview ? 'Change photo' : 'Upload photo'}</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                className="hidden"
+                disabled={isAvatarBusy}
+                onChange={handleAvatarSelect}
+              />
             </label>
 
-            {avatarFile && (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="primary"
-                  onClick={handleAvatarUpload}
-                  disabled={isAvatarBusy}
-                  isLoading={isUploadingAvatar}
-                >
-                  Save
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setAvatarFile(null);
-                    setAvatarPreview(null);
-                  }}
-                  disabled={isAvatarBusy}
-                >
-                  Cancel
-                </Button>
-              </>
-            )}
-
-            {(profile.avatar || avatarPreview) && !avatarFile && (
+            {(profile.avatar || avatarPreview) && (
               <Button
                 type="button"
                 size="sm"

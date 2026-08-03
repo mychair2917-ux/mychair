@@ -86,6 +86,7 @@ export const API_PATHS = {
     SALARY_TYPES: '/payroll/salary-types',
     SALARY_STRUCTURE: '/payroll/salary-structure',
     SALARY_STRUCTURE_DETAIL: (id: string) => `/payroll/salary-structure/${id}`,
+    PREVIEW: '/payroll/preview',
     GENERATE: '/payroll/generate',
     LIST: '/payroll',
     HISTORY: '/payroll/history',

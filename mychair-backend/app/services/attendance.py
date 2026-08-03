@@ -404,31 +404,50 @@ class AttendanceService:
     # Check-in / Check-out
     # ------------------------------------------------------------------ #
     async def check_in(
-        self, actor: User, latitude: Optional[float], longitude: Optional[float]
+        self,
+        actor: User,
+        latitude: Optional[float],
+        longitude: Optional[float],
+        target_employee_id: Optional[str] = None,
+        date_str: Optional[str] = None,
     ) -> AttendanceItem:
         salon_id = self._resolve_salon_id(actor)
-        await self._ensure_reconciled(actor, salon_id=salon_id)
-        today = self._today_date()
-        staff_id = str(actor.id)
+        actor_role = normalize_role(actor.role)
 
-        if is_week_off_day(actor.weekly_off or [], today):
+        target_user = actor
+        if target_employee_id and target_employee_id != str(actor.id):
+            if actor_role not in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER, ROLE_SALON_ADMIN, ROLE_SALON_MANAGER}:
+                raise PermissionDeniedException(detail="Not authorized to mark attendance for other employees")
+            found_user = await User.get(target_employee_id)
+            if not found_user or found_user.is_deleted:
+                raise ResourceNotFoundException(detail="Target employee not found")
+            if actor_role != ROLE_SUPER_ADMIN and found_user.tenant_id != salon_id:
+                raise PermissionDeniedException(detail="Target employee belongs to another salon")
+            target_user = found_user
+
+        staff_id = str(target_user.id)
+        target_salon_id = target_user.tenant_id or salon_id
+        await self._ensure_reconciled(actor, salon_id=target_salon_id)
+        today = date_str or self._today_date()
+
+        if is_week_off_day(target_user.weekly_off or [], today):
             raise SalonERPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Today is your week off",
+                detail=f"Today is {self._full_name(target_user)}'s week off",
             )
 
-        if await self.leave_service.has_approved_leave_on_date(salon_id, staff_id, today):
+        if await self.leave_service.has_approved_leave_on_date(target_salon_id, staff_id, today):
             raise SalonERPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Today is an approved leave day",
+                detail=f"Today is {self._full_name(target_user)}'s approved leave day",
             )
 
-        existing = await self.repo.get_by_employee_and_date(salon_id, staff_id, today)
+        existing = await self.repo.get_by_employee_and_date(target_salon_id, staff_id, today)
         if existing and existing.clock_in:
-            raise BookingConflictException(detail="Attendance already marked today")
+            raise BookingConflictException(detail="Attendance already marked for today")
 
         branch_id, branch_lat, branch_lon, radius, branch_name, shift_start, _ = (
-            await self._resolve_branch(actor, salon_id)
+            await self._resolve_branch(target_user, target_salon_id)
         )
         distance = self._validate_location(
             actor, latitude, longitude, branch_lat, branch_lon, radius
@@ -444,16 +463,16 @@ class AttendanceService:
             existing.latitude = latitude
             existing.longitude = longitude
             existing.distance_from_branch = distance
-            existing.attendance_method = ATTENDANCE_METHOD_LOCATION
+            existing.attendance_method = ATTENDANCE_METHOD_LOCATION if not self._can_skip_location(actor) else ATTENDANCE_METHOD_MANUAL
             existing.branch_id = branch_id
             await existing.save()
             record = existing
         else:
             record = Attendance(
-                tenant_id=salon_id,
+                tenant_id=target_salon_id,
                 staff_id=staff_id,
                 branch_id=branch_id,
-                salon_id=salon_id,
+                salon_id=target_salon_id,
                 date=today,
                 status=status_value,
                 clock_in=now,
@@ -461,7 +480,7 @@ class AttendanceService:
                 latitude=latitude,
                 longitude=longitude,
                 distance_from_branch=distance,
-                attendance_method=ATTENDANCE_METHOD_LOCATION,
+                attendance_method=ATTENDANCE_METHOD_LOCATION if not self._can_skip_location(actor) else ATTENDANCE_METHOD_MANUAL,
                 created_by=str(actor.id),
                 updated_by=str(actor.id),
             )
@@ -473,20 +492,39 @@ class AttendanceService:
             str(actor.id),
             None,
             now.isoformat(),
-            salon_id,
+            target_salon_id,
         )
-        return self._to_item(record, self._full_name(actor), branch_name)
+        return self._to_item(record, self._full_name(target_user), branch_name)
 
     async def check_out(
-        self, actor: User, latitude: Optional[float], longitude: Optional[float]
+        self,
+        actor: User,
+        latitude: Optional[float],
+        longitude: Optional[float],
+        target_employee_id: Optional[str] = None,
+        date_str: Optional[str] = None,
     ) -> AttendanceItem:
         try:
             salon_id = self._resolve_salon_id(actor)
-            await self._ensure_reconciled(actor, salon_id=salon_id)
-            today = self._today_date()
-            staff_id = str(actor.id)
+            actor_role = normalize_role(actor.role)
 
-            record = await self.repo.get_by_employee_and_date(salon_id, staff_id, today)
+            target_user = actor
+            if target_employee_id and target_employee_id != str(actor.id):
+                if actor_role not in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER, ROLE_SALON_ADMIN, ROLE_SALON_MANAGER}:
+                    raise PermissionDeniedException(detail="Not authorized to mark attendance for other employees")
+                found_user = await User.get(target_employee_id)
+                if not found_user or found_user.is_deleted:
+                    raise ResourceNotFoundException(detail="Target employee not found")
+                if actor_role != ROLE_SUPER_ADMIN and found_user.tenant_id != salon_id:
+                    raise PermissionDeniedException(detail="Target employee belongs to another salon")
+                target_user = found_user
+
+            staff_id = str(target_user.id)
+            target_salon_id = target_user.tenant_id or salon_id
+            await self._ensure_reconciled(actor, salon_id=target_salon_id)
+            today = date_str or self._today_date()
+
+            record = await self.repo.get_by_employee_and_date(target_salon_id, staff_id, today)
             if not record or not record.clock_in:
                 raise SalonERPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -496,7 +534,7 @@ class AttendanceService:
                 raise BookingConflictException(detail="Checkout already completed")
 
             _, branch_lat, branch_lon, radius, branch_name, _, _ = (
-                await self._resolve_branch(actor, salon_id)
+                await self._resolve_branch(target_user, target_salon_id)
             )
             distance = self._validate_location(
                 actor, latitude, longitude, branch_lat, branch_lon, radius
@@ -525,9 +563,9 @@ class AttendanceService:
                 str(actor.id),
                 None,
                 now.isoformat(),
-                salon_id,
+                target_salon_id,
             )
-            return self._to_item(record, self._full_name(actor), branch_name)
+            return self._to_item(record, self._full_name(target_user), branch_name)
         except SalonERPException:
             raise
         except BookingConflictException:
@@ -542,19 +580,32 @@ class AttendanceService:
     # ------------------------------------------------------------------ #
     # Today status
     # ------------------------------------------------------------------ #
-    async def get_today_status(self, actor: User) -> TodayAttendanceStatus:
+    async def get_today_status(
+        self, actor: User, target_employee_id: Optional[str] = None
+    ) -> TodayAttendanceStatus:
         salon_id = self._resolve_salon_id(actor)
-        await self._ensure_reconciled(actor, salon_id=salon_id)
+        actor_role = normalize_role(actor.role)
+
+        target_user = actor
+        if target_employee_id and target_employee_id != str(actor.id):
+            if actor_role not in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER, ROLE_SALON_ADMIN, ROLE_SALON_MANAGER}:
+                raise PermissionDeniedException()
+            found_user = await User.get(target_employee_id)
+            if found_user and not found_user.is_deleted:
+                target_user = found_user
+
+        staff_id = str(target_user.id)
+        target_salon_id = target_user.tenant_id or salon_id
+        await self._ensure_reconciled(actor, salon_id=target_salon_id)
         today = self._today_date()
-        staff_id = str(actor.id)
 
         _, branch_lat, branch_lon, _, _, shift_start, _ = await self._resolve_branch(
-            actor, salon_id
+            target_user, target_salon_id
         )
-        record = await self.repo.get_by_employee_and_date(salon_id, staff_id, today)
-        is_week_off_today = is_week_off_day(actor.weekly_off or [], today)
+        record = await self.repo.get_by_employee_and_date(target_salon_id, staff_id, today)
+        is_week_off_today = is_week_off_day(target_user.weekly_off or [], today)
         on_approved_leave = await self.leave_service.has_approved_leave_on_date(
-            salon_id, staff_id, today
+            target_salon_id, staff_id, today
         )
 
         is_checked_in = bool(record and record.clock_in)
@@ -563,7 +614,7 @@ class AttendanceService:
         if on_approved_leave and not record:
             return TodayAttendanceStatus(
                 attendance_date=today,
-                shift_timing=actor.shift or shift_start,
+                shift_timing=target_user.shift or shift_start,
                 status=ATTENDANCE_STATUS_LEAVE,
                 can_check_in=False,
                 can_check_out=False,
@@ -576,7 +627,7 @@ class AttendanceService:
         if is_week_off_today and not record:
             return TodayAttendanceStatus(
                 attendance_date=today,
-                shift_timing=actor.shift or shift_start,
+                shift_timing=target_user.shift or shift_start,
                 status=ATTENDANCE_STATUS_WEEK_OFF,
                 can_check_in=False,
                 can_check_out=False,
@@ -586,9 +637,11 @@ class AttendanceService:
                 branch_configured=branch_lat is not None and branch_lon is not None,
             )
 
+        loc_required = False if self._can_skip_location(actor) else self._location_required(target_user)
+
         return TodayAttendanceStatus(
             attendance_date=today,
-            shift_timing=actor.shift or shift_start,
+            shift_timing=target_user.shift or shift_start,
             status=record.status if record else None,
             check_in_time=record.clock_in if record else None,
             check_out_time=record.clock_out if record else None,
@@ -598,7 +651,7 @@ class AttendanceService:
             can_check_out=is_checked_in and not is_checked_out and not is_week_off_today and not on_approved_leave,
             is_checked_in=is_checked_in,
             is_checked_out=is_checked_out,
-            location_required=self._location_required(actor) and not is_week_off_today and not on_approved_leave,
+            location_required=loc_required and not is_week_off_today and not on_approved_leave,
             branch_configured=branch_lat is not None and branch_lon is not None,
         )
 
@@ -908,9 +961,55 @@ class AttendanceService:
             raise PermissionDeniedException()
 
         salon_id = self._resolve_salon_id(actor)
-        record = await Attendance.get(payload.attendance_id)
-        if not record or record.is_deleted:
-            raise ResourceNotFoundException(detail="Attendance record not found")
+        record: Optional[Attendance] = None
+
+        if payload.attendance_id:
+            record = await Attendance.get(payload.attendance_id)
+            if not record or record.is_deleted:
+                raise ResourceNotFoundException(detail="Attendance record not found")
+        elif payload.employee_id:
+            target_user = await User.get(payload.employee_id)
+            if not target_user or target_user.is_deleted:
+                raise ResourceNotFoundException(detail="Target employee not found")
+
+            target_salon = target_user.tenant_id or salon_id
+            if role != ROLE_SUPER_ADMIN and target_salon != salon_id:
+                raise PermissionDeniedException()
+
+            date_val = payload.attendance_date or self._today_date()
+            record = await self.repo.get_by_employee_and_date(target_salon, str(target_user.id), date_val)
+            if not record:
+                branch_id, _, _, _, _, _, _ = await self._resolve_branch(target_user, target_salon)
+                record = Attendance(
+                    tenant_id=target_salon,
+                    staff_id=str(target_user.id),
+                    branch_id=branch_id,
+                    salon_id=target_salon,
+                    date=date_val,
+                    status=payload.status or ATTENDANCE_STATUS_PRESENT,
+                    clock_in=payload.check_in_time,
+                    clock_out=payload.check_out_time,
+                    attendance_method=ATTENDANCE_METHOD_MANUAL,
+                    notes=payload.notes,
+                    created_by=str(actor.id),
+                    updated_by=str(actor.id),
+                )
+                await record.insert()
+                await self._write_log(
+                    str(record.id),
+                    ATTENDANCE_LOG_MANUAL_UPDATE,
+                    str(actor.id),
+                    "new_record",
+                    f"status={record.status},in={record.clock_in},out={record.clock_out}",
+                    target_salon,
+                )
+                return self._to_item(record, self._full_name(target_user))
+
+        if not record:
+            raise SalonERPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either attendance_id or employee_id is required",
+            )
 
         if role != ROLE_SUPER_ADMIN and record.tenant_id != salon_id:
             raise PermissionDeniedException()

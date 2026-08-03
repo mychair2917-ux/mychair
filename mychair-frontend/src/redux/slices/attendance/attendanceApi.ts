@@ -56,18 +56,24 @@ export interface BranchLocation {
 }
 
 export interface LocationPayload {
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
+  employee_id?: string;
+  date?: string;
 }
 
-export interface BranchLocationUpdate extends LocationPayload {
+export interface BranchLocationUpdate {
+  latitude: number;
+  longitude: number;
   attendance_radius: number;
   branch_id?: string | null;
   shift_start?: string;
 }
 
 export interface ManualAttendanceUpdate {
-  attendance_id: string;
+  attendance_id?: string;
+  employee_id?: string;
+  attendance_date?: string;
   status?: string;
   check_in_time?: string;
   check_out_time?: string;
@@ -106,10 +112,11 @@ export const attendanceApi = baseApi.injectEndpoints({
       }),
       providesTags: ['Attendance'],
     }),
-    getTodayAttendanceStatus: builder.query<ApiResponse<TodayAttendanceStatus>, void>({
-      query: () => ({
+    getTodayAttendanceStatus: builder.query<ApiResponse<TodayAttendanceStatus>, { employee_id?: string } | void>({
+      query: (params) => ({
         url: API_PATHS.ATTENDANCE.TODAY_STATUS,
         method: HTTP_METHODS.GET,
+        params: params || undefined,
       }),
       providesTags: ['Attendance'],
     }),

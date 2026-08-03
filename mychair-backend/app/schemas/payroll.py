@@ -42,6 +42,7 @@ class GeneratePayrollRequest(BaseModel):
     """Trigger payroll generation for a given month/year."""
     month: int = Field(..., ge=1, le=12)
     year: int = Field(..., ge=2000, le=3000)
+    force_regenerate: bool = Field(default=False)
 
 
 class PayrollItem(BaseModel):
@@ -56,6 +57,7 @@ class PayrollItem(BaseModel):
     base_salary: float
     service_incentive: float
     product_incentive: float
+    manager_incentive: float = 0.0
     bonus: float = 0.0
     deduction: float = 0.0
     final_salary: float
@@ -63,6 +65,10 @@ class PayrollItem(BaseModel):
     payment_status: str
     payment_date: Optional[datetime] = None
     generated_at: Optional[datetime] = None
+    generated_by: Optional[str] = None
+    is_locked: bool = True
+    version: int = 1
+    calculation_log: Optional[dict] = None
 
 
 class PayrollBreakdownRow(BaseModel):
@@ -86,13 +92,31 @@ class PayrollBreakdown(BaseModel):
     product_sales_total: float
     service_incentive: float
     product_incentive: float
+    manager_incentive: float = 0.0
     bonus: float = 0.0
     deduction: float = 0.0
     final_salary: float
     final_paid_amount: float = 0.0
     payment_status: str
     payment_date: Optional[datetime] = None
+    generated_at: Optional[datetime] = None
+    generated_by: Optional[str] = None
+    is_locked: bool = True
+    version: int = 1
+    calculation_log: Optional[dict] = None
     rows: List[PayrollBreakdownRow] = Field(default_factory=list)
+
+
+class PayrollPreviewResponse(BaseModel):
+    items: List[PayrollItem]
+    payroll_exists: bool = False
+    has_paid_records: bool = False
+    total_base_salary: float = 0.0
+    total_service_incentive: float = 0.0
+    total_product_incentive: float = 0.0
+    total_manager_incentive: float = 0.0
+    total_gross_salary: float = 0.0
+    message: str = "Preview calculated successfully"
 
 
 class PaginatedPayroll(BaseModel):

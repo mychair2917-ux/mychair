@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   Download,
   Eye,
+  Lock,
   Pencil,
+  RefreshCw,
+  ShieldCheck,
   Sparkles,
   Users,
   Wallet,
@@ -24,11 +28,13 @@ import {
   useListSalaryHistoryQuery,
   useListSalaryStructureQuery,
   useMarkPayrollPaidMutation,
+  usePreviewPayrollMutation,
   useUpdateSalaryStructureMutation,
 } from '../../redux/slices/payroll/payrollApi';
 import {
   PayrollBreakdown,
   PayrollItem,
+  PayrollPreviewResponse,
   SalaryStructureItem,
 } from '../../redux/slices/payroll/Types';
 import { cn } from '../../utils/cn';
@@ -482,57 +488,226 @@ const BreakdownModal: React.FC<{
   breakdown: PayrollBreakdown | null;
   onClose: () => void;
 }> = ({ open, breakdown, onClose }) => {
+  const [showLog, setShowLog] = useState(false);
   if (!open || !breakdown) return null;
+
+  const log = breakdown.calculation_log as Record<string, any> | undefined;
+
   return (
-    <Modal open={open} onClose={onClose} size="md" isShowIcon>
+    <Modal open={open} onClose={onClose} size="lg" isShowIcon>
       <ModalHeader>
-        <h2 className="text-xl font-semibold">Salary Breakdown</h2>
-        <p className="mt-0.5 text-sm text-gray-500">
-          {breakdown.employee_name} · {monthLabel(breakdown.month)} {breakdown.year}
-        </p>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Salary Breakdown</h2>
+            {breakdown.is_locked && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                <Lock className="h-3 w-3 text-slate-500" />
+                Locked Snapshot (v{breakdown.version || 1})
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500">
+            {breakdown.employee_name} ({roleLabel(breakdown.employee_role)}) · {monthLabel(breakdown.month)} {breakdown.year}
+          </p>
+        </div>
       </ModalHeader>
       <ModalBody>
-        <table className="min-w-full text-sm">
-          <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-4 py-3 text-left font-bold">Type</th>
-              <th className="px-4 py-3 text-right font-bold">Amount</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-border-soft)]">
-            {breakdown.rows.map((r) => (
-              <tr
-                key={r.type}
-                className={r.type === 'Final Salary' ? 'bg-[var(--color-surface-bg)]/60' : ''}
-              >
-                <td
-                  className={cn(
-                    'px-4 py-3',
-                    r.type === 'Final Salary'
-                      ? 'font-bold text-[var(--color-text-primary)]'
-                      : 'text-gray-600'
-                  )}
-                >
-                  {r.type}
-                </td>
-                <td
-                  className={cn(
-                    'px-4 py-3 text-right',
-                    r.type === 'Final Salary'
-                      ? 'font-bold text-gray-900'
-                      : 'font-semibold text-gray-800'
-                  )}
-                >
-                  {inr(r.amount)}
-                </td>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-800">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              Financial Hardening Policy Active
+            </div>
+            <p className="mt-1 text-emerald-700">
+              Configured salary is paid 100% without attendance or performance deductions. Incentives are derived strictly from eligible sales.
+            </p>
+          </div>
+
+          <table className="min-w-full text-sm">
+            <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-3 text-left font-bold">Item</th>
+                <th className="px-4 py-3 text-right font-bold">Amount</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border-soft)]">
+              {breakdown.rows.map((r) => (
+                <tr
+                  key={r.type}
+                  className={r.type.includes('Gross') || r.type === 'Final Salary' ? 'bg-[var(--color-surface-bg)]/80 font-bold' : ''}
+                >
+                  <td
+                    className={cn(
+                      'px-4 py-3',
+                      r.type.includes('Gross') || r.type === 'Final Salary'
+                        ? 'font-bold text-[var(--color-text-primary)]'
+                        : 'text-gray-600'
+                    )}
+                  >
+                    {r.type}
+                    {r.type.includes('Deduction') && (
+                      <span className="ml-2 text-xs font-normal text-emerald-600">
+                        (Zero penalty policy)
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    className={cn(
+                      'px-4 py-3 text-right',
+                      r.type.includes('Gross') || r.type === 'Final Salary'
+                        ? 'font-bold text-gray-900'
+                        : 'font-semibold text-gray-800'
+                    )}
+                  >
+                    {inr(r.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {log && (
+            <div className="rounded-xl border border-[var(--color-border-soft)] bg-white p-3 shadow-sm">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-xs font-bold uppercase tracking-wider text-gray-600"
+                onClick={() => setShowLog((prev) => !prev)}
+              >
+                <span>Audit Log & Math Formula</span>
+                <span className="text-xs text-amber-700 underline">{showLog ? 'Hide details' : 'Show details'}</span>
+              </button>
+              {showLog && (
+                <div className="mt-3 space-y-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 font-mono">
+                  <p><strong>Formula:</strong> {log.formula || 'Gross Salary = Base + Service Inc + Product Inc + Manager Inc'}</p>
+                  <p><strong>Eligible Invoices:</strong> {log.eligible_invoices_count ?? 'N/A'}</p>
+                  <p><strong>Cancelled Appointments Excluded:</strong> {log.cancelled_appointments_excluded ?? 0}</p>
+                  <p><strong>Attendance Policy Note:</strong> {log.attendance_notes || 'Attendance ignored'}</p>
+                  <p><strong>Version:</strong> v{log.version || 1}</p>
+                  <p><strong>Generated At:</strong> {log.generated_at ? new Date(log.generated_at).toLocaleString() : 'N/A'}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </ModalBody>
       <ModalFooter>
         <Button type="button" variant="secondary" onClick={onClose}>
           Close
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+};
+
+const PreviewPayrollModal: React.FC<{
+  open: boolean;
+  previewData: PayrollPreviewResponse | null;
+  isGenerating: boolean;
+  onClose: () => void;
+  onConfirm: (forceRegenerate: boolean) => void;
+}> = ({ open, previewData, isGenerating, onClose, onConfirm }) => {
+  if (!open || !previewData) return null;
+
+  return (
+    <Modal open={open} onClose={onClose} size="xl" isShowIcon>
+      <ModalHeader>
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-6 w-6 text-emerald-600" />
+          <h2 className="text-xl font-semibold">Payroll Calculation Preview</h2>
+        </div>
+        <p className="mt-0.5 text-sm text-gray-500">
+          Review and audit calculated gross payouts before saving immutable snapshots.
+        </p>
+      </ModalHeader>
+      <ModalBody>
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-xs text-emerald-800">
+            <div className="flex items-center gap-2 font-bold text-emerald-900">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              Mathematical Accuracy & Determinism Guaranteed
+            </div>
+            <ul className="mt-2 list-disc pl-5 space-y-1 text-emerald-800">
+              <li>Full fixed salary paid for all staff & managers (zero attendance deductions).</li>
+              <li>Incentives calculated directly from non-voided transactions minus refunds.</li>
+              <li>Cancelled appointments excluded from incentive pool.</li>
+            </ul>
+          </div>
+
+          {previewData.payroll_exists && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 text-xs text-amber-800">
+              <div className="flex items-center gap-2 font-bold text-amber-900">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                Payroll already generated for this period
+              </div>
+              <p className="mt-1 text-amber-800">
+                {previewData.has_paid_records
+                  ? 'Paid records exist for this period and cannot be overwritten.'
+                  : 'Unpaid draft records will be recalculated and updated to version bump if confirmed.'}
+              </p>
+            </div>
+          )}
+
+          <TableShell>
+            <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Employee</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Base Salary</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service Inc.</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product Inc.</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Manager Inc.</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Gross Payout</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border-soft)]">
+              {previewData.items.map((row) => (
+                <tr key={row.employee_id} className="transition hover:bg-[var(--color-surface-bg)]/70">
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <p className="font-semibold text-gray-900">{row.employee_name}</p>
+                    <p className="text-xs text-gray-500">{roleLabel(row.employee_role)}</p>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-gray-700">{inr(row.base_salary)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-emerald-700">{inr(row.service_incentive)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-emerald-700">{inr(row.product_incentive)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-emerald-700">{inr(row.manager_incentive || 0)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-bold text-gray-900">{inr(row.final_salary)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableShell>
+
+          <div className="grid grid-cols-2 gap-3 rounded-2xl border border-[var(--color-border-soft)] bg-gray-50 p-4 sm:grid-cols-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-semibold">Total Base</p>
+              <p className="text-lg font-bold text-gray-900">{inr(previewData.total_base_salary)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-semibold">Service Inc.</p>
+              <p className="text-lg font-bold text-emerald-700">{inr(previewData.total_service_incentive)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-semibold">Product Inc.</p>
+              <p className="text-lg font-bold text-emerald-700">{inr(previewData.total_product_incentive)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase font-semibold">Total Payout</p>
+              <p className="text-lg font-bold text-violet-800">{inr(previewData.total_gross_salary)}</p>
+            </div>
+          </div>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button type="button" variant="secondary" onClick={onClose} disabled={isGenerating}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          isLoading={isGenerating}
+          loadingText="Generating Payroll..."
+          disabled={previewData.has_paid_records}
+          icon={previewData.payroll_exists ? <RefreshCw className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+          onClick={() => onConfirm(previewData.payroll_exists)}
+        >
+          {previewData.payroll_exists ? 'Regenerate Unpaid Payroll' : 'Confirm & Save Payroll'}
         </Button>
       </ModalFooter>
     </Modal>
@@ -548,12 +723,15 @@ const MonthlySalaryTab: React.FC = () => {
     month,
     year,
   });
+  const [previewPayroll, { isLoading: isPreviewing }] = usePreviewPayrollMutation();
   const [generatePayroll, { isLoading: isGenerating }] = useGeneratePayrollMutation();
   const [markPaid, { isLoading: isMarking }] = useMarkPayrollPaidMutation();
   const [fetchBreakdown] = useLazyGetPayrollBreakdownQuery();
   const [fetchSlip] = useLazyGetSalarySlipQuery();
 
   const [breakdown, setBreakdown] = useState<PayrollBreakdown | null>(null);
+  const [previewData, setPreviewData] = useState<PayrollPreviewResponse | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [slipId, setSlipId] = useState<string | null>(null);
 
@@ -563,7 +741,7 @@ const MonthlySalaryTab: React.FC = () => {
     return rows.reduce(
       (acc, r) => {
         acc.base += r.base_salary;
-        acc.incentive += r.service_incentive + r.product_incentive;
+        acc.incentive += r.service_incentive + r.product_incentive + (r.manager_incentive || 0);
         acc.final += r.final_salary;
         if (r.payment_status === 'PAID') acc.paid += 1;
         return acc;
@@ -572,11 +750,26 @@ const MonthlySalaryTab: React.FC = () => {
     );
   }, [rows]);
 
-  const handleGenerate = async () => {
+  const handleOpenPreview = async () => {
     try {
-      const res = await generatePayroll({ month, year }).unwrap();
+      const res = await previewPayroll({ month, year }).unwrap();
+      if (res.success && res.data) {
+        setPreviewData(res.data);
+        setShowPreviewModal(true);
+      }
+    } catch (err) {
+      showToast('error', getApiErrorMessage(err, 'Failed to calculate payroll preview'));
+    }
+  };
+
+  const handleConfirmGeneration = async (forceRegenerate: boolean) => {
+    try {
+      const res = await generatePayroll({ month, year, force_regenerate: forceRegenerate }).unwrap();
       if (res.success) {
         showToast('success', res.message || 'Payroll generated successfully');
+        setShowPreviewModal(false);
+        setPreviewData(null);
+        refetch();
       }
     } catch (err) {
       showToast('error', getApiErrorMessage(err, 'Failed to generate payroll'));
@@ -623,7 +816,7 @@ const MonthlySalaryTab: React.FC = () => {
           { label: 'Total Base Salary', value: inr(totals.base), tone: 'bg-blue-50 text-blue-700', icon: Users },
           { label: 'Total Incentives', value: inr(totals.incentive), tone: 'bg-emerald-50 text-emerald-700', icon: Sparkles },
           { label: 'Final Payout', value: inr(totals.final), tone: 'bg-violet-50 text-violet-700', icon: Wallet },
-          { label: 'Paid', value: `${totals.paid}/${rows.length}`, tone: 'bg-teal-50 text-teal-700', icon: CheckCircle2 },
+          { label: 'Paid Status', value: `${totals.paid}/${rows.length} Paid`, tone: 'bg-teal-50 text-teal-700', icon: CheckCircle2 },
         ].map((card) => (
           <div
             key={card.label}
@@ -657,15 +850,17 @@ const MonthlySalaryTab: React.FC = () => {
             />
           </div>
         </div>
-        <Button
-          className="rounded-2xl"
-          icon={<Sparkles className="h-4 w-4" />}
-          isLoading={isGenerating}
-          loadingText="Generating..."
-          onClick={handleGenerate}
-        >
-          Generate Payroll
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            className="rounded-2xl"
+            icon={<Sparkles className="h-4 w-4" />}
+            isLoading={isPreviewing}
+            loadingText="Calculating Preview..."
+            onClick={handleOpenPreview}
+          >
+            Preview & Generate Payroll
+          </Button>
+        </div>
       </div>
 
       <TableShell>
@@ -701,7 +896,7 @@ const MonthlySalaryTab: React.FC = () => {
                     No payroll generated for {monthLabel(month)} {year}
                   </p>
                   <p className="text-xs text-gray-400">
-                    Click “Generate Payroll” to auto-calculate salaries for this period.
+                    Click “Preview & Generate Payroll” to calculate and confirm salaries for this period.
                   </p>
                 </div>
               </td>
@@ -772,6 +967,16 @@ const MonthlySalaryTab: React.FC = () => {
       </TableShell>
 
       <BreakdownModal open={!!breakdown} breakdown={breakdown} onClose={() => setBreakdown(null)} />
+      <PreviewPayrollModal
+        open={showPreviewModal}
+        previewData={previewData}
+        isGenerating={isGenerating}
+        onClose={() => {
+          setShowPreviewModal(false);
+          setPreviewData(null);
+        }}
+        onConfirm={handleConfirmGeneration}
+      />
     </SectionStack>
   );
 };

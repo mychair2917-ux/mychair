@@ -45,6 +45,7 @@ class Payroll(BaseTenantDocument):
 
     service_incentive: float = Field(default=0.0, ge=0.0)
     product_incentive: float = Field(default=0.0, ge=0.0)
+    manager_incentive: float = Field(default=0.0, ge=0.0)
     bonus: float = Field(default=0.0, ge=0.0)
     deduction: float = Field(default=0.0, ge=0.0)
     final_salary: float = Field(default=0.0, ge=0.0)
@@ -54,6 +55,10 @@ class Payroll(BaseTenantDocument):
     payment_date: Optional[datetime] = Field(default=None)
 
     generated_at: datetime = Field(default_factory=now_utc)
+    generated_by: Optional[str] = Field(default=None)
+    is_locked: bool = Field(default=True)
+    version: int = Field(default=1)
+    calculation_log: dict = Field(default_factory=dict)
 
     class Settings:
         name = "payrolls"

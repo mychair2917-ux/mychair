@@ -82,6 +82,13 @@ async def get_avatar_file(file_name: str):
     file_path = avatar_dir / file_name
     if not file_path.exists() or not file_path.is_file():
         raise ResourceNotFoundException(detail="Avatar file not found")
-    media_type = "image/png" if file_path.suffix.lower() == ".png" else "image/jpeg"
+    suffix = file_path.suffix.lower()
+    if suffix == ".png":
+        media_type = "image/png"
+    elif suffix == ".webp":
+        media_type = "image/webp"
+    else:
+        media_type = "image/jpeg"
     return FileResponse(Path(file_path), media_type=media_type)
+
 

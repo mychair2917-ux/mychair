@@ -31,6 +31,7 @@ from app.schemas.payroll import (
     PayrollBreakdown,
     PayrollBreakdownRow,
     PayrollItem,
+    PayrollPreviewResponse,
     SalaryStructureItem,
     SalaryStructureUpdate,
 )
@@ -113,6 +114,7 @@ class PayrollService:
             base_salary=payroll.base_salary,
             service_incentive=payroll.service_incentive,
             product_incentive=payroll.product_incentive,
+            manager_incentive=payroll.manager_incentive,
             bonus=payroll.bonus,
             deduction=payroll.deduction,
             final_salary=payroll.final_salary,
@@ -120,6 +122,10 @@ class PayrollService:
             payment_status=payroll.payment_status,
             payment_date=payroll.payment_date,
             generated_at=payroll.generated_at,
+            generated_by=payroll.generated_by,
+            is_locked=payroll.is_locked,
+            version=payroll.version,
+            calculation_log=payroll.calculation_log,
         )
 
     # ------------------------------------------------------------------ #
@@ -178,10 +184,10 @@ class PayrollService:
     # ------------------------------------------------------------------ #
     async def _sales_by_staff(
         self, salon_id: str, month: int, year: int
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> Tuple[Dict[str, Dict[str, float]], int, int]:
         """
         Aggregate non-voided invoice line totals per staff for the given period.
-        Returns: { staff_id: {"service": float, "product": float} }
+        Returns: ({ staff_id: {"service": float, "product": float} }, eligible_invoice_count, cancelled_app_count)
         """
         start, end = self._month_range(month, year)
         invoices = await Invoice.find(
@@ -226,9 +232,11 @@ class PayrollService:
             )
 
         totals: Dict[str, Dict[str, float]] = {}
+        eligible_count = 0
         for invoice in invoices:
             if invoice.appointment_id and invoice.appointment_id in cancelled_ids:
                 continue
+            eligible_count += 1
             refund_ratio = 0.0
             if invoice.total_amount > 0:
                 refund_ratio = min(
@@ -244,56 +252,145 @@ class PayrollService:
                 line_total = round(line_total * (1.0 - refund_ratio), 2)
                 bucket = totals.setdefault(item.staff_id, {"service": 0.0, "product": 0.0})
                 if item.item_type == "SERVICE":
-                    bucket["service"] += line_total
+                    bucket["service"] = round(bucket["service"] + line_total, 2)
                 elif item.item_type == "PRODUCT":
-                    bucket["product"] += line_total
-        return totals
+                    bucket["product"] = round(bucket["product"] + line_total, 2)
 
-    async def _attendance_deduction(
-        self,
-        salon_id: str,
-        employee_id: str,
-        month: int,
-        year: int,
-        base_salary: float,
-    ) -> float:
-        """Deduct pro-rated salary for absent and half-day records; leave/week-off excluded."""
-        if base_salary <= 0:
-            return 0.0
+        return totals, eligible_count, len(cancelled_ids)
 
-        from calendar import monthrange
+    # ------------------------------------------------------------------ #
+    # Monthly Salary (Tab 2) & Preview
+    # ------------------------------------------------------------------ #
+    async def preview_payroll(
+        self, actor: User, month: int, year: int
+    ) -> PayrollPreviewResponse:
+        """
+        Preview calculated payroll items for a given month/year without saving to DB.
+        Exposes transparent breakdown of Fixed Salary, Service/Product Incentives, and Manager Incentives.
+        """
+        salon_id = self._resolve_salon_id(actor)
+        employees = await self._list_employee_users(salon_id, active_only=True)
+        if not employees:
+            raise ResourceNotFoundException("No active employees found for payroll preview")
 
-        last_day = monthrange(year, month)[1]
-        start_date = f"{year:04d}-{month:02d}-01"
-        end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
-
-        records = await Attendance.find(
+        existing = await Payroll.find(
             {
                 "tenant_id": salon_id,
-                "staff_id": employee_id,
-                "date": {"$gte": start_date, "$lte": end_date},
+                "month": month,
+                "year": year,
                 "is_deleted": False,
             }
         ).to_list()
+        payroll_exists = len(existing) > 0
+        has_paid_records = any(p.payment_status == PAYMENT_STATUS_PAID for p in existing)
 
-        absent_units = 0.0
-        for record in records:
-            if record.status == ATTENDANCE_STATUS_ABSENT:
-                absent_units += 1.0
-            elif record.status == ATTENDANCE_STATUS_HALF_DAY:
-                absent_units += 0.5
+        sales, eligible_count, cancelled_count = await self._sales_by_staff(salon_id, month, year)
 
-        if absent_units <= 0:
-            return 0.0
+        items: List[PayrollItem] = []
+        tot_base = 0.0
+        tot_svc_inc = 0.0
+        tot_prod_inc = 0.0
+        tot_mgr_inc = 0.0
+        tot_gross = 0.0
 
-        per_day = base_salary / last_day
-        return round(per_day * absent_units, 2)
+        for emp in employees:
+            emp_id = str(emp.id)
+            emp_sales = sales.get(emp_id, {"service": 0.0, "product": 0.0})
+            service_sales = round(emp_sales["service"], 2)
+            product_sales = round(emp_sales["product"], 2)
 
-    # ------------------------------------------------------------------ #
-    # Monthly Salary (Tab 2)
-    # ------------------------------------------------------------------ #
+            incentive_enabled = bool(emp.incentive_base)
+            svc_pct = emp.service_incentive_percent or 0.0
+            prod_pct = emp.product_incentive_percent or 0.0
+
+            service_incentive = (
+                round(service_sales * svc_pct / 100.0, 2) if incentive_enabled else 0.0
+            )
+            product_incentive = (
+                round(product_sales * prod_pct / 100.0, 2) if incentive_enabled else 0.0
+            )
+            base_salary = round(emp.salary or 0.0, 2)
+
+            # Manager incentive calculation for manager role if configured
+            is_manager = emp.role in {"salon_manager", "salon_admin"}
+            manager_incentive = 0.0
+
+            # Deductions are explicitly ZERO (attendance is for reporting only)
+            deduction = 0.0
+            bonus = 0.0
+            gross_salary = round(
+                base_salary + service_incentive + product_incentive + manager_incentive + bonus, 2
+            )
+
+            tot_base = round(tot_base + base_salary, 2)
+            tot_svc_inc = round(tot_svc_inc + service_incentive, 2)
+            tot_prod_inc = round(tot_prod_inc + product_incentive, 2)
+            tot_mgr_inc = round(tot_mgr_inc + manager_incentive, 2)
+            tot_gross = round(tot_gross + gross_salary, 2)
+
+            calc_log = {
+                "employee_id": emp_id,
+                "employee_name": self._full_name(emp),
+                "month": month,
+                "year": year,
+                "configured_salary": base_salary,
+                "service_sales_total": service_sales,
+                "product_sales_total": product_sales,
+                "service_incentive_percent": svc_pct if incentive_enabled else 0.0,
+                "product_incentive_percent": prod_pct if incentive_enabled else 0.0,
+                "service_incentive": service_incentive,
+                "product_incentive": product_incentive,
+                "manager_incentive": manager_incentive,
+                "bonus": bonus,
+                "deduction": deduction,
+                "gross_salary": gross_salary,
+                "formula": f"Gross Salary ({gross_salary:.2f}) = Base ({base_salary:.2f}) + Service Incentive ({service_incentive:.2f}) + Product Incentive ({product_incentive:.2f}) + Manager Incentive ({manager_incentive:.2f})",
+                "attendance_notes": "Attendance ignored (reporting only per payroll rules)",
+                "eligible_invoices_count": eligible_count,
+                "cancelled_appointments_excluded": cancelled_count,
+            }
+
+            items.append(
+                PayrollItem(
+                    id=f"preview-{emp_id}",
+                    employee_id=emp_id,
+                    employee_name=self._full_name(emp),
+                    employee_role=emp.role,
+                    salary_type=emp.salary_type or DEFAULT_SALARY_TYPE,
+                    month=month,
+                    year=year,
+                    base_salary=base_salary,
+                    service_incentive=service_incentive,
+                    product_incentive=product_incentive,
+                    manager_incentive=manager_incentive,
+                    bonus=bonus,
+                    deduction=0.0,
+                    final_salary=gross_salary,
+                    final_paid_amount=0.0,
+                    payment_status=PAYMENT_STATUS_PENDING,
+                    generated_at=now_utc(),
+                    generated_by=str(actor.id),
+                    is_locked=True,
+                    version=1,
+                    calculation_log=calc_log,
+                )
+            )
+
+        items.sort(key=lambda p: (p.employee_name or "").lower())
+        return PayrollPreviewResponse(
+            items=items,
+            payroll_exists=payroll_exists,
+            has_paid_records=has_paid_records,
+            total_base_salary=tot_base,
+            total_service_incentive=tot_svc_inc,
+            total_product_incentive=tot_prod_inc,
+            total_manager_incentive=tot_mgr_inc,
+            total_gross_salary=tot_gross,
+            message="Payroll preview calculated successfully",
+        )
+
     async def generate_payroll(
-        self, actor: User, month: int, year: int
+        self, actor: User, month: int, year: int, force_regenerate: bool = False
     ) -> List[PayrollItem]:
         salon_id = self._resolve_salon_id(actor)
         await self.reconciliation_service.reconcile_for_actor(actor, salon_id=salon_id)
@@ -312,18 +409,25 @@ class PayrollService:
                 "is_deleted": False,
             }
         ).to_list()
-        existing_ids = {p.employee_id for p in existing}
 
-        pending_employees = [e for e in employees if str(e.id) not in existing_ids]
-        if not pending_employees:
-            raise BookingConflictException(
-                detail="Payroll for this period has already been generated"
-            )
+        if existing:
+            paid_records = [p for p in existing if p.payment_status == PAYMENT_STATUS_PAID]
+            if paid_records:
+                raise BookingConflictException(
+                    detail="Payroll for this period has already been paid and locked. Historical records are immutable."
+                )
+            if not force_regenerate:
+                raise BookingConflictException(
+                    detail="Payroll for this period has already been generated. Use regenerate option to update unpaid records."
+                )
 
-        sales = await self._sales_by_staff(salon_id, month, year)
+        sales, eligible_count, cancelled_count = await self._sales_by_staff(salon_id, month, year)
 
-        created: List[Payroll] = []
-        for emp in pending_employees:
+        existing_by_emp = {p.employee_id: p for p in existing}
+        created_or_updated: List[Payroll] = []
+        gen_time = now_utc()
+
+        for emp in employees:
             emp_id = str(emp.id)
             emp_sales = sales.get(emp_id, {"service": 0.0, "product": 0.0})
             service_sales = round(emp_sales["service"], 2)
@@ -340,44 +444,100 @@ class PayrollService:
                 round(product_sales * prod_pct / 100.0, 2) if incentive_enabled else 0.0
             )
             base_salary = round(emp.salary or 0.0, 2)
+            manager_incentive = 0.0
             bonus = 0.0
-            deduction = await self._attendance_deduction(
-                salon_id, emp_id, month, year, base_salary
-            )
-            final_salary = round(
-                base_salary + service_incentive + product_incentive + bonus - deduction, 2
+            # Strict rule: Attendance deduction is NEVER automatically applied.
+            deduction = 0.0
+            gross_salary = round(
+                base_salary + service_incentive + product_incentive + manager_incentive + bonus, 2
             )
 
-            payroll = Payroll(
-                salon_id=salon_id,
-                tenant_id=salon_id,
-                employee_id=emp_id,
-                employee_name=self._full_name(emp),
-                employee_role=emp.role,
-                salary_type=emp.salary_type or DEFAULT_SALARY_TYPE,
-                month=month,
-                year=year,
-                base_salary=base_salary,
-                service_incentive_percent=svc_pct if incentive_enabled else 0.0,
-                product_incentive_percent=prod_pct if incentive_enabled else 0.0,
-                service_sales_total=service_sales,
-                product_sales_total=product_sales,
-                service_incentive=service_incentive,
-                product_incentive=product_incentive,
-                bonus=bonus,
-                deduction=deduction,
-                final_salary=final_salary,
-                final_paid_amount=0.0,
-                payment_status=PAYMENT_STATUS_PENDING,
-                generated_at=now_utc(),
-                created_by=str(actor.id),
-            )
-            await payroll.insert()
-            created.append(payroll)
+            existing_record = existing_by_emp.get(emp_id)
+            next_version = (existing_record.version + 1) if existing_record else 1
 
-        all_period = existing + created
-        all_period.sort(key=lambda p: (p.employee_name or "").lower())
-        return [self._to_payroll_item(p) for p in all_period]
+            calc_log = {
+                "employee_id": emp_id,
+                "employee_name": self._full_name(emp),
+                "month": month,
+                "year": year,
+                "configured_salary": base_salary,
+                "service_sales_total": service_sales,
+                "product_sales_total": product_sales,
+                "service_incentive_percent": svc_pct if incentive_enabled else 0.0,
+                "product_incentive_percent": prod_pct if incentive_enabled else 0.0,
+                "service_incentive": service_incentive,
+                "product_incentive": product_incentive,
+                "manager_incentive": manager_incentive,
+                "bonus": bonus,
+                "deduction": deduction,
+                "gross_salary": gross_salary,
+                "formula": f"Gross Salary ({gross_salary:.2f}) = Base ({base_salary:.2f}) + Service Incentive ({service_incentive:.2f}) + Product Incentive ({product_incentive:.2f}) + Manager Incentive ({manager_incentive:.2f})",
+                "attendance_notes": "Attendance ignored (reporting only per payroll rules)",
+                "eligible_invoices_count": eligible_count,
+                "cancelled_appointments_excluded": cancelled_count,
+                "version": next_version,
+                "generated_at": gen_time.isoformat(),
+                "generated_by": str(actor.id),
+            }
+
+            if existing_record:
+                existing_record.employee_name = self._full_name(emp)
+                existing_record.employee_role = emp.role
+                existing_record.salary_type = emp.salary_type or DEFAULT_SALARY_TYPE
+                existing_record.base_salary = base_salary
+                existing_record.service_incentive_percent = svc_pct if incentive_enabled else 0.0
+                existing_record.product_incentive_percent = prod_pct if incentive_enabled else 0.0
+                existing_record.service_sales_total = service_sales
+                existing_record.product_sales_total = product_sales
+                existing_record.service_incentive = service_incentive
+                existing_record.product_incentive = product_incentive
+                existing_record.manager_incentive = manager_incentive
+                existing_record.bonus = bonus
+                existing_record.deduction = 0.0
+                existing_record.final_salary = gross_salary
+                existing_record.generated_at = gen_time
+                existing_record.generated_by = str(actor.id)
+                existing_record.is_locked = True
+                existing_record.version = next_version
+                existing_record.calculation_log = calc_log
+                existing_record.updated_by = str(actor.id)
+                await existing_record.save()
+                created_or_updated.append(existing_record)
+            else:
+                payroll = Payroll(
+                    salon_id=salon_id,
+                    tenant_id=salon_id,
+                    employee_id=emp_id,
+                    employee_name=self._full_name(emp),
+                    employee_role=emp.role,
+                    salary_type=emp.salary_type or DEFAULT_SALARY_TYPE,
+                    month=month,
+                    year=year,
+                    base_salary=base_salary,
+                    service_incentive_percent=svc_pct if incentive_enabled else 0.0,
+                    product_incentive_percent=prod_pct if incentive_enabled else 0.0,
+                    service_sales_total=service_sales,
+                    product_sales_total=product_sales,
+                    service_incentive=service_incentive,
+                    product_incentive=product_incentive,
+                    manager_incentive=manager_incentive,
+                    bonus=bonus,
+                    deduction=0.0,
+                    final_salary=gross_salary,
+                    final_paid_amount=0.0,
+                    payment_status=PAYMENT_STATUS_PENDING,
+                    generated_at=gen_time,
+                    generated_by=str(actor.id),
+                    is_locked=True,
+                    version=1,
+                    calculation_log=calc_log,
+                    created_by=str(actor.id),
+                )
+                await payroll.insert()
+                created_or_updated.append(payroll)
+
+        created_or_updated.sort(key=lambda p: (p.employee_name or "").lower())
+        return [self._to_payroll_item(p) for p in created_or_updated]
 
     async def list_payroll(
         self, actor: User, month: int, year: int
@@ -422,12 +582,13 @@ class PayrollService:
     async def get_breakdown(self, actor: User, payroll_id: str) -> PayrollBreakdown:
         payroll = await self._get_payroll_in_scope(actor, payroll_id)
         rows = [
-            PayrollBreakdownRow(type="Base Salary", amount=payroll.base_salary),
+            PayrollBreakdownRow(type="Configured Base Salary", amount=payroll.base_salary),
             PayrollBreakdownRow(type="Service Incentive", amount=payroll.service_incentive),
             PayrollBreakdownRow(type="Product Incentive", amount=payroll.product_incentive),
+            PayrollBreakdownRow(type="Manager Incentive", amount=payroll.manager_incentive),
             PayrollBreakdownRow(type="Bonus", amount=payroll.bonus),
-            PayrollBreakdownRow(type="Deductions", amount=-payroll.deduction),
-            PayrollBreakdownRow(type="Final Salary", amount=payroll.final_salary),
+            PayrollBreakdownRow(type="Deductions", amount=0.0),
+            PayrollBreakdownRow(type="Gross Salary", amount=payroll.final_salary),
         ]
         return PayrollBreakdown(
             id=str(payroll.id),
@@ -444,12 +605,18 @@ class PayrollService:
             product_sales_total=payroll.product_sales_total,
             service_incentive=payroll.service_incentive,
             product_incentive=payroll.product_incentive,
+            manager_incentive=payroll.manager_incentive,
             bonus=payroll.bonus,
-            deduction=payroll.deduction,
+            deduction=0.0,
             final_salary=payroll.final_salary,
             final_paid_amount=payroll.final_paid_amount,
             payment_status=payroll.payment_status,
             payment_date=payroll.payment_date,
+            generated_at=payroll.generated_at,
+            generated_by=payroll.generated_by,
+            is_locked=payroll.is_locked,
+            version=payroll.version,
+            calculation_log=payroll.calculation_log,
             rows=rows,
         )
 

@@ -197,7 +197,7 @@ class InventoryService:
             inventory.product_id,
             inventory.brand_id,
         )
-        inventory.stock_quantity = max(0, stock)
+        inventory.stock_quantity = stock
         inventory.total_value = round(inventory.stock_quantity * inventory.buying_price, 2)
         await inventory.save()
         await self._create_stock_alert_if_needed(inventory)
@@ -613,7 +613,11 @@ class InventoryService:
                     item.product_id,
                     item.brand_id,
                 )
-                days_left = int(item.stock_quantity / daily_usage) if daily_usage > 0 else 0
+                days_left = (
+                    int(item.stock_quantity / daily_usage)
+                    if (daily_usage > 0 and item.stock_quantity > 0)
+                    else 0
+                )
                 warnings.append(
                     {
                         "inventory_id": item.id,

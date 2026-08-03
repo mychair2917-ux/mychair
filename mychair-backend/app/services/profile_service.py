@@ -20,8 +20,16 @@ from app.utils.image_type import detect_image_type
 from app.utils.url import normalize_public_url
 
 
-ALLOWED_IMAGE_TYPES = {"jpeg", "png"}
-ALLOWED_MIME_TYPES = {"image/jpeg", "image/png"}
+ALLOWED_IMAGE_TYPES = {"jpeg", "png", "webp"}
+ALLOWED_MIME_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/pjpeg",
+    "image/png",
+    "image/x-png",
+    "image/webp",
+    "application/octet-stream",
+}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
 
 
@@ -168,8 +176,9 @@ class ProfileService:
         await current_user.save()
 
     async def upload_avatar(self, current_user: User, file: UploadFile) -> ProfileResponse:
-        if file.content_type not in ALLOWED_MIME_TYPES:
-            raise PermissionDeniedException(detail="Only PNG and JPEG images are allowed")
+        raw_ct = (file.content_type or "").lower().split(";")[0].strip()
+        if raw_ct and raw_ct not in ALLOWED_MIME_TYPES:
+            raise PermissionDeniedException(detail="Only PNG, JPEG, and WEBP images are allowed")
         content = await file.read()
         stored_path = self._write_avatar_bytes(current_user, content)
         self._delete_avatar_file(current_user.avatar)
@@ -192,7 +201,7 @@ class ProfileService:
             raise PermissionDeniedException(detail="Avatar image must be 2MB or smaller")
         image_type = detect_image_type(content)
         if image_type not in ALLOWED_IMAGE_TYPES:
-            raise PermissionDeniedException(detail="Unsupported image format")
+            raise PermissionDeniedException(detail="Unsupported image format. Allowed formats: PNG, JPEG, WEBP")
         extension = "jpg" if image_type == "jpeg" else image_type
         file_name = f"{current_user.id}-{uuid.uuid4().hex}.{extension}"
         file_path = self.avatar_dir / file_name

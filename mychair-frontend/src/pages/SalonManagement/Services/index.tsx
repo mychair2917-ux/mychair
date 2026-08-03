@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Layers3, Package, Pencil, Plus, Scissors, Trash2, Warehouse } from 'lucide-react';
+import { AlertCircle, Layers3, Package, Pencil, Plus, Scissors, Sparkles, Tag, Trash2, Warehouse } from 'lucide-react';
 
 import {
   Button,
@@ -722,95 +722,168 @@ const Services: React.FC = () => {
         </div>
       ) : activeTab === 'services' ? (
         <div className="space-y-6">
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex flex-col gap-1">
-              <h2 className="text-lg font-semibold text-gray-900">Add salon service</h2>
-              <p className="text-sm text-gray-500">
-                Search a master service or type a new one, then set a price before adding it to this
-                salon.
-              </p>
+          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:shadow-md">
+            <div className="border-b border-gray-100 bg-gradient-to-r from-gray-50/80 via-white to-amber-50/30 px-6 py-5 sm:px-7">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--color-brand-gold)]/10 text-[var(--color-brand-gold-dark)] shadow-xs">
+                    <Scissors className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900 tracking-tight">Add Salon Service</h2>
+                    <p className="text-xs text-gray-500 font-medium">
+                      Select a predefined service or type a custom one, then configure pricing.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200/60">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                    Catalog Active
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_180px_180px_140px]">
-              <FormField label="Service" name="serviceName" required>
-                <div className="space-y-2">
-                  <CommonDropdown
-                    options={serviceOptions}
-                    value={draft.serviceId}
-                    onChange={(value) => updateDraftFromSelection(String(value))}
-                    placeholder="Search and select a predefined service"
-                    searchable
-                    loading={isLoadingMasterServices}
-                  />
-                  <Input
-                    id="serviceName"
-                    placeholder="Or type a custom service name"
-                    value={draft.serviceName}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        serviceName: event.target.value,
-                        serviceId: undefined,
-                      }))
-                    }
-                  />
-                  {draft.serviceName.trim() &&
-                    !serviceOptions.some(
-                      (option) =>
-                        option.label.trim().toLowerCase() === draft.serviceName.trim().toLowerCase()
-                    ) && (
-                      <p className="text-xs text-[var(--color-brand-gold-dark)]">
-                        Create new service: "{draft.serviceName.trim()}"
-                      </p>
-                    )}
+            <div className="p-6 sm:p-7 space-y-6">
+              {duplicateExists && (
+                <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs font-medium text-amber-800 shadow-xs">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                  <span>This service name already exists in your salon's catalog. Please choose another or edit the existing service.</span>
                 </div>
-              </FormField>
+              )}
 
-              <FormField label="Normal Price" name="price" required>
-                <Input
-                  id="price"
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  placeholder="Enter price"
-                  value={draft.price}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      price: event.target.value,
-                    }))
-                  }
-                />
-              </FormField>
+              <div className="grid gap-6 lg:grid-cols-12">
+                <div className="lg:col-span-5 flex flex-col justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 sm:p-5 transition-colors focus-within:border-[var(--color-brand-gold)]/50 focus-within:bg-white">
+                  <FormField label="Service Name" name="serviceName" required>
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Option 1: Choose Predefined</span>
+                        <CommonDropdown
+                          options={serviceOptions}
+                          value={draft.serviceId}
+                          onChange={(value) => updateDraftFromSelection(String(value))}
+                          placeholder="Search and select a predefined service"
+                          searchable
+                          loading={isLoadingMasterServices}
+                        />
+                      </div>
 
-              <FormField label="Member Price" name="memberPrice">
-                <Input
-                  id="memberPrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Optional"
-                  value={draft.memberPrice}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      memberPrice: event.target.value,
-                    }))
-                  }
-                />
-              </FormField>
+                      <div className="relative flex items-center py-1">
+                        <div className="grow border-t border-gray-200"></div>
+                        <span className="mx-2 shrink text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 rounded">OR</span>
+                        <div className="grow border-t border-gray-200"></div>
+                      </div>
 
-              <div className="flex items-end">
-                <Button
-                  type="button"
-                  fullWidth
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={handleAddService}
-                  isLoading={isCreating}
-                  disabled={isCreating || duplicateExists}
-                >
-                  Add
-                </Button>
+                      <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Option 2: Create Custom</span>
+                        <Input
+                          id="serviceName"
+                          placeholder="Type custom service name"
+                          value={draft.serviceName}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              serviceName: event.target.value,
+                              serviceId: undefined,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      {draft.serviceName.trim() &&
+                        !serviceOptions.some(
+                          (option) =>
+                            option.label.trim().toLowerCase() === draft.serviceName.trim().toLowerCase()
+                        ) && (
+                          <div className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--color-brand-gold)]/30 bg-[var(--color-brand-gold)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
+                            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                            Creating new service: "{draft.serviceName.trim()}"
+                          </div>
+                        )}
+                    </div>
+                  </FormField>
+                </div>
+
+                <div className="lg:col-span-4 flex flex-col justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 sm:p-5 transition-colors focus-within:border-[var(--color-brand-gold)]/50 focus-within:bg-white space-y-4">
+                  <div>
+                    <span className="mb-2 block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Pricing Options</span>
+                    <div className="space-y-4">
+                      <FormField label="Normal Price" name="price" required>
+                        <Input
+                          id="price"
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={draft.price}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              price: event.target.value,
+                            }))
+                          }
+                        />
+                      </FormField>
+
+                      <FormField label="Member Price" name="memberPrice">
+                        <Input
+                          id="memberPrice"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Optional discounted price"
+                          value={draft.memberPrice}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              memberPrice: event.target.value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-3 flex flex-col justify-between rounded-2xl border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/70 p-4 sm:p-5 shadow-xs">
+                  <div className="space-y-3">
+                    <span className="block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Service Summary</span>
+                    <div className="rounded-xl border border-gray-200/60 bg-white p-3.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Tag className="h-3.5 w-3.5 text-[var(--color-brand-gold-dark)] shrink-0" />
+                        <span className="text-xs font-semibold text-gray-900 truncate">
+                          {draft.serviceName.trim() || 'Select or enter service'}
+                        </span>
+                      </div>
+                      <div className="border-t border-gray-100 pt-2 flex items-center justify-between text-xs">
+                        <span className="text-gray-500">Normal Price:</span>
+                        <span className="font-bold text-gray-900">
+                          {draft.price ? formatCurrency(Number(draft.price)) : '—'}
+                        </span>
+                      </div>
+                      {draft.memberPrice && (
+                        <div className="flex items-center justify-between text-xs text-amber-700 bg-amber-50/80 px-2 py-1 rounded-md">
+                          <span className="font-medium">Member Price:</span>
+                          <span className="font-bold">{formatCurrency(Number(draft.memberPrice))}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-4">
+                    <Button
+                      type="button"
+                      fullWidth
+                      icon={<Plus className="h-4 w-4" />}
+                      onClick={handleAddService}
+                      isLoading={isCreating}
+                      disabled={isCreating || duplicateExists}
+                    >
+                      Add Service
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -909,125 +982,200 @@ const Services: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="mb-5 flex flex-col gap-1">
-              <h2 className="text-lg font-semibold text-gray-900">Add salon product</h2>
-              <p className="text-sm text-gray-500">
-                Search a product or type a new one, then set a price before adding it to this salon.
-              </p>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_140px]">
-              <FormField label="Product" name="productName" required>
-                <div className="space-y-2">
-                  <CommonDropdown
-                    options={productOptions}
-                    value={productDraft.productId}
-                    onChange={(value) => updateProductDraftFromSelection(String(value))}
-                    placeholder="Search and select a predefined product"
-                    searchable
-                    loading={isLoadingMasterProducts}
-                  />
-                  <Input
-                    id="productName"
-                    placeholder="Or type a custom product name"
-                    value={productDraft.productName}
-                    onChange={(event) =>
-                      setProductDraft((current) => ({
-                        ...current,
-                        productName: event.target.value,
-                        productId: undefined,
-                      }))
-                    }
-                  />
-                  {productDraft.productName.trim() &&
-                    !productOptions.some(
-                      (option) =>
-                        option.label.trim().toLowerCase() ===
-                        productDraft.productName.trim().toLowerCase()
-                    ) && (
-                      <p className="text-xs text-[var(--color-brand-gold-dark)]">
-                        Create new product: "{productDraft.productName.trim()}"
-                      </p>
-                    )}
+          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:shadow-md">
+            <div className="border-b border-gray-100 bg-gradient-to-r from-gray-50/80 via-white to-amber-50/30 px-6 py-5 sm:px-7">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--color-brand-gold)]/10 text-[var(--color-brand-gold-dark)] shadow-xs">
+                    <Package className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900 tracking-tight">Add Salon Product</h2>
+                    <p className="text-xs text-gray-500 font-medium">
+                      Select or type product and brand details, then specify retail pricing for this salon.
+                    </p>
+                  </div>
                 </div>
-              </FormField>
-
-              <FormField label="Brand" name="brandName" required>
-                <div className="space-y-2">
-                  <CommonDropdown
-                    options={brandOptions}
-                    value={productDraft.brandId}
-                    onChange={(value) => updateProductBrandDraftFromSelection(String(value))}
-                    placeholder="Search and select a brand"
-                    searchable
-                    loading={isLoadingBrands}
-                  />
-                  <Input
-                    id="brandName"
-                    placeholder="Or type a new brand"
-                    value={productDraft.brandName}
-                    onChange={(event) =>
-                      setProductDraft((current) => ({
-                        ...current,
-                        brandName: event.target.value,
-                        brandId: undefined,
-                      }))
-                    }
-                  />
-                  {productDraft.brandName.trim() &&
-                    !brandOptions.some(
-                      (option) =>
-                        option.label.trim().toLowerCase() ===
-                        productDraft.brandName.trim().toLowerCase()
-                    ) && (
-                      <p className="text-xs text-[var(--color-brand-gold-dark)]">
-                        Create new brand: "{productDraft.brandName.trim()}"
-                      </p>
-                    )}
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200/60">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                    Catalog Active
+                  </span>
                 </div>
-              </FormField>
-
-              <FormField label="Price" name="price" required>
-                <Input
-                  id="productPrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Enter price"
-                  value={productDraft.price}
-                  onChange={(event) =>
-                    setProductDraft((current) => ({
-                      ...current,
-                      price: event.target.value,
-                    }))
-                  }
-                />
-              </FormField>
-
-              <div className="flex items-end">
-                <Button
-                  type="button"
-                  fullWidth
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={handleAddProduct}
-                  isLoading={isCreatingProduct}
-                  disabled={isCreatingProduct || duplicateProductExists}
-                >
-                  Add
-                </Button>
               </div>
             </div>
-            {productDraft.productName.trim() && (
-              <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
-                Preview:{' '}
-                <span className="font-semibold text-[var(--color-text-primary)]">
-                  {productDraft.productName.trim()}
-                  {productDraft.brandName.trim() ? ` (${productDraft.brandName.trim()})` : ''} -{' '}
-                  {formatCurrency(Number(productDraft.price || 0))}
-                </span>
-              </p>
-            )}
+
+            <div className="p-6 sm:p-7 space-y-6">
+              {duplicateProductExists && (
+                <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs font-medium text-amber-800 shadow-xs">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                  <span>This product already exists for the selected salon. Please choose another or edit the existing product.</span>
+                </div>
+              )}
+
+              <div className="grid gap-6 lg:grid-cols-12">
+                <div className="lg:col-span-4 flex flex-col justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 sm:p-5 transition-colors focus-within:border-[var(--color-brand-gold)]/50 focus-within:bg-white">
+                  <FormField label="Product" name="productName" required>
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Option 1: Predefined Product</span>
+                        <CommonDropdown
+                          options={productOptions}
+                          value={productDraft.productId}
+                          onChange={(value) => updateProductDraftFromSelection(String(value))}
+                          placeholder="Search and select predefined product"
+                          searchable
+                          loading={isLoadingMasterProducts}
+                        />
+                      </div>
+
+                      <div className="relative flex items-center py-1">
+                        <div className="grow border-t border-gray-200"></div>
+                        <span className="mx-2 shrink text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 rounded">OR</span>
+                        <div className="grow border-t border-gray-200"></div>
+                      </div>
+
+                      <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Option 2: Custom Product</span>
+                        <Input
+                          id="productName"
+                          placeholder="Type custom product name"
+                          value={productDraft.productName}
+                          onChange={(event) =>
+                            setProductDraft((current) => ({
+                              ...current,
+                              productName: event.target.value,
+                              productId: undefined,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      {productDraft.productName.trim() &&
+                        !productOptions.some(
+                          (option) =>
+                            option.label.trim().toLowerCase() ===
+                            productDraft.productName.trim().toLowerCase()
+                        ) && (
+                          <div className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--color-brand-gold)]/30 bg-[var(--color-brand-gold)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
+                            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                            Creating new product: "{productDraft.productName.trim()}"
+                          </div>
+                        )}
+                    </div>
+                  </FormField>
+                </div>
+
+                <div className="lg:col-span-4 flex flex-col justify-between rounded-2xl border border-gray-100 bg-gray-50/50 p-4 sm:p-5 transition-colors focus-within:border-[var(--color-brand-gold)]/50 focus-within:bg-white">
+                  <FormField label="Brand" name="brandName" required>
+                    <div className="space-y-3 pt-1">
+                      <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Option 1: Select Brand</span>
+                        <CommonDropdown
+                          options={brandOptions}
+                          value={productDraft.brandId}
+                          onChange={(value) => updateProductBrandDraftFromSelection(String(value))}
+                          placeholder="Search and select brand"
+                          searchable
+                          loading={isLoadingBrands}
+                        />
+                      </div>
+
+                      <div className="relative flex items-center py-1">
+                        <div className="grow border-t border-gray-200"></div>
+                        <span className="mx-2 shrink text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 rounded">OR</span>
+                        <div className="grow border-t border-gray-200"></div>
+                      </div>
+
+                      <div>
+                        <span className="mb-1.5 block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Option 2: Custom Brand</span>
+                        <Input
+                          id="brandName"
+                          placeholder="Type custom brand name"
+                          value={productDraft.brandName}
+                          onChange={(event) =>
+                            setProductDraft((current) => ({
+                              ...current,
+                              brandName: event.target.value,
+                              brandId: undefined,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      {productDraft.brandName.trim() &&
+                        !brandOptions.some(
+                          (option) =>
+                            option.label.trim().toLowerCase() ===
+                            productDraft.brandName.trim().toLowerCase()
+                        ) && (
+                          <div className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--color-brand-gold)]/30 bg-[var(--color-brand-gold)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
+                            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                            Creating new brand: "{productDraft.brandName.trim()}"
+                          </div>
+                        )}
+                    </div>
+                  </FormField>
+                </div>
+
+                <div className="lg:col-span-4 flex flex-col justify-between rounded-2xl border border-gray-200/80 bg-gradient-to-b from-white to-gray-50/70 p-4 sm:p-5 shadow-xs space-y-4">
+                  <div className="space-y-4">
+                    <FormField label="Price" name="price" required>
+                      <Input
+                        id="productPrice"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={productDraft.price}
+                        onChange={(event) =>
+                          setProductDraft((current) => ({
+                            ...current,
+                            price: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+
+                    <div className="space-y-1.5">
+                      <span className="block text-[11px] font-semibold tracking-wider text-gray-400 uppercase">Product Summary</span>
+                      <div className="rounded-xl border border-gray-200/60 bg-white p-3.5 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Tag className="h-3.5 w-3.5 text-[var(--color-brand-gold-dark)] shrink-0" />
+                          <span className="text-xs font-semibold text-gray-900 truncate">
+                            {productDraft.productName.trim() || 'Product Name'}
+                          </span>
+                        </div>
+                        {productDraft.brandName.trim() && (
+                          <div className="text-xs text-gray-500 pl-5.5 font-medium">
+                            Brand: <span className="font-semibold text-gray-700">{productDraft.brandName.trim()}</span>
+                          </div>
+                        )}
+                        <div className="border-t border-gray-100 pt-2 flex items-center justify-between text-xs">
+                          <span className="text-gray-500">Retail Price:</span>
+                          <span className="font-bold text-gray-900">
+                            {productDraft.price ? formatCurrency(Number(productDraft.price)) : '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <Button
+                      type="button"
+                      fullWidth
+                      icon={<Plus className="h-4 w-4" />}
+                      onClick={handleAddProduct}
+                      isLoading={isCreatingProduct}
+                      disabled={isCreatingProduct || duplicateProductExists}
+                    >
+                      Add Product
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <CommonTable

@@ -31,6 +31,7 @@ export interface PayrollItem {
   base_salary: number;
   service_incentive: number;
   product_incentive: number;
+  manager_incentive?: number;
   bonus: number;
   deduction: number;
   final_salary: number;
@@ -38,6 +39,10 @@ export interface PayrollItem {
   payment_status: string;
   payment_date?: string | null;
   generated_at?: string | null;
+  generated_by?: string | null;
+  is_locked?: boolean;
+  version?: number;
+  calculation_log?: Record<string, unknown> | null;
 }
 
 export interface PayrollBreakdownRow {
@@ -60,13 +65,31 @@ export interface PayrollBreakdown {
   product_sales_total: number;
   service_incentive: number;
   product_incentive: number;
+  manager_incentive?: number;
   bonus: number;
   deduction: number;
   final_salary: number;
   final_paid_amount: number;
   payment_status: string;
   payment_date?: string | null;
+  generated_at?: string | null;
+  generated_by?: string | null;
+  is_locked?: boolean;
+  version?: number;
+  calculation_log?: Record<string, unknown> | null;
   rows: PayrollBreakdownRow[];
+}
+
+export interface PayrollPreviewResponse {
+  items: PayrollItem[];
+  payroll_exists: boolean;
+  has_paid_records: boolean;
+  total_base_salary: number;
+  total_service_incentive: number;
+  total_product_incentive: number;
+  total_manager_incentive: number;
+  total_gross_salary: number;
+  message: string;
 }
 
 export interface SalarySlip extends PayrollBreakdown {
@@ -92,6 +115,7 @@ export interface PaginatedPayrollHistory {
 export interface MonthlyPayrollParams {
   month: number;
   year: number;
+  force_regenerate?: boolean;
 }
 
 export interface PayrollHistoryParams {

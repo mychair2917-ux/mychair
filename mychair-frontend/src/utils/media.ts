@@ -7,20 +7,24 @@ import { API_BASE_URL } from '../config/api';
  */
 export function resolveMediaUrl(url: string | null | undefined): string {
   if (!url) return '';
-  if (
-    url.startsWith('http://') ||
-    url.startsWith('https://') ||
-    url.startsWith('blob:') ||
-    url.startsWith('data:')
-  ) {
+  if (url.startsWith('blob:') || url.startsWith('data:')) {
     return url;
   }
 
   try {
     const apiOrigin = new URL(API_BASE_URL).origin;
-    // Safely combine origin and relative path ensuring no double slashes
-    return `${apiOrigin.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
-  } catch (e) {
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return `${apiOrigin.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+    }
+
+    const urlObj = new URL(url);
+    if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+      return `${apiOrigin.replace(/\/$/, '')}${urlObj.pathname}${urlObj.search}`;
+    }
+
+    return url;
+  } catch {
     return url;
   }
 }

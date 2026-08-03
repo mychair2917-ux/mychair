@@ -15,10 +15,10 @@ class ProductInventory(BaseTenantDocument):
     product_name_snapshot: str = Field(..., max_length=150)
     brand_name_snapshot: Optional[str] = Field(default=None, max_length=100)
     category: str = Field(default="General", max_length=80, index=True)
-    stock_quantity: int = Field(default=0, ge=0)
+    stock_quantity: int = Field(default=0)
     min_threshold: int = Field(default=5, ge=0)
     buying_price: float = Field(default=0.0, ge=0.0)
-    total_value: float = Field(default=0.0, ge=0.0)
+    total_value: float = Field(default=0.0)
 
     class Settings:
         name = "products_inventory"
@@ -48,7 +48,7 @@ class InventoryItem(BaseTenantDocument):
     retail_price: float = Field(..., ge=0.0)  # Sale price to client
     
     # Stock status caching (ledger remains final source of truth)
-    quantity_in_stock: int = Field(default=0, ge=0)
+    quantity_in_stock: int = Field(default=0)
     alert_threshold: int = Field(default=5, ge=0)  # Alerts generated when stock falls below this
     
     supplier_name: Optional[str] = Field(default=None)

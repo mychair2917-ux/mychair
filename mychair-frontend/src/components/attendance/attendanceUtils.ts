@@ -37,27 +37,31 @@ export const statusLabel = (status: string): string => {
       return 'Half Day';
     case 'ABSENT':
       return 'Absent';
+    case 'LEAVE':
+      return 'Leave';
     case 'WEEK_OFF':
       return 'Week Off';
     default:
-      return status;
+      return status ? status.replace('_', ' ') : 'Not Marked';
   }
 };
 
 export const statusTone = (status: string): string => {
   switch (status) {
     case 'PRESENT':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200/80 shadow-xs';
     case 'LATE':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
+      return 'bg-amber-50 text-amber-700 border-amber-200/80 shadow-xs';
     case 'HALF_DAY':
-      return 'bg-orange-50 text-orange-700 border-orange-200';
+      return 'bg-orange-50 text-orange-700 border-orange-200/80 shadow-xs';
     case 'ABSENT':
-      return 'bg-rose-50 text-rose-700 border-rose-200';
+      return 'bg-rose-50 text-rose-700 border-rose-200/80 shadow-xs';
+    case 'LEAVE':
+      return 'bg-purple-50 text-purple-700 border-purple-200/80 shadow-xs';
     case 'WEEK_OFF':
-      return 'bg-sky-50 text-sky-700 border-sky-200';
+      return 'bg-sky-50 text-sky-700 border-sky-200/80 shadow-xs';
     default:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
+      return 'bg-slate-50 text-slate-600 border-slate-200 shadow-xs';
   }
 };
 
@@ -69,6 +73,8 @@ export const calendarDayColor = (status?: string): string => {
       return 'bg-amber-500';
     case 'ABSENT':
       return 'bg-rose-500';
+    case 'LEAVE':
+      return 'bg-purple-500';
     case 'WEEK_OFF':
       return 'bg-sky-500';
     case 'HALF_DAY':
@@ -82,3 +88,4 @@ export const groupRecordsByDate = (records: AttendanceRecord[]): AttendanceRecor
   [...records].sort(
     (a, b) => new Date(b.attendance_date).getTime() - new Date(a.attendance_date).getTime()
   );
+

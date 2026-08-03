@@ -903,10 +903,13 @@ const Appointments: React.FC = () => {
     label: service.service_name,
   }));
   const productOptions = products.map((product: AppointmentProductOption) => {
-    const isOos = product.stock_quantity !== undefined && product.stock_quantity <= 0;
+    const stockQty = product.stock_quantity;
+    const isOos = stockQty !== undefined && stockQty <= 0;
     return {
       value: product.salon_product_id,
-      label: isOos ? `${product.product_name} (Out of Stock)` : product.product_name,
+      label: isOos
+        ? `${product.product_name} (${stockQty !== undefined && stockQty < 0 ? `Stock: ${stockQty}` : 'Out of Stock'})`
+        : product.product_name,
     };
   });
   const staffOptions = staff.map((member) => ({ value: member.id, label: member.name }));

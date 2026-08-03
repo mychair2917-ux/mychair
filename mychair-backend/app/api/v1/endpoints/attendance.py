@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 
 @router.get("/today-status")
 async def get_today_status(
+    employee_id: Optional[str] = Query(default=None),
     current_user: User = Depends(require_module(Module.ATTENDANCE)),
 ):
-    data = await attendance_service.get_today_status(current_user)
+    data = await attendance_service.get_today_status(current_user, target_employee_id=employee_id)
     return success_response(
         "Today's attendance status fetched successfully",
         data=data.model_dump(mode="json"),
@@ -38,7 +39,11 @@ async def check_in(
     current_user: User = Depends(PermissionChecker("attendance.create")),
 ):
     item = await attendance_service.check_in(
-        current_user, payload.latitude, payload.longitude
+        current_user,
+        payload.latitude,
+        payload.longitude,
+        target_employee_id=payload.employee_id,
+        date_str=payload.date,
     )
     return success_response(
         "Checked in successfully",
@@ -53,7 +58,11 @@ async def check_out(
 ):
     try:
         item = await attendance_service.check_out(
-            current_user, payload.latitude, payload.longitude
+            current_user,
+            payload.latitude,
+            payload.longitude,
+            target_employee_id=payload.employee_id,
+            date_str=payload.date,
         )
         return success_response(
             "Checked out successfully",
