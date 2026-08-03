@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { AlertCircle, Layers3, Package, Pencil, Plus, Scissors, Sparkles, Tag, Trash2, Warehouse } from 'lucide-react';
+import { AlertCircle, Layers3, Package, Pencil, Plus, Scissors, Sparkles, Tag, Trash2, Warehouse, Upload } from 'lucide-react';
 
 import {
   Button,
@@ -34,6 +34,7 @@ import { SalonServiceItem } from '../../../redux/slices/salonServices/Types';
 import { getApiErrorMessage } from '../../../utils/apiErrors';
 import { formatCurrency } from '../../../utils/currency';
 import { formatDateDMY } from '../../../utils/utilities';
+import ExcelImportModal from './ExcelImportModal';
 
 type ManageSalonTab = 'services' | 'products' | 'assets';
 
@@ -129,6 +130,8 @@ const Services: React.FC = () => {
   const [search, setSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const debouncedSearch = useDebouncedSearch(search, 300);
 
@@ -651,6 +654,44 @@ const Services: React.FC = () => {
     }
   };
 
+  const handleExcelImport = async (data: { serviceName: string; price: number; memberPrice?: number }[]) => {
+    setIsImporting(true);
+    let successCount = 0;
+    try {
+      for (const item of data) {
+        const matchedService = serviceOptions.find(
+          (option) => option.label.trim().toLowerCase() === item.serviceName.toLowerCase()
+        );
+        const duplicate = salonServices.some(
+          (s) => s.service_name.trim().toLowerCase() === item.serviceName.toLowerCase()
+        );
+        if (duplicate) continue; // Skip duplicates
+
+        await createSalonService({
+          salon_id: salonId,
+          body: matchedService
+            ? {
+                service_id: matchedService.value,
+                price: item.price,
+                member_price: item.memberPrice ?? null,
+              }
+            : {
+                custom_service_name: item.serviceName,
+                price: item.price,
+                member_price: item.memberPrice ?? null,
+              },
+        }).unwrap();
+        successCount++;
+      }
+      showToast('success', `Successfully imported ${successCount} services.`);
+      setIsImportModalOpen(false);
+    } catch (err: unknown) {
+      showToast('error', getApiErrorMessage(err, 'Failed to import services.'));
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   if (!salonId && isSuperAdmin(user?.role)) {
     return (
       <div className="p-6 md:p-8">
@@ -741,6 +782,16 @@ const Services: React.FC = () => {
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
                     Catalog Active
                   </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="ml-2 !py-1.5 text-xs font-semibold"
+                    leftIcon={<Upload className="h-3.5 w-3.5" />}
+                    onClick={() => setIsImportModalOpen(true)}
+                  >
+                    Import via Excel
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1543,6 +1594,13 @@ const Services: React.FC = () => {
           ?
         </p>
       </CommonModal>
+
+      <ExcelImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImport={handleExcelImport}
+        isImporting={isImporting}
+      />
     </div>
   );
 };
