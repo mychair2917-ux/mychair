@@ -688,6 +688,350 @@ class AppointmentService:
 
         return appointment
 
+    async def update_frontdesk_appointment(
+        self,
+        appointment_id: str,
+        salon_id: str,
+        customer_id: str,
+        start_datetime: datetime,
+        services: List[dict],
+        products: List[dict],
+        payment_type: str,
+        payment_status: str,
+        paid_amount: Optional[float],
+        total_amount: float,
+        notes: Optional[str] = None,
+        booking_source: str = "WALK_IN",
+    ) -> Appointment:
+        appointment = await self.appointment_repo.get(appointment_id)
+        if not appointment:
+            raise ResourceNotFoundException("Appointment not found")
+
+        start_dt = make_aware(start_datetime)
+        try:
+            cust_obj_id = PydanticObjectId(customer_id)
+        except Exception as exc:
+            raise ResourceNotFoundException("Customer not found") from exc
+        customer = await Customer.find_one(Customer.id == cust_obj_id, Customer.is_deleted == False)
+        if not customer:
+            raise ResourceNotFoundException("Customer not found")
+
+        is_member = bool(getattr(customer, "is_member", False))
+        total_duration = 0
+        service_snapshots: List[ServiceSnapshot] = []
+        product_snapshots: List[ProductSnapshot] = []
+        primary_row = (services or products)
+        appointment_staff_id = primary_row[0]["staff_id"] if primary_row else appointment.staff_id
+        submitted_lines_total = 0.0
+
+        for item in services:
+            service_id = item.get("service_id")
+            salon_service_id = item.get("salon_service_id")
+            submitted_price = item.get("price")
+            if submitted_price is not None:
+                submitted_lines_total += float(submitted_price)
+            custom_service_name: Optional[str] = None
+            salon_service = None
+            pricing_type = None
+            snapshot_price = float(submitted_price) if submitted_price is not None else 0.0
+
+            if salon_service_id:
+                try:
+                    salon_service_obj_id = PydanticObjectId(salon_service_id)
+                except Exception as exc:
+                    raise ResourceNotFoundException(
+                        f"Salon service ID '{salon_service_id}' not found"
+                    ) from exc
+                salon_service = await SalonService.find_one(
+                    SalonService.id == salon_service_obj_id,
+                    SalonService.salon_id == salon_id,
+                    SalonService.is_deleted == False,
+                )
+                if not salon_service:
+                    raise ResourceNotFoundException(
+                        f"Salon service ID '{salon_service_id}' not found"
+                    )
+                if salon_service.service_id:
+                    service_id = salon_service.service_id
+                else:
+                    custom_service_name = (salon_service.custom_service_name or "").strip() or "Custom Service"
+                snapshot_price, pricing_type = resolve_applied_service_price(
+                    is_member=is_member,
+                    normal_price=float(salon_service.price),
+                    member_price=getattr(salon_service, "member_price", None),
+                    submitted_price=float(submitted_price) if submitted_price is not None else None,
+                )
+
+            svc = None
+            if service_id:
+                try:
+                    svc_obj_id = PydanticObjectId(service_id)
+                except Exception as exc:
+                    raise ResourceNotFoundException(f"Service ID '{service_id}' not found") from exc
+                svc = await Service.find_one(Service.id == svc_obj_id, Service.is_deleted == False)
+            if not svc and not custom_service_name:
+                missing_id = service_id or salon_service_id or "unknown"
+                raise ResourceNotFoundException(f"Service ID '{missing_id}' not found")
+
+            if salon_service is None and svc is not None:
+                snapshot_price, pricing_type = resolve_applied_service_price(
+                    is_member=False,
+                    normal_price=float(svc.price),
+                    member_price=None,
+                    submitted_price=float(submitted_price) if submitted_price is not None else None,
+                )
+
+            try:
+                staff_obj_id = PydanticObjectId(item["staff_id"])
+            except Exception as exc:
+                raise ResourceNotFoundException(f"Staff ID '{item['staff_id']}' not found") from exc
+
+            staff_user = await User.find_one(User.id == staff_obj_id, User.is_deleted == False)
+            staff_name = None
+            if staff_user:
+                staff_name = user_display_name(staff_user)
+            else:
+                staff = await Staff.find_one(Staff.id == staff_obj_id, Staff.is_deleted == False)
+                if not staff:
+                    raise ResourceNotFoundException(f"Staff ID '{item['staff_id']}' not found")
+
+            duration_minutes = svc.duration_minutes if svc else 30
+            tax_rate = svc.tax_rate if svc else 0.0
+            service_name = svc.name if svc else custom_service_name or "Custom Service"
+            snapshot_service_id = str(svc.id) if svc else (salon_service_id or service_id or "")
+
+            total_duration += duration_minutes
+            service_snapshots.append(
+                ServiceSnapshot(
+                    service_id=snapshot_service_id,
+                    name=service_name,
+                    price=float(snapshot_price),
+                    duration_minutes=duration_minutes,
+                    tax_rate=tax_rate,
+                    pricing_type=pricing_type,
+                    staff_id=item["staff_id"],
+                    staff_name=staff_name,
+                )
+            )
+
+        for item in products:
+            product_id = item.get("product_id")
+            salon_product_id = item.get("salon_product_id")
+            snapshot_price = item.get("price", 0)
+            try:
+                product_quantity = int(item.get("quantity") or 1)
+            except (TypeError, ValueError):
+                product_quantity = 1
+            if product_quantity < 1:
+                product_quantity = 1
+            if item.get("price") is not None:
+                submitted_lines_total += float(item.get("price")) * product_quantity
+            custom_product_name: Optional[str] = None
+            brand_id: Optional[str] = None
+            brand_name: Optional[str] = None
+
+            if salon_product_id:
+                try:
+                    salon_product_obj_id = PydanticObjectId(salon_product_id)
+                except Exception as exc:
+                    raise ResourceNotFoundException(
+                        f"Salon product ID '{salon_product_id}' not found"
+                    ) from exc
+                salon_product = await SalonProduct.find_one(
+                    SalonProduct.id == salon_product_obj_id,
+                    SalonProduct.salon_id == salon_id,
+                    SalonProduct.is_deleted == False,
+                )
+                if not salon_product:
+                    raise ResourceNotFoundException(
+                        f"Salon product ID '{salon_product_id}' not found"
+                    )
+                if salon_product.product_id:
+                    product_id = salon_product.product_id
+                else:
+                    custom_product_name = (
+                        (salon_product.custom_product_name or "").strip() or "Custom Product"
+                    )
+                brand_id = salon_product.brand_id
+                brand_name = salon_product.custom_brand_name
+                snapshot_price = item.get("price", salon_product.price)
+
+            product = None
+            if product_id:
+                try:
+                    prod_obj_id = PydanticObjectId(product_id)
+                except Exception as exc:
+                    raise ResourceNotFoundException(f"Product ID '{product_id}' not found") from exc
+                product = await Product.find_one(
+                    Product.id == prod_obj_id,
+                    Product.is_deleted == False,
+                )
+            if not product and not custom_product_name:
+                missing_id = product_id or salon_product_id or "unknown"
+                raise ResourceNotFoundException(f"Product ID '{missing_id}' not found")
+
+            try:
+                staff_obj_id = PydanticObjectId(item["staff_id"])
+            except Exception as exc:
+                raise ResourceNotFoundException(f"Staff ID '{item['staff_id']}' not found") from exc
+
+            staff_user = await User.find_one(User.id == staff_obj_id, User.is_deleted == False)
+            staff_name = None
+            if staff_user:
+                staff_name = user_display_name(staff_user)
+            else:
+                staff = await Staff.find_one(Staff.id == staff_obj_id, Staff.is_deleted == False)
+                if not staff:
+                    raise ResourceNotFoundException(f"Staff ID '{item['staff_id']}' not found")
+
+            product_name = product.name if product else custom_product_name or "Custom Product"
+            if brand_id and not brand_name:
+                from app.models.brand import Brand
+
+                try:
+                    brand = await Brand.find_one(
+                        Brand.id == PydanticObjectId(brand_id),
+                        Brand.is_deleted == False,
+                    )
+                    brand_name = brand.name if brand else None
+                except Exception:
+                    brand_name = None
+            display_product_name = f"{product_name} ({brand_name})" if brand_name else product_name
+            snapshot_product_id = str(product.id) if product else (salon_product_id or product_id or "")
+            tax_rate = product.tax_rate if product else 0.0
+            product_snapshots.append(
+                ProductSnapshot(
+                    product_id=snapshot_product_id,
+                    salon_product_id=salon_product_id,
+                    brand_id=brand_id,
+                    name=display_product_name,
+                    price=float(snapshot_price),
+                    tax_rate=tax_rate,
+                    quantity=product_quantity,
+                    staff_id=item["staff_id"],
+                    staff_name=staff_name,
+                )
+            )
+
+        end_dt = start_dt + timedelta(minutes=total_duration)
+        applied_lines_total = round(
+            sum(float(s.price) for s in service_snapshots)
+            + sum(float(p.price) * max(int(getattr(p, "quantity", 1) or 1), 1) for p in product_snapshots),
+            2,
+        )
+        effective_total_amount = float(total_amount)
+        if abs(effective_total_amount - submitted_lines_total) < 0.02:
+            effective_total_amount = applied_lines_total
+
+        if payment_status == "PAID":
+            effective_paid = effective_total_amount
+        elif payment_status == "PENDING":
+            effective_paid = 0.0
+        else:
+            effective_paid = float(paid_amount or 0.0)
+
+        appointment.customer_id = customer_id
+        appointment.staff_id = appointment_staff_id
+        appointment.start_datetime = start_dt
+        appointment.end_datetime = end_dt
+        appointment.services = service_snapshots
+        appointment.products = product_snapshots
+        appointment.total_price = effective_total_amount
+        appointment.payment_type = payment_type
+        appointment.payment_status = payment_status
+        appointment.paid_amount = effective_paid
+        appointment.notes = notes
+        if booking_source:
+            appointment.booking_source = booking_source
+
+        await appointment.save()
+
+        # Update associated Bill and Invoice
+        try:
+            salon = await Salon.find_one({"_id": PydanticObjectId(salon_id), "is_deleted": False})
+        except Exception:
+            salon = None
+        salon_name = salon.name if salon else "Salon"
+        salon_phone = getattr(salon, "phone", "") or ""
+        salon_addr = getattr(salon, "address", {}) or {}
+        salon_address_str = (
+            ", ".join(str(v) for v in salon_addr.values() if v)
+            if isinstance(salon_addr, dict)
+            else ""
+        )
+
+        service_payload = [
+            {
+                "service_id": s.service_id,
+                "name": s.name,
+                "price": s.price,
+                "tax_rate": s.tax_rate,
+                "staff_id": s.staff_id,
+                "staff_name": s.staff_name,
+            }
+            for s in service_snapshots
+        ]
+        product_payload = [
+            {
+                "product_id": p.product_id,
+                "salon_product_id": p.salon_product_id,
+                "brand_id": p.brand_id,
+                "name": p.name,
+                "price": p.price,
+                "tax_rate": p.tax_rate,
+                "quantity": max(int(getattr(p, "quantity", 1) or 1), 1),
+                "staff_id": p.staff_id,
+                "staff_name": p.staff_name,
+            }
+            for p in product_snapshots
+        ]
+        customer_name_str = customer.full_name.strip() if customer.full_name else ""
+        customer_phone_str = customer.phone or ""
+
+        try:
+            await self.billing_service.update_invoice_from_appointment(
+                appointment_id=str(appointment.id),
+                salon_id=salon_id,
+                salon_name=salon_name,
+                salon_phone=salon_phone,
+                salon_address=salon_address_str,
+                customer_id=customer_id,
+                customer_name=customer_name_str,
+                customer_phone=customer_phone_str,
+                services=service_payload,
+                products=product_payload,
+                payment_status=payment_status,
+                payment_method=payment_type,
+                total_amount=effective_total_amount,
+                paid_amount=effective_paid,
+            )
+        except Exception:
+            pass
+
+        try:
+            await self.bill_service.update_bill_from_appointment(
+                appointment_id=str(appointment.id),
+                salon_id=salon_id,
+                salon_name=salon_name,
+                salon_phone=salon_phone,
+                salon_address=salon_address_str,
+                customer_id=customer_id,
+                customer_name=customer_name_str,
+                customer_phone=customer_phone_str,
+                services=service_payload,
+                products=product_payload,
+                payment_status=payment_status,
+                payment_method=payment_type,
+                total_amount=effective_total_amount,
+                paid_amount=effective_paid,
+            )
+        except Exception:
+            pass
+
+        return appointment
+
+
+
     async def change_status(self, appointment_id: str, new_status: str, reason: Optional[str] = None) -> Appointment:
         """Changes the status of an appointment with audited tracking."""
         appointment = await self.appointment_repo.get(appointment_id)

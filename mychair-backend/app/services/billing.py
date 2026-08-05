@@ -321,3 +321,126 @@ class BillingService:
         await invoice.save()
         
         return payment
+
+    async def update_invoice_from_appointment(
+        self,
+        appointment_id: str,
+        salon_id: str,
+        salon_name: str,
+        salon_phone: str,
+        salon_address: str,
+        customer_id: str,
+        customer_name: str,
+        customer_phone: str,
+        services: List[Dict[str, Any]],
+        products: List[Dict[str, Any]],
+        payment_status: str,
+        payment_method: str,
+        total_amount: float,
+        paid_amount: float,
+    ) -> Optional[Invoice]:
+        """
+        Updates an existing Invoice record when an appointment is edited.
+        """
+        invoice = await Invoice.find_one(
+            {"appointment_id": appointment_id, "is_deleted": False}
+        )
+        if not invoice:
+            return await self.create_invoice_from_appointment(
+                appointment_id=appointment_id,
+                salon_id=salon_id,
+                salon_name=salon_name,
+                salon_phone=salon_phone,
+                salon_address=salon_address,
+                customer_id=customer_id,
+                customer_name=customer_name,
+                customer_phone=customer_phone,
+                services=services,
+                products=products,
+                payment_status=payment_status,
+                payment_method=payment_method,
+                total_amount=total_amount,
+                paid_amount=paid_amount,
+            )
+
+        invoice_items: List[InvoiceItem] = []
+        subtotal = 0.0
+        tax_amount = 0.0
+
+        for svc in services:
+            price = float(svc.get("price", 0.0))
+            tax_rate = float(svc.get("tax_rate", 0.0))
+            line_tax = price * (tax_rate / 100.0)
+            subtotal += price
+            tax_amount += line_tax
+            invoice_items.append(
+                InvoiceItem(
+                    item_type="SERVICE",
+                    item_id=svc.get("service_id", ""),
+                    name=svc.get("name", "Service"),
+                    quantity=1,
+                    unit_price=price,
+                    tax_rate=tax_rate,
+                    discount=0.0,
+                    staff_id=svc.get("staff_id"),
+                    staff_name=svc.get("staff_name"),
+                )
+            )
+
+        for prod in products:
+            price = float(prod.get("price", 0.0))
+            tax_rate = float(prod.get("tax_rate", 0.0))
+            try:
+                quantity = int(prod.get("quantity") or 1)
+            except (TypeError, ValueError):
+                quantity = 1
+            if quantity < 1:
+                quantity = 1
+            line_subtotal = price * quantity
+            line_tax = line_subtotal * (tax_rate / 100.0)
+            subtotal += line_subtotal
+            tax_amount += line_tax
+            invoice_items.append(
+                InvoiceItem(
+                    item_type="PRODUCT",
+                    item_id=prod.get("product_id", ""),
+                    salon_product_id=prod.get("salon_product_id"),
+                    brand_id=prod.get("brand_id"),
+                    name=prod.get("name", "Product"),
+                    quantity=quantity,
+                    unit_price=price,
+                    tax_rate=tax_rate,
+                    discount=0.0,
+                    staff_id=prod.get("staff_id"),
+                    staff_name=prod.get("staff_name"),
+                )
+            )
+
+        computed_total = total_amount if total_amount > 0 else (subtotal + tax_amount)
+        if payment_status == "PAID":
+            effective_paid = computed_total
+            remaining = 0.0
+        elif payment_status == "PENDING":
+            effective_paid = 0.0
+            remaining = computed_total
+        else:  # PARTIALLY_PAID
+            effective_paid = min(paid_amount, computed_total)
+            remaining = computed_total - effective_paid
+
+        invoice.items = invoice_items
+        invoice.subtotal = round(subtotal, 2)
+        invoice.tax_amount = round(tax_amount, 2)
+        invoice.total_amount = round(computed_total, 2)
+        invoice.paid_amount = round(effective_paid, 2)
+        invoice.remaining_amount = round(remaining, 2)
+        invoice.payment_status = payment_status
+        invoice.payment_method = payment_method
+        invoice.customer_id = customer_id
+        if customer_name:
+            invoice.customer_name = customer_name
+        if customer_phone:
+            invoice.customer_phone = customer_phone
+
+        await invoice.save()
+        return invoice
+

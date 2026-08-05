@@ -661,6 +661,31 @@ async def create_frontdesk_booking(
     background_tasks.add_task(whatsapp_service.send_on_appointment_submit, str(appt.id))
     return success_response("Appointment created successfully", data=await _appointment_response(appt), status_code=201)
 
+
+@router.put("/{id}", response_model=None)
+async def update_frontdesk_booking(
+    id: str,
+    payload: FrontDeskAppointmentCreate,
+    current_user: User = Depends(PermissionChecker("appointments.create")),
+):
+    """Update full appointment details (services, products, pricing, payment, notes)."""
+    appt = await appointment_service.update_frontdesk_appointment(
+        appointment_id=id,
+        salon_id=payload.salon_id,
+        customer_id=payload.customer_id,
+        start_datetime=payload.start_datetime,
+        services=[item.model_dump() for item in payload.services],
+        products=[item.model_dump() for item in payload.products],
+        payment_type=payload.payment_type,
+        payment_status=payload.payment_status,
+        paid_amount=payload.paid_amount,
+        total_amount=payload.total_amount,
+        notes=payload.notes,
+        booking_source=payload.booking_source,
+    )
+    return success_response("Appointment updated successfully", data=await _appointment_response(appt))
+
+
 @router.get("/list")
 async def list_appointments(
     salon_id: str = Query(..., description="Salon branch ID"),

@@ -65,11 +65,9 @@ def resolve_applied_service_price(
     if abs(submitted - catalog_price) < _PRICE_EPSILON:
         return catalog_price, pricing_type
 
-    catalog_candidates = {float(normal_price)}
-    if _has_member_price(member_price):
-        catalog_candidates.add(float(member_price))
-
-    if any(abs(submitted - candidate) < _PRICE_EPSILON for candidate in catalog_candidates):
-        return catalog_price, pricing_type
+    if _has_member_price(member_price) and abs(submitted - float(member_price)) < _PRICE_EPSILON:
+        return submitted, PRICING_TYPE_MEMBER
+    if abs(submitted - float(normal_price)) < _PRICE_EPSILON:
+        return submitted, PRICING_TYPE_NORMAL
 
     return submitted, PRICING_TYPE_MANUAL

@@ -46,7 +46,7 @@ class Appointment(BaseTenantDocument):
     """
     salon_id: str = Field(..., index=True)
     customer_id: str = Field(..., index=True)
-    staff_id: str = Field(..., index=True)
+    staff_id: Optional[str] = Field(default=None, index=True)
     
     # Scheduling - Must be UTC-aware datetime objects
     start_datetime: datetime = Field(..., index=True)

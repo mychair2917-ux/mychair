@@ -106,7 +106,18 @@ export const appointmentsApi = baseApi.injectEndpoints({
         method: HTTP_METHODS.POST,
         body,
       }),
-      invalidatesTags: ['Appointments', 'Inventory'],
+      invalidatesTags: ['Appointments', 'Bills', 'Inventory', 'Dashboard'],
+    }),
+    updateFrontDeskAppointment: builder.mutation<
+      ApiResponse<AppointmentListItem>,
+      { id: string } & CreateFrontDeskAppointmentRequest
+    >({
+      query: ({ id, ...body }) => ({
+        url: API_PATHS.APPOINTMENTS.UPDATE(id),
+        method: HTTP_METHODS.PUT,
+        body,
+      }),
+      invalidatesTags: ['Appointments', 'Bills', 'Inventory', 'Dashboard'],
     }),
     updateAppointmentPayment: builder.mutation<
       ApiResponse<AppointmentListItem>,
@@ -166,6 +177,7 @@ export const {
   useGetAppointmentSalonProductsQuery,
   useGetAppointmentStaffQuery,
   useCreateFrontDeskAppointmentMutation,
+  useUpdateFrontDeskAppointmentMutation,
   useUpdateAppointmentPaymentMutation,
   useListAppointmentsQuery,
   useLazyGetBillByAppointmentQuery,

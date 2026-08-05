@@ -151,3 +151,135 @@ class BillService:
         )
         await bill.insert()
         return bill
+
+    async def update_bill_from_appointment(
+        self,
+        appointment_id: str,
+        salon_id: str,
+        salon_name: str,
+        salon_phone: str,
+        salon_address: str,
+        customer_id: str,
+        customer_name: str,
+        customer_phone: str,
+        services: List[Dict[str, Any]],
+        products: List[Dict[str, Any]],
+        payment_status: str,
+        payment_method: Optional[str],
+        total_amount: float,
+        paid_amount: float,
+    ) -> Optional[Bill]:
+        """
+        Updates an existing Bill record when an appointment is edited.
+        Recalculates subtotal, tax, total, paid, remaining, and items.
+        """
+        bill = await Bill.find_one(
+            {"appointment_id": appointment_id, "is_deleted": False}
+        )
+        if not bill:
+            return await self.create_bill_from_appointment(
+                appointment_id=appointment_id,
+                salon_id=salon_id,
+                salon_name=salon_name,
+                salon_phone=salon_phone,
+                salon_address=salon_address,
+                customer_id=customer_id,
+                customer_name=customer_name,
+                customer_phone=customer_phone,
+                services=services,
+                products=products,
+                payment_status=payment_status,
+                payment_method=payment_method,
+                total_amount=total_amount,
+                paid_amount=paid_amount,
+            )
+
+        items: List[BillItem] = []
+        subtotal = 0.0
+        tax_amount = 0.0
+
+        for svc in services:
+            unit_price = float(svc.get("price", 0.0))
+            tax_rate = float(svc.get("tax_rate", 0.0))
+            line_tax = round(unit_price * (tax_rate / 100.0), 2)
+            line_total = round(unit_price + line_tax, 2)
+
+            subtotal += unit_price
+            tax_amount += line_tax
+
+            items.append(
+                BillItem(
+                    item_type="SERVICE",
+                    item_id=svc.get("service_id", ""),
+                    name=svc.get("name", "Service"),
+                    quantity=1,
+                    unit_price=unit_price,
+                    tax_rate=tax_rate,
+                    tax_amount=line_tax,
+                    staff_id=svc.get("staff_id"),
+                    staff_name=svc.get("staff_name"),
+                    line_total=line_total,
+                )
+            )
+
+        for prod in products:
+            unit_price = float(prod.get("price", 0.0))
+            tax_rate = float(prod.get("tax_rate", 0.0))
+            try:
+                quantity = int(prod.get("quantity") or 1)
+            except (TypeError, ValueError):
+                quantity = 1
+            if quantity < 1:
+                quantity = 1
+            line_subtotal = unit_price * quantity
+            line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
+            line_total = round(line_subtotal + line_tax, 2)
+
+            subtotal += line_subtotal
+            tax_amount += line_tax
+
+            items.append(
+                BillItem(
+                    item_type="PRODUCT",
+                    item_id=prod.get("product_id", ""),
+                    name=prod.get("name", "Product"),
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    tax_rate=tax_rate,
+                    tax_amount=line_tax,
+                    staff_id=prod.get("staff_id"),
+                    staff_name=prod.get("staff_name"),
+                    line_total=line_total,
+                )
+            )
+
+        computed_total = total_amount if total_amount > 0 else round(subtotal + tax_amount, 2)
+
+        if payment_status == "PAID":
+            effective_paid = computed_total
+            remaining = 0.0
+        elif payment_status == "PENDING":
+            effective_paid = 0.0
+            remaining = computed_total
+        else:  # PARTIALLY_PAID
+            effective_paid = min(paid_amount, computed_total)
+            remaining = round(computed_total - effective_paid, 2)
+
+        bill.items = items
+        bill.subtotal = round(subtotal, 2)
+        bill.tax_amount = round(tax_amount, 2)
+        bill.total_amount = computed_total
+        bill.paid_amount = round(effective_paid, 2)
+        bill.remaining_amount = remaining
+        bill.payment_status = payment_status
+        if payment_method:
+            bill.payment_method = payment_method
+        bill.customer_id = customer_id
+        if customer_name:
+            bill.customer_name = customer_name
+        if customer_phone:
+            bill.customer_phone = customer_phone
+
+        await bill.save()
+        return bill
+
