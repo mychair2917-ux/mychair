@@ -137,6 +137,11 @@ function canManageMembership(role: string | undefined): boolean {
   return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
 }
 
+function canEditAppointment(role: string | undefined): boolean {
+  const normalized = normalizeRole(role);
+  return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
+}
+
 function resolveServicePriceForClient(
   service: AppointmentServiceOption | undefined,
   isMember: boolean | undefined
@@ -420,6 +425,9 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
   });
   const staffOptions = staff.map((member) => ({ value: member.id, label: member.name }));
 
+  const userRole = useAppSelector((state) => state.auth.user?.role);
+  const canEdit = canEditAppointment(userRole);
+
   const [serviceRows, setServiceRows] = useState<ServiceRow[]>([]);
   const [productRows, setProductRows] = useState<ProductRow[]>([]);
   const [startDateTime, setStartDateTime] = useState('');
@@ -621,7 +629,7 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     }
   };
 
-  if (!appointment) return null;
+  if (!appointment || !canEdit) return null;
 
   return (
     <Modal open={open} onClose={onClose} size="lg">
@@ -875,6 +883,9 @@ const AppointmentListTab: React.FC<{
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightAppointmentId);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const userRole = useAppSelector((state) => state.auth.user?.role);
+  const canEdit = canEditAppointment(userRole);
 
   const [fetchBillByAppointment] = useLazyGetBillByAppointmentQuery();
   const [fetchBillDetail] = useLazyGetBillDetailQuery();
@@ -1141,15 +1152,19 @@ const AppointmentListTab: React.FC<{
                     </Button>
                   </td>
                   <td className="px-3 py-3 text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="!px-2 !py-1 text-xs text-[var(--color-brand-gold)]"
-                      title="Edit appointment"
-                      onClick={() => setEditingAppointment(appt)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {canEdit ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="!px-2 !py-1 text-xs text-[var(--color-brand-gold)]"
+                        title="Edit appointment"
+                        onClick={() => setEditingAppointment(appt)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
                   </td>
                 </tr>
                 );

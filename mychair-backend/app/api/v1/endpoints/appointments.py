@@ -135,6 +135,10 @@ def _can_manage_membership(current_user: User) -> bool:
     return normalize_role(current_user.role) in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER}
 
 
+def _can_edit_appointment(current_user: User) -> bool:
+    return normalize_role(current_user.role) in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER}
+
+
 def _customer_response(customer: Customer) -> dict:
     return {
         "id": str(customer.id),
@@ -666,9 +670,13 @@ async def create_frontdesk_booking(
 async def update_frontdesk_booking(
     id: str,
     payload: FrontDeskAppointmentCreate,
-    current_user: User = Depends(PermissionChecker("appointments.create")),
+    current_user: User = Depends(get_current_user),
 ):
-    """Update full appointment details (services, products, pricing, payment, notes)."""
+    """Update full appointment details (services, products, pricing, payment, notes). Restricted to Super Admin and Salon Owner."""
+    if not _can_edit_appointment(current_user):
+        raise PermissionDeniedException(
+            detail="Editing appointments is restricted to salon owners and super admins only"
+        )
     appt = await appointment_service.update_frontdesk_appointment(
         appointment_id=id,
         salon_id=payload.salon_id,
