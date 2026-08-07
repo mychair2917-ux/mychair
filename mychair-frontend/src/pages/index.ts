@@ -11,6 +11,7 @@ export { default as SalonOwnerDashboard } from './SalonOwnerDashboard';
 export { default as Employees } from './SalonManagement/Employees';
 export { default as Services } from './SalonManagement/Services';
 export { default as Appointments } from './Appointments';
+export { default as AppointmentRegister } from './Appointments/AppointmentRegister';
 export { default as BillingFinance } from './BillingFinance';
 export { default as MyEarnings } from './MyEarnings';
 export { default as CustomerAnalytics } from './CustomerAnalytics';
@@ -23,6 +24,7 @@ export { default as SubscriptionExpired } from './SubscriptionExpired';
 export { default as NotificationsCommunication } from './NotificationsCommunication';
 export { default as ForgotPassword } from './ForgotPassword';
 export { default as ResetPassword } from './ResetPassword';
+export { default as LandingPage } from './LandingPage';
 
 
 

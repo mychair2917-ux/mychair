@@ -13,11 +13,12 @@ class BillItem(BaseModel):
     name: str
     quantity: int = Field(default=1, ge=1)
     unit_price: float = Field(..., ge=0.0)
+    discount: float = Field(default=0.0, ge=0.0)
     tax_rate: float = Field(default=0.0, ge=0.0)
     tax_amount: float = Field(default=0.0, ge=0.0)
     staff_id: Optional[str] = Field(default=None)
     staff_name: Optional[str] = Field(default=None)
-    line_total: float = Field(default=0.0, ge=0.0)  # (unit_price * quantity) + tax_amount
+    line_total: float = Field(default=0.0, ge=0.0)  # (unit_price * quantity - discount) + tax_amount
 
 
 class Bill(BaseTenantDocument):

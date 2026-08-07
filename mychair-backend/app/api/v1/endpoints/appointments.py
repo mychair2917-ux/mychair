@@ -26,6 +26,7 @@ from app.schemas.appointment import (
     AppointmentStatusUpdate,
     CustomerQuickCreate,
     FrontDeskAppointmentCreate,
+    QuickAppointmentCreate,
 )
 from app.services.appointment import AppointmentService
 from app.services.appointment_list_rows import (
@@ -42,7 +43,7 @@ from app.services.websocket import manager
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import error_response, success_response
 from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile, phone_lookup_variants
-from app.utils.timezone import make_aware
+from app.utils.timezone import make_aware, to_utc_iso
 
 router = APIRouter()
 appointment_service = AppointmentService()
@@ -187,8 +188,8 @@ async def _appointment_response(appointment: Appointment) -> dict:
         "customer_phone": customer_phone,
         "staff_id": appointment.staff_id,
         "staff_name": staff_name,
-        "start_datetime": appointment.start_datetime.isoformat(),
-        "end_datetime": appointment.end_datetime.isoformat(),
+        "start_datetime": to_utc_iso(appointment.start_datetime),
+        "end_datetime": to_utc_iso(appointment.end_datetime),
         "total_price": appointment.total_price,
         "status": appointment.status,
         "notes": appointment.notes,
@@ -633,6 +634,7 @@ async def create_frontdesk_booking(
         total_amount=payload.total_amount,
         notes=payload.notes,
         booking_source=payload.booking_source,
+        appointment_id=payload.appointment_id,
     )
     await manager.broadcast_to_salon(
         tenant_id=_effective_tenant_id(current_user),
@@ -664,6 +666,220 @@ async def create_frontdesk_booking(
     # Always send WhatsApp message immediately on POS submission
     background_tasks.add_task(whatsapp_service.send_on_appointment_submit, str(appt.id))
     return success_response("Appointment created successfully", data=await _appointment_response(appt), status_code=201)
+
+
+
+@router.post("/quick", status_code=status.HTTP_201_CREATED)
+async def create_quick_appointment(
+    payload: QuickAppointmentCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Creates a quick appointment register entry for upcoming customer appointments.
+    Restricted to Super Admin, Salon Owner, and Salon Manager roles.
+    Auto-links or creates Customer by mobile number.
+    """
+    from app.auth.rbac_config import ROLE_SUPER_ADMIN, ROLE_SALON_OWNER, ROLE_SALON_MANAGER, normalize_role
+    
+    role = normalize_role(current_user.role)
+    if role not in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER, ROLE_SALON_MANAGER, "admin"}:
+        raise PermissionDeniedException("Only Super Admin, Salon Owner, and Manager can create appointments.")
+        
+    phone, phone_err = _normalize_client_phone(payload.phone)
+    if phone_err:
+        return error_response(phone_err, status_code=400)
+        
+    effective_tenant = _effective_tenant_id(current_user)
+    
+    # Lookup or create customer
+    customer = await find_client_by_phone(phone, effective_tenant)
+    if not customer:
+        name_parts = payload.customer_name.strip().split(" ", 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else ""
+        customer = Customer(
+            tenant_id=effective_tenant,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            is_member=False,
+            notes="Auto-created via quick appointment"
+        )
+        await customer.insert()
+    else:
+        # Update customer_name if necessary
+        full_existing = customer.full_name.strip()
+        if not full_existing or full_existing.lower() == "unknown":
+            name_parts = payload.customer_name.strip().split(" ", 1)
+            customer.first_name = name_parts[0]
+            customer.last_name = name_parts[1] if len(name_parts) > 1 else ""
+            await customer.save()
+
+    # Parse date and time
+    try:
+        dt_str = f"{payload.appointment_date} {payload.appointment_time}"
+        naive_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
+        start_dt = make_aware(naive_dt)
+    except Exception:
+        return error_response("Invalid appointment_date (YYYY-MM-DD) or appointment_time (HH:MM).", status_code=400)
+        
+    end_dt = start_dt + timedelta(minutes=30)
+    
+    appt = Appointment(
+        tenant_id=effective_tenant,
+        salon_id=payload.salon_id,
+        customer_id=str(customer.id),
+        customer_name=payload.customer_name.strip(),
+        customer_phone=phone,
+        appointment_date=payload.appointment_date,
+        appointment_time=payload.appointment_time,
+        type=payload.type or "Appointment",
+        start_datetime=start_dt,
+        end_datetime=end_dt,
+        status="SCHEDULED",
+        booking_source="QUICK_REGISTER",
+        notes=payload.notes,
+        payment_status="PENDING",
+        total_price=0.0,
+        paid_amount=0.0
+    )
+    appt.add_status("SCHEDULED", changed_by=str(current_user.id))
+    await appt.insert()
+    
+    await manager.broadcast_to_salon(
+        tenant_id=effective_tenant,
+        salon_id=payload.salon_id,
+        message={
+            "event": "QUICK_APPOINTMENT_CREATED",
+            "salon_id": payload.salon_id,
+            "appointment_id": str(appt.id),
+            "customer_name": appt.customer_name,
+            "start_time": appt.start_datetime.isoformat(),
+        }
+    )
+    
+    return success_response(
+        "Quick appointment recorded successfully",
+        data={
+            "id": str(appt.id),
+            "customer_id": str(customer.id),
+            "customer_name": appt.customer_name,
+            "customer_phone": appt.customer_phone,
+            "appointment_date": appt.appointment_date,
+            "appointment_time": appt.appointment_time,
+            "type": appt.type,
+            "status": appt.status,
+            "start_datetime": to_utc_iso(appt.start_datetime),
+            "notes": appt.notes
+        }
+    )
+
+
+@router.get("/today")
+async def get_today_appointments(
+    salon_id: str = Query(..., description="Salon Branch ID"),
+    search: Optional[str] = Query(default=None, description="Search by name, phone or date"),
+    date: Optional[str] = Query(default=None, description="Client local date in YYYY-MM-DD"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns today's active appointments and summary metrics for the salon dashboard register.
+    """
+    from datetime import timezone
+    effective_tenant = _effective_tenant_id(current_user)
+    
+    if date:
+        try:
+            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+            today_str = date
+        except ValueError:
+            parsed_date = datetime.now(timezone.utc).date()
+            today_str = parsed_date.strftime("%Y-%m-%d")
+    else:
+        parsed_date = datetime.now(timezone.utc).date()
+        today_str = parsed_date.strftime("%Y-%m-%d")
+        
+    today_start = datetime.combine(parsed_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+    today_end = datetime.combine(parsed_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+    
+    base_query: dict = {
+        "salon_id": salon_id,
+        "is_deleted": False,
+        "$or": [
+            {"appointment_date": today_str},
+            {
+                "start_datetime": {
+                    "$gte": today_start,
+                    "$lte": today_end
+                }
+            }
+        ]
+    }
+    if effective_tenant:
+        base_query["tenant_id"] = effective_tenant
+        
+    all_today = await Appointment.find(base_query).sort("+start_datetime").to_list()
+    
+    today_appointments_count = sum(1 for a in all_today if a.type == "Appointment")
+    today_walkins_count = sum(1 for a in all_today if a.type == "Walk-in")
+    completed_today_count = sum(1 for a in all_today if a.status == "COMPLETED")
+    
+    now_dt = datetime.utcnow()
+    # Fallback if start_datetime happens to be tz-aware
+    upcoming_items = [
+        a for a in all_today 
+        if a.status in {"SCHEDULED", "BOOKED", "CONFIRMED", "CHECKED_IN"} 
+        and (a.start_datetime.replace(tzinfo=None) if getattr(a, 'start_datetime', None) else datetime.min) >= now_dt
+    ]
+    upcoming_appointments_count = len(upcoming_items)
+    
+    next_upcoming = upcoming_items[0] if upcoming_items else None
+    
+    active_items = [a for a in all_today if a.status not in {"COMPLETED", "CANCELLED"}]
+    
+    if search and search.strip():
+        term = search.strip().lower()
+        active_items = [
+            a for a in active_items
+            if term in (a.customer_name or "").lower()
+            or term in (a.customer_phone or "").lower()
+            or term in (a.appointment_date or "").lower()
+        ]
+        
+    res_items = []
+    for appt in active_items:
+        res_items.append({
+            "id": str(appt.id),
+            "customer_id": appt.customer_id,
+            "customer_name": appt.customer_name or "Unknown Client",
+            "customer_phone": appt.customer_phone or "",
+            "appointment_date": appt.appointment_date or appt.start_datetime.strftime("%Y-%m-%d"),
+            "appointment_time": appt.appointment_time or appt.start_datetime.strftime("%H:%M"),
+            "type": appt.type or "Appointment",
+            "status": appt.status,
+            "start_datetime": to_utc_iso(appt.start_datetime),
+            "notes": appt.notes or "",
+        })
+        
+    return success_response(
+        "Today's appointments retrieved successfully",
+        data={
+            "summary": {
+                "today_appointments": today_appointments_count,
+                "today_walkins": today_walkins_count,
+                "upcoming_appointments": upcoming_appointments_count,
+                "completed_today": completed_today_count,
+                "next_upcoming": {
+                    "customer_name": next_upcoming.customer_name,
+                    "phone": next_upcoming.customer_phone,
+                    "time": next_upcoming.appointment_time or next_upcoming.start_datetime.strftime("%H:%M")
+                } if next_upcoming else None
+            },
+            "items": res_items
+        }
+    )
+
+
 
 
 @router.put("/{id}", response_model=None)

@@ -23,7 +23,7 @@ from app.core.exceptions import (
     ResourceNotFoundException,
 )
 from app.core import tenant_context
-from app.utils.timezone import make_aware, now_utc
+from app.utils.timezone import make_aware, now_utc, to_utc_iso
 from app.services.member_pricing import resolve_applied_service_price
 
 class AppointmentService:
@@ -93,8 +93,8 @@ class AppointmentService:
             "customer_phone": customer.phone if customer else "",
             "staff_id": appointment.staff_id,
             "staff_name": staff_name,
-            "start_datetime": appointment.start_datetime.isoformat(),
-            "end_datetime": appointment.end_datetime.isoformat(),
+            "start_datetime": to_utc_iso(appointment.start_datetime),
+            "end_datetime": to_utc_iso(appointment.end_datetime),
             "total_price": appointment.total_price,
             "status": appointment.status,
             "notes": appointment.notes,
@@ -307,6 +307,7 @@ class AppointmentService:
         total_amount: float,
         notes: Optional[str] = None,
         booking_source: str = "WALK_IN",
+        appointment_id: Optional[str] = None,
     ) -> Appointment:
         """
         Creates a receptionist/POS appointment with per-service staff assignments.
@@ -406,12 +407,18 @@ class AppointmentService:
             service_name = svc.name if svc else custom_service_name or "Custom Service"
             snapshot_service_id = str(svc.id) if svc else (salon_service_id or service_id or "")
 
+            normal_catalog_price = float(salon_service.price) if salon_service else (float(svc.price) if svc else float(submitted_price or 0.0))
+            calc_discount = max(0.0, round(normal_catalog_price - float(snapshot_price), 2)) if (pricing_type == "MEMBER" or is_member) and normal_catalog_price > float(snapshot_price) else 0.0
+            calc_unit_price = normal_catalog_price if calc_discount > 0 else float(snapshot_price)
+
             total_duration += duration_minutes
             service_snapshots.append(
                 ServiceSnapshot(
                     service_id=snapshot_service_id,
                     name=service_name,
                     price=float(snapshot_price),
+                    unit_price=calc_unit_price,
+                    discount=calc_discount,
                     duration_minutes=duration_minutes,
                     tax_rate=tax_rate,
                     pricing_type=pricing_type,
@@ -559,27 +566,61 @@ class AppointmentService:
             paid_at=now_utc(),
         )
 
-        appointment_data = {
-            "salon_id": salon_id,
-            "customer_id": customer_id,
-            "staff_id": appointment_staff_id,
-            "start_datetime": start_dt,
-            "end_datetime": end_dt,
-            "services": service_snapshots,
-            "products": product_snapshots,
-            "total_price": effective_total_amount,
-            "status": "COMPLETED",
-            "booking_source": booking_source,
-            "notes": notes,
-            "payment_type": payment_type,
-            "payment_status": payment_status,
-            "paid_amount": effective_paid,
-            "payment_history": [initial_history],
-        }
+        existing_appt = None
+        if appointment_id:
+            try:
+                existing_appt = await self.appointment_repo.get(appointment_id)
+            except Exception:
+                existing_appt = None
 
-        appointment = await self.appointment_repo.create(appointment_data)
-        appointment.add_status("COMPLETED", changed_by=tenant_context.get_user_id())
-        await appointment.save()
+        if existing_appt:
+            existing_appt.salon_id = salon_id
+            existing_appt.customer_id = customer_id
+            existing_appt.staff_id = appointment_staff_id
+            existing_appt.customer_name = customer.full_name.strip() if customer and customer.full_name else existing_appt.customer_name
+            existing_appt.customer_phone = customer.phone if customer else existing_appt.customer_phone
+            existing_appt.start_datetime = start_dt
+            existing_appt.end_datetime = end_dt
+            existing_appt.services = service_snapshots
+            existing_appt.products = product_snapshots
+            existing_appt.total_price = effective_total_amount
+            existing_appt.status = "COMPLETED"
+            existing_appt.notes = notes or existing_appt.notes
+            existing_appt.payment_type = payment_type
+            existing_appt.payment_status = payment_status
+            existing_appt.paid_amount = effective_paid
+            if not existing_appt.payment_history:
+                existing_appt.payment_history = [initial_history]
+            else:
+                existing_appt.payment_history.append(initial_history)
+            existing_appt.add_status("COMPLETED", changed_by=tenant_context.get_user_id())
+            await existing_appt.save()
+            appointment = existing_appt
+        else:
+            appointment_data = {
+                "salon_id": salon_id,
+                "customer_id": customer_id,
+                "staff_id": appointment_staff_id,
+                "customer_name": customer.full_name.strip() if customer and customer.full_name else None,
+                "customer_phone": customer.phone if customer else None,
+                "type": "Walk-in" if booking_source == "WALK_IN" else "Appointment",
+                "start_datetime": start_dt,
+                "end_datetime": end_dt,
+                "services": service_snapshots,
+                "products": product_snapshots,
+                "total_price": effective_total_amount,
+                "status": "COMPLETED",
+                "booking_source": booking_source,
+                "notes": notes,
+                "payment_type": payment_type,
+                "payment_status": payment_status,
+                "paid_amount": effective_paid,
+                "payment_history": [initial_history],
+            }
+
+            appointment = await self.appointment_repo.create(appointment_data)
+            appointment.add_status("COMPLETED", changed_by=tenant_context.get_user_id())
+            await appointment.save()
 
         # Fetch salon details once — used by both Invoice and Bill creation below.
         # Defined outside try blocks so variables are always in scope.
@@ -602,6 +643,8 @@ class AppointmentService:
                 "service_id": s.service_id,
                 "name": s.name,
                 "price": s.price,
+                "unit_price": getattr(s, "unit_price", None) or s.price,
+                "discount": getattr(s, "discount", 0.0),
                 "tax_rate": s.tax_rate,
                 "staff_id": s.staff_id,
                 "staff_name": s.staff_name,
@@ -800,12 +843,18 @@ class AppointmentService:
             service_name = svc.name if svc else custom_service_name or "Custom Service"
             snapshot_service_id = str(svc.id) if svc else (salon_service_id or service_id or "")
 
+            normal_catalog_price = float(salon_service.price) if salon_service else (float(svc.price) if svc else float(submitted_price or 0.0))
+            calc_discount = max(0.0, round(normal_catalog_price - float(snapshot_price), 2)) if (pricing_type == "MEMBER" or is_member) and normal_catalog_price > float(snapshot_price) else 0.0
+            calc_unit_price = normal_catalog_price if calc_discount > 0 else float(snapshot_price)
+
             total_duration += duration_minutes
             service_snapshots.append(
                 ServiceSnapshot(
                     service_id=snapshot_service_id,
                     name=service_name,
                     price=float(snapshot_price),
+                    unit_price=calc_unit_price,
+                    discount=calc_discount,
                     duration_minutes=duration_minutes,
                     tax_rate=tax_rate,
                     pricing_type=pricing_type,
@@ -965,6 +1014,8 @@ class AppointmentService:
                 "service_id": s.service_id,
                 "name": s.name,
                 "price": s.price,
+                "unit_price": getattr(s, "unit_price", None) or s.price,
+                "discount": getattr(s, "discount", 0.0),
                 "tax_rate": s.tax_rate,
                 "staff_id": s.staff_id,
                 "staff_name": s.staff_name,

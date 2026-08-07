@@ -45,12 +45,17 @@ class BillingService:
         invoice_items: List[InvoiceItem] = []
         subtotal = 0.0
         tax_amount = 0.0
+        discount_amount = 0.0
 
         for svc in services:
-            price = float(svc.get("price", 0.0))
+            applied_price = float(svc.get("price", 0.0))
+            discount = float(svc.get("discount", 0.0))
+            unit_price = float(svc.get("unit_price") or (applied_price + discount))
             tax_rate = float(svc.get("tax_rate", 0.0))
-            line_tax = price * (tax_rate / 100.0)
-            subtotal += price
+            line_subtotal = (unit_price * 1) - discount
+            line_tax = line_subtotal * (tax_rate / 100.0)
+            subtotal += unit_price
+            discount_amount += discount
             tax_amount += line_tax
             invoice_items.append(
                 InvoiceItem(
@@ -58,16 +63,18 @@ class BillingService:
                     item_id=svc.get("service_id", ""),
                     name=svc.get("name", "Service"),
                     quantity=1,
-                    unit_price=price,
+                    unit_price=unit_price,
                     tax_rate=tax_rate,
-                    discount=0.0,
+                    discount=discount,
                     staff_id=svc.get("staff_id"),
                     staff_name=svc.get("staff_name"),
                 )
             )
 
         for prod in products:
-            price = float(prod.get("price", 0.0))
+            applied_price = float(prod.get("price", 0.0))
+            discount = float(prod.get("discount", 0.0))
+            unit_price = float(prod.get("unit_price") or (applied_price + discount))
             tax_rate = float(prod.get("tax_rate", 0.0))
             try:
                 quantity = int(prod.get("quantity") or 1)
@@ -75,9 +82,10 @@ class BillingService:
                 quantity = 1
             if quantity < 1:
                 quantity = 1
-            line_subtotal = price * quantity
+            line_subtotal = (unit_price * quantity) - discount
             line_tax = line_subtotal * (tax_rate / 100.0)
-            subtotal += line_subtotal
+            subtotal += unit_price * quantity
+            discount_amount += discount
             tax_amount += line_tax
             invoice_items.append(
                 InvoiceItem(
@@ -87,15 +95,15 @@ class BillingService:
                     brand_id=prod.get("brand_id"),
                     name=prod.get("name", "Product"),
                     quantity=quantity,
-                    unit_price=price,
+                    unit_price=unit_price,
                     tax_rate=tax_rate,
-                    discount=0.0,
+                    discount=discount,
                     staff_id=prod.get("staff_id"),
                     staff_name=prod.get("staff_name"),
                 )
             )
 
-        computed_total = total_amount if total_amount > 0 else (subtotal + tax_amount)
+        computed_total = total_amount if total_amount > 0 else (subtotal - discount_amount + tax_amount)
 
         if payment_status == "PAID":
             effective_paid = computed_total
@@ -125,7 +133,7 @@ class BillingService:
             items=invoice_items,
             subtotal=round(subtotal, 2),
             tax_amount=round(tax_amount, 2),
-            discount_amount=0.0,
+            discount_amount=round(discount_amount, 2),
             total_amount=round(computed_total, 2),
             paid_amount=round(effective_paid, 2),
             remaining_amount=round(remaining, 2),
@@ -366,12 +374,17 @@ class BillingService:
         invoice_items: List[InvoiceItem] = []
         subtotal = 0.0
         tax_amount = 0.0
+        discount_amount = 0.0
 
         for svc in services:
-            price = float(svc.get("price", 0.0))
+            applied_price = float(svc.get("price", 0.0))
+            discount = float(svc.get("discount", 0.0))
+            unit_price = float(svc.get("unit_price") or (applied_price + discount))
             tax_rate = float(svc.get("tax_rate", 0.0))
-            line_tax = price * (tax_rate / 100.0)
-            subtotal += price
+            line_subtotal = (unit_price * 1) - discount
+            line_tax = line_subtotal * (tax_rate / 100.0)
+            subtotal += unit_price
+            discount_amount += discount
             tax_amount += line_tax
             invoice_items.append(
                 InvoiceItem(
@@ -379,16 +392,18 @@ class BillingService:
                     item_id=svc.get("service_id", ""),
                     name=svc.get("name", "Service"),
                     quantity=1,
-                    unit_price=price,
+                    unit_price=unit_price,
                     tax_rate=tax_rate,
-                    discount=0.0,
+                    discount=discount,
                     staff_id=svc.get("staff_id"),
                     staff_name=svc.get("staff_name"),
                 )
             )
 
         for prod in products:
-            price = float(prod.get("price", 0.0))
+            applied_price = float(prod.get("price", 0.0))
+            discount = float(prod.get("discount", 0.0))
+            unit_price = float(prod.get("unit_price") or (applied_price + discount))
             tax_rate = float(prod.get("tax_rate", 0.0))
             try:
                 quantity = int(prod.get("quantity") or 1)
@@ -396,9 +411,10 @@ class BillingService:
                 quantity = 1
             if quantity < 1:
                 quantity = 1
-            line_subtotal = price * quantity
+            line_subtotal = (unit_price * quantity) - discount
             line_tax = line_subtotal * (tax_rate / 100.0)
-            subtotal += line_subtotal
+            subtotal += unit_price * quantity
+            discount_amount += discount
             tax_amount += line_tax
             invoice_items.append(
                 InvoiceItem(
@@ -408,15 +424,15 @@ class BillingService:
                     brand_id=prod.get("brand_id"),
                     name=prod.get("name", "Product"),
                     quantity=quantity,
-                    unit_price=price,
+                    unit_price=unit_price,
                     tax_rate=tax_rate,
-                    discount=0.0,
+                    discount=discount,
                     staff_id=prod.get("staff_id"),
                     staff_name=prod.get("staff_name"),
                 )
             )
 
-        computed_total = total_amount if total_amount > 0 else (subtotal + tax_amount)
+        computed_total = total_amount if total_amount > 0 else (subtotal - discount_amount + tax_amount)
         if payment_status == "PAID":
             effective_paid = computed_total
             remaining = 0.0
@@ -430,6 +446,7 @@ class BillingService:
         invoice.items = invoice_items
         invoice.subtotal = round(subtotal, 2)
         invoice.tax_amount = round(tax_amount, 2)
+        invoice.discount_amount = round(discount_amount, 2)
         invoice.total_amount = round(computed_total, 2)
         invoice.paid_amount = round(effective_paid, 2)
         invoice.remaining_amount = round(remaining, 2)

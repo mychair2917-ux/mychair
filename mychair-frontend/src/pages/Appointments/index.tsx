@@ -9,15 +9,17 @@ import {
   Plus,
   ReceiptText,
   Search,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { Button, CommonDropdown, Input, Modal, Select } from '../../components/common';
 import ModalBody from '../../components/common/Modal/ModalBody';
 import ModalFooter from '../../components/common/Modal/ModalFooter';
 import ModalHeader from '../../components/common/Modal/ModalHeader';
 import { useDebouncedSearch } from '../../hooks';
+import { useAppointmentNotifications } from '../../hooks/useAppointmentNotifications';
 import { useAppSelector } from '../../redux/hooks';
 import {
   useCreateAppointmentClientMutation,
@@ -26,6 +28,7 @@ import {
   useGetAppointmentSalonProductsQuery,
   useGetAppointmentSalonServicesQuery,
   useGetAppointmentStaffQuery,
+  useGetRegisterTodayAppointmentsQuery,
   useLazyCheckAppointmentClientPhoneQuery,
   useLazyGetBillByAppointmentQuery,
   useLazySearchAppointmentClientsQuery,
@@ -40,6 +43,7 @@ import {
   AppointmentProductOption,
   AppointmentServiceOption,
   CreateFrontDeskAppointmentRequest,
+  TodayAppointmentItem,
 } from '../../redux/slices/appointments/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { cn } from '../../utils/cn';
@@ -47,7 +51,7 @@ import { formatDateDMY } from '../../utils/utilities';
 import { downloadInvoicePDF } from '../../utils/invoicePdf';
 import { showToast } from '../../components/common/Toast/toastService';
 import { normalizeRole } from '../../config/rbac';
-import { ROLES } from '../../constants';
+import { ROLES, ROUTE_PATHS } from '../../constants';
 
 /* ─── types ─────────────────────────────────────────────── */
 type Tab = 'entry' | 'list';
@@ -210,8 +214,50 @@ function toDateTimeInputValue(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function formatTime(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatTime(value?: string | null): string {
+  if (!value) return '-';
+  const rawIso =
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) &&
+    !value.endsWith('Z') &&
+    !/[+-]\d{2}:\d{2}$/.test(value)
+      ? `${value}Z`
+      : value;
+  const d = new Date(rawIso);
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function formatTimeTo12Hour(timeStr?: string, startDatetime?: string): string {
+  if (startDatetime) {
+    const rawIso =
+      typeof startDatetime === 'string' &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(startDatetime) &&
+      !startDatetime.endsWith('Z') &&
+      !/[+-]\d{2}:\d{2}$/.test(startDatetime)
+        ? `${startDatetime}Z`
+        : startDatetime;
+    const d = new Date(rawIso);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+  }
+  if (!timeStr) return '-';
+  if (/am|pm/i.test(timeStr)) {
+    return timeStr;
+  }
+  const parts = timeStr.split(':');
+  if (parts.length >= 2) {
+    let hours = parseInt(parts[0], 10);
+    const minutes = parts[1].padStart(2, '0');
+    if (!isNaN(hours)) {
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      if (hours === 0) hours = 12;
+      return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+    }
+  }
+  return timeStr;
 }
 
 /* ─── List tab skeleton row ─────────────────────────────── */
@@ -620,12 +666,12 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     try {
       const response = await updateAppointment(payload).unwrap();
       if (response.success) {
-        showToast('success', response.message || 'Appointment updated successfully');
+        showToast('success', response.message || 'Billing updated successfully');
         onSuccess();
         onClose();
       }
     } catch (err: unknown) {
-      showToast('error', getApiErrorMessage(err, 'Failed to update appointment'));
+      showToast('error', getApiErrorMessage(err, 'Failed to update billing'));
     }
   };
 
@@ -635,7 +681,7 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     <Modal open={open} onClose={onClose} size="lg">
       <ModalHeader>
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Edit Appointment</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Edit Billing</h2>
           <p className="mt-1 text-sm font-normal text-gray-500">
             {appointment.customer_name} · {appointment.customer_phone || ''}
           </p>
@@ -929,6 +975,7 @@ const AppointmentListTab: React.FC<{
       limit: PAGE_SIZE,
       search: debouncedSearch || undefined,
       payment_status: paymentStatusFilter || undefined,
+      status: 'Completed', // Only show billed/completed appointments in the billing list
       sort_by: sortBy,
       sort_order: sortOrder,
     },
@@ -970,19 +1017,19 @@ const AppointmentListTab: React.FC<{
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <div className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white shadow-soft overflow-hidden">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 p-4">
+      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border-soft)] p-5">
         <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-tertiary)]" />
           <Input
             placeholder="Search client name or phone..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="!pl-9"
+            className="!pl-10"
           />
         </div>
-        <div className="w-44">
+        <div className="w-48">
           <Select
             value={paymentStatusFilter}
             onChange={(e) => {
@@ -998,35 +1045,35 @@ const AppointmentListTab: React.FC<{
         </div>
         <Button
           type="button"
-          variant="ghost"
-          className="!px-3 !py-2 text-xs"
+          variant="outline"
+          className="!px-3.5 !py-2 text-xs font-semibold"
           onClick={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
         >
           Date {sortOrder === 'desc' ? '↓' : '↑'}
         </Button>
         {isFetching && !isLoading && (
-          <span className="text-xs text-gray-400">Refreshing...</span>
+          <span className="text-xs text-[var(--color-text-secondary)] font-medium">Refreshing...</span>
         )}
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-100 text-sm">
-          <thead className="bg-gray-50 text-xs uppercase tracking-wide">
+        <table className="min-w-full divide-y divide-[var(--color-border-soft)] text-xs">
+          <thead className="bg-[var(--color-surface-bg)] text-[var(--color-text-secondary)] text-[11px] uppercase tracking-wider font-semibold border-b border-[var(--color-border-soft)]">
             <tr>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">ID</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Client</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Phone</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Services</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Products</th>
-              <th className="px-3 py-3 text-right font-semibold text-gray-500">Quantity</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Service By</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Sold By</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Date & Time</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Payment Status</th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-500">Payment</th>
-              <th className="px-3 py-3 text-right font-semibold text-gray-500">Bill</th>
-              <th className="px-3 py-3 text-right font-semibold text-gray-500">Action</th>
+              <th className="px-4 py-3.5 text-left font-semibold">ID</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Client</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Phone</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Services</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Products</th>
+              <th className="px-4 py-3.5 text-right font-semibold">Quantity</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Service By</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Sold By</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Date & Time</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Payment Status</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Payment</th>
+              <th className="px-4 py-3.5 text-right font-semibold">Bill</th>
+              <th className="px-4 py-3.5 text-right font-semibold">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 bg-white">
@@ -1035,7 +1082,7 @@ const AppointmentListTab: React.FC<{
             ) : isError ? (
               <tr>
                 <td colSpan={13} className="px-3 py-12 text-center text-sm text-red-500">
-                  Failed to load appointments. Please try again.
+                  Failed to load billing history. Please try again.
                 </td>
               </tr>
             ) : items.length === 0 ? (
@@ -1043,7 +1090,7 @@ const AppointmentListTab: React.FC<{
                 <td colSpan={13} className="px-3 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <CalendarDays className="h-10 w-10 text-gray-300" />
-                    <p className="text-sm font-medium text-gray-500">No appointments found</p>
+                    <p className="text-sm font-medium text-gray-500">No billing records found</p>
                     {(debouncedSearch || paymentStatusFilter) && (
                       <p className="text-xs text-gray-400">Try adjusting your filters</p>
                     )}
@@ -1157,7 +1204,7 @@ const AppointmentListTab: React.FC<{
                         type="button"
                         variant="ghost"
                         className="!px-2 !py-1 text-xs text-[var(--color-brand-gold)]"
-                        title="Edit appointment"
+                        title="Edit billing"
                         onClick={() => setEditingAppointment(appt)}
                       >
                         <Pencil className="h-4 w-4" />
@@ -1252,12 +1299,64 @@ const AppointmentListTab: React.FC<{
 /* ─── Main Appointments Page ─────────────────────────────── */
 const Appointments: React.FC = () => {
   const { orgId } = useParams<{ orgId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const storedOrgId = useAppSelector((state) => state.auth.orgId);
   const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
   const role = useAppSelector((state) => state.auth.user?.role);
   const isSuperAdmin = role === 'super_admin';
   const allowMembership = canManageMembership(role);
   const salonId = (orgId ?? (isSuperAdmin ? selectedSalonId : storedOrgId) ?? '').trim();
+
+  useAppointmentNotifications(salonId);
+
+  const [selectedAppointmentForBilling, setSelectedAppointmentForBilling] = useState<TodayAppointmentItem | null>(null);
+
+  const { data: todayRegisterData } = useGetRegisterTodayAppointmentsQuery(
+    { salon_id: salonId },
+    { skip: !salonId }
+  );
+  const activeTodayAppointments = useMemo(() => {
+    const rawItems = todayRegisterData?.data?.items || [];
+    return rawItems.filter((item) => {
+      const statusUpper = (item.status || '').toUpperCase();
+      return statusUpper !== 'COMPLETED' && statusUpper !== 'BILLED' && statusUpper !== 'CANCELLED';
+    });
+  }, [todayRegisterData]);
+
+  const handleSelectAppointmentForBilling = (appt: TodayAppointmentItem) => {
+    setSelectedAppointmentForBilling(appt);
+    const clientObj: AppointmentClient = {
+      id: appt.customer_id,
+      name: appt.customer_name,
+      phone: appt.customer_phone,
+      gender: 'MALE',
+      is_member: false,
+    };
+    setSelectedClient(clientObj);
+    setClientSearch(`${appt.customer_name} (${appt.customer_phone})`);
+    showToast('info', `Selected appointment for ${appt.customer_name} at ${appt.appointment_time}`);
+
+    const formEl = document.getElementById('billing-form-section');
+    if (formEl) {
+      formEl.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    const state = location.state as { preselectAppointment?: TodayAppointmentItem };
+    if (state?.preselectAppointment && !selectedAppointmentForBilling) {
+      handleSelectAppointmentForBilling(state.preselectAppointment);
+      // Clear location state to avoid re-running on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, selectedAppointmentForBilling]);
+
+  const handleClearAppointmentSelection = () => {
+    setSelectedAppointmentForBilling(null);
+    setSelectedClient(null);
+    setClientSearch('');
+  };
 
   const [activeTab, setActiveTab] = useState<Tab>('entry');
   const [highlightAppointmentId, setHighlightAppointmentId] = useState<string | null>(null);
@@ -1419,12 +1518,43 @@ const Appointments: React.FC = () => {
   });
   const staffOptions = staff.map((member) => ({ value: member.id, label: member.name }));
 
-  const calculatedTotal = useMemo(
-    () =>
-      serviceRows.reduce((sum, row) => sum + Number(row.price || 0), 0) +
-      productRows.reduce((sum, row) => sum + productLineTotal(row.price, row.quantity), 0),
-    [productRows, serviceRows]
-  );
+  const summaryBreakdown = useMemo(() => {
+    let originalSubtotal = 0;
+    let membershipDiscount = 0;
+
+    serviceRows.forEach((row) => {
+      const item = services.find((service) => service.salon_service_id === row.salon_service_id);
+      if (!item) return;
+      const appliedPrice = Number(row.price !== '' ? row.price : (selectedClient?.is_member && item.member_price !== null && item.member_price !== undefined ? item.member_price : item.price));
+      const normalPrice = item.price;
+      const hasMemberDiscount = Boolean(
+        selectedClient?.is_member &&
+        item.member_price !== null &&
+        item.member_price !== undefined &&
+        item.price > item.member_price &&
+        appliedPrice === item.member_price
+      );
+      if (hasMemberDiscount) {
+        originalSubtotal += normalPrice;
+        membershipDiscount += (normalPrice - item.member_price!);
+      } else {
+        originalSubtotal += appliedPrice;
+      }
+    });
+
+    productRows.forEach((row) => {
+      const item = products.find((product) => product.salon_product_id === row.salon_product_id);
+      if (!item) return;
+      const qty = Math.max(1, Number(row.quantity || 1));
+      const lineTotal = productLineTotal(row.price || item.price, qty);
+      originalSubtotal += lineTotal;
+    });
+
+    const netTotal = Math.max(0, originalSubtotal - membershipDiscount);
+    return { originalSubtotal, membershipDiscount, netTotal };
+  }, [serviceRows, productRows, services, products, selectedClient]);
+
+  const calculatedTotal = summaryBreakdown.netTotal;
 
   if (isSuperAdmin && !salonId) {
     return (
@@ -1615,6 +1745,7 @@ const Appointments: React.FC = () => {
   const resetEntryForm = () => {
     isProgrammaticChange.current = true;
     setSelectedClient(null);
+    setSelectedAppointmentForBilling(null);
     setServiceRows([createRow()]);
     setProductRows([]);
     setTotalAmount('');
@@ -1632,12 +1763,12 @@ const Appointments: React.FC = () => {
   const executeSubmit = async (payload: CreateFrontDeskAppointmentRequest) => {
     try {
       const response = await createAppointment(payload).unwrap();
-      if (response.success) {
-        showToast('success', response.message || 'Appointment created successfully');
+      if (response && (response.success ?? true)) {
+        showToast('success', response.message || 'Billing submitted successfully');
         resetEntryForm();
       }
     } catch (err: unknown) {
-      showToast('error', getApiErrorMessage(err, 'Failed to create appointment'));
+      showToast('error', getApiErrorMessage(err, 'Failed to submit billing'));
     }
   };
 
@@ -1689,6 +1820,7 @@ const Appointments: React.FC = () => {
     const payload = {
       salon_id: salonId,
       customer_id: selectedClient.id,
+      appointment_id: selectedAppointmentForBilling?.id || undefined,
       start_datetime: new Date(startDateTime).toISOString(),
       services: serviceRowsToSubmit.map((row) => ({
         service_id: row.service_id || undefined,
@@ -1707,7 +1839,7 @@ const Appointments: React.FC = () => {
       payment_status: paymentStatus,
       paid_amount: paymentStatus === 'PARTIALLY_PAID' ? Number(paidAmount) : undefined,
       total_amount: finalTotal,
-      booking_source: 'WALK_IN',
+      booking_source: selectedAppointmentForBilling ? 'APPOINTMENT' : 'WALK_IN',
       notes: notes.trim() || undefined,
     };
 
@@ -1732,650 +1864,743 @@ const Appointments: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6 xl:p-8">
-      {/* Page header with tabs */}
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)] md:text-3xl">
-            Appointments
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Front-desk workspace for walk-ins, services, and billing.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4">
-          {/* Tab switcher - top-right */}
-          <div className="flex items-center rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setActiveTab('entry')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                activeTab === 'entry'
-                  ? 'bg-[var(--color-brand-gold)] text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <ReceiptText className="h-4 w-4" />
-              Entry
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('list')}
-              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                activeTab === 'list'
-                  ? 'bg-[var(--color-brand-gold)] text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <ClipboardList className="h-4 w-4" />
-              List
-            </button>
+    <div className="min-h-screen bg-[var(--color-surface-bg)]/30 p-4 md:p-6 lg:p-8">
+      <div className="mx-auto max-w-[1600px] space-y-6">
+        {/* Page header */}
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <div className="mb-2.5 inline-flex items-center gap-2 rounded-full bg-[var(--color-brand-gold)]/10 px-3.5 py-1 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
+              <ReceiptText className="h-3.5 w-3.5" />
+              Billing & POS
+            </div>
+            <h1 className="text-2xl font-bold text-[var(--color-text-primary)] md:text-3xl">
+              Billing
+            </h1>
+            <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+              Process payments and manage POS workflow.
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Today: {formatDateDMY(new Date().toISOString())}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => navigate(orgId ? `/orgs/${orgId}/${ROUTE_PATHS.APPOINTMENT_REGISTER}` : `/${ROUTE_PATHS.ADMIN_APPOINTMENT_REGISTER}`)}
+              className="flex items-center gap-2"
+            >
+              <CalendarDays className="h-4 w-4" />
+              Go to Appointments
+            </Button>
+
+            {/* Tab switcher - top-right */}
+            <div className="flex items-center rounded-2xl border border-[var(--color-border-soft)] bg-white p-1 shadow-soft">
+              <button
+                type="button"
+                onClick={() => setActiveTab('entry')}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                  activeTab === 'entry'
+                    ? 'bg-[var(--color-brand-gold)] text-white shadow-xs'
+                    : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                }`}
+              >
+                <ReceiptText className="h-4 w-4" />
+                Billing Entry
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('list')}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                  activeTab === 'list'
+                    ? 'bg-[var(--color-brand-gold)] text-white shadow-xs'
+                    : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+                }`}
+              >
+                <ClipboardList className="h-4 w-4" />
+                History & Bills
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-surface-muted)] px-4 py-2.5 text-xs text-[var(--color-brand-gold-dark)] font-bold">
+              Today: {formatDateDMY(new Date().toISOString())}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ── Entry Tab ── */}
-      {activeTab === 'entry' && (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(420px,1fr)_320px]">
-          {/* Entry form */}
-          <main className="space-y-5">
-            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="font-semibold text-gray-900">Client</h2>
-                  <p className="text-sm text-gray-500">Search by phone or name, then select history.</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={() => setQuickAddOpen((open) => !open)}
-                >
-                  Add
-                </Button>
-              </div>
-              <form onSubmit={handleClientSearch} className="flex gap-2 relative">
-                <div ref={dropdownRef} className="relative flex-1">
-                  <Input
-                    placeholder="Phone number or client name"
-                    value={clientSearch}
-                    onChange={(event) => {
-                      setClientSearch(event.target.value);
-                      setIsFullSearch(false);
-                      if (hasClientSearched) {
-                        setHasClientSearched(false);
-                        setClientSearchResults([]);
-                      }
-                    }}
-                    onKeyDown={handleKeyDown}
-                    onFocus={() => {
-                      if (clientSearchResults.length > 0) {
-                        setShowDropdown(true);
-                      }
-                    }}
-                  />
-
-                  {isSearchingClients && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
-                      <svg className="animate-spin h-4 w-4 text-[var(--color-brand-gold)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    </div>
-                  )}
-
-                  {!isSearchingClients && selectedClient && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                        ✓
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClientSearch('');
-                          setSelectedClient(null);
-                          setClientSearchResults([]);
-                          setHasClientSearched(false);
-                          setShowDropdown(false);
-                          setIsFullSearch(false);
-                        }}
-                        className="text-gray-400 hover:text-gray-600 font-medium text-sm transition"
-                        title="Clear selection"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
-                  {showDropdown && (clientSearchResults.length > 0 || (hasClientSearched && clientSearch.trim().length > 0)) && (
-                    <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100">
-                      {clientSearchResults.map((client, index) => (
-                        <div
-                          key={client.id}
-                          onClick={() => applyClientSelection(client)}
-                          onMouseEnter={() => setHighlightedIndex(index)}
-                          className={cn(
-                            "p-3 cursor-pointer transition text-left",
-                            index === highlightedIndex ? "bg-amber-50" : "bg-white"
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-gray-900 text-sm">
-                              {client.name}
-                              {client.is_member && (
-                                <span className="ml-2 text-xs font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
-                                  Member
-                                </span>
-                              )}
-                            </span>
-                            {client.gender && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 capitalize">
-                                {client.gender.toLowerCase()}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
-                            <span>{client.phone}</span>
-                            {client.email && <span className="truncate max-w-[200px]">{client.email}</span>}
-                          </div>
-                        </div>
-                      ))}
-                      {clientSearchResults.length === 0 && (
-                        <div className="p-4 text-center text-sm text-gray-500">
-                          No clients found
-                          {!quickAddOpen && (
-                            <button
-                              type="button"
-                              className="mt-2 block w-full text-[var(--color-brand-gold)] font-medium hover:underline text-center text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                prefillQuickAddFromSearch(clientSearch.trim());
-                                setShowDropdown(false);
-                              }}
-                            >
-                              + Add New Client
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {clientSearchResults.length >= 10 && (
-                        <div className="p-2 bg-gray-50 text-center border-t border-gray-100">
-                          <button
-                            type="button"
-                            className="text-xs text-[var(--color-brand-gold)] font-medium hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsFullSearch(true);
-                              setShowDropdown(false);
-                            }}
-                          >
-                            View all matching clients
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <Button type="submit" isLoading={isSearchingClients} icon={<Search className="h-4 w-4" />}>
-                  Search
-                </Button>
-              </form>
-
-              {isFullSearch && clientSearchResults.length > 0 && (
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  {clientSearchResults.map((client) => (
-                    <button
-                      key={client.id}
-                      type="button"
-                      onClick={() => applyClientSelection(client)}
-                      className={`rounded-xl border p-3 text-left transition hover:border-[var(--color-brand-gold)] ${
-                        selectedClient?.id === client.id
-                          ? 'border-[var(--color-brand-gold)] bg-amber-50'
-                          : 'border-gray-200 bg-white'
-                      }`}
+        {/* ── Entry Tab ── */}
+        {activeTab === 'entry' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(420px,1fr)_340px]">
+              {/* Entry form */}
+              <main className="space-y-6">
+                <section id="billing-form-section" className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-6 shadow-soft">
+                  {/* Appointment Link Bar */}
+                  <div className="mb-5 flex items-center gap-3 rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-surface-muted)]/60 p-3.5">
+                    <label className="text-xs text-[var(--color-text-secondary)] font-semibold uppercase tracking-wide">Appointment:</label>
+                    <select
+                      value={selectedAppointmentForBilling?.id || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) {
+                          handleClearAppointmentSelection();
+                        } else {
+                          const found = activeTodayAppointments.find((a) => a.id === val);
+                          if (found) handleSelectAppointmentForBilling(found);
+                        }
+                      }}
+                      className="rounded-xl border border-[var(--color-border-soft)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-brand-gold)] focus:ring-1 focus:ring-[var(--color-brand-gold)]"
                     >
-                      <p className="font-medium text-gray-900">{client.name}</p>
-                      <p className="text-xs font-semibold text-indigo-700">
-                        {client.is_member ? 'Member' : 'Non-member'}
-                      </p>
-                      <p className="text-sm text-gray-500">{client.phone}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
+                      <option value="">-- Direct Walk-in --</option>
+                      {activeTodayAppointments.map((appt) => (
+                        <option key={appt.id} value={appt.id}>
+                          {formatTimeTo12Hour(appt.appointment_time, appt.start_datetime)} - {appt.customer_name} ({appt.customer_phone})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {isFullSearch && clientSearchResults.length === 0 && !isSearchingClients && (
-                <div className="mt-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
-                  <p className="text-sm text-gray-600">
-                    No client found for &ldquo;{clientSearch.trim()}&rdquo;.
-                  </p>
-                  {!quickAddOpen && (
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h2 className="font-bold text-[var(--color-text-primary)] text-base">Client</h2>
+                      <p className="text-sm text-[var(--color-text-secondary)]">Search by phone or name, then select history.</p>
+                    </div>
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
-                      className="mt-3"
                       icon={<Plus className="h-4 w-4" />}
-                      onClick={() => prefillQuickAddFromSearch(clientSearch.trim())}
+                      onClick={() => setQuickAddOpen((open) => !open)}
                     >
-                      Quick add client
+                      Add
                     </Button>
-                  )}
-                </div>
-              )}
-
-              {quickAddOpen && (
-                <form onSubmit={handleCreateClient} className="mt-4 rounded-xl bg-gray-50 p-4">
-                  <h3 className="mb-3 text-sm font-semibold text-gray-900">Quick add client</h3>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <Input
-                      placeholder="Name *"
-                      value={clientForm.name}
-                      onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })}
-                    />
-                    <div>
-                      <Input
-                        placeholder="Phone *"
-                        value={clientForm.phone}
-                        onChange={(event) => {
-                          setClientPhoneError('');
-                          setClientForm({ ...clientForm, phone: event.target.value });
-                        }}
-                        onBlur={() => {
-                          void handleClientPhoneBlur();
-                        }}
-                        className={clientPhoneError ? 'border-red-400' : undefined}
-                      />
-                      {clientPhoneError && (
-                        <p className="mt-1 text-xs text-red-500">{clientPhoneError}</p>
-                      )}
-                    </div>
-                    <Input
-                      placeholder="Email optional"
-                      value={clientForm.email}
-                      onChange={(event) => setClientForm({ ...clientForm, email: event.target.value })}
-                    />
-                    <div className="flex items-end gap-3">
-                      <div className="min-w-0 flex-1">
-                        <label className="mb-1 block text-xs font-medium text-gray-600">Gender *</label>
-                        <Select
-                          value={clientForm.gender}
-                          onChange={(event) =>
-                            setClientForm({ ...clientForm, gender: event.target.value })
-                          }
-                          options={clientGenderOptions}
-                          placeholder="Select Gender"
-                        />
-                      </div>
-                      {allowMembership && (
-                        <label className="mb-2 flex shrink-0 items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={clientForm.is_member}
-                            onChange={(event) =>
-                              setClientForm({ ...clientForm, is_member: event.target.checked })
-                            }
-                            className="h-4 w-4 rounded border-gray-300"
-                          />
-                          Member
-                        </label>
-                      )}
-                    </div>
                   </div>
-                  <Button type="submit" className="mt-3" isLoading={isCreatingClient}>
-                    Save client
-                  </Button>
-                </form>
-              )}
-            </section>
-
-            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="font-semibold text-gray-900">Services</h2>
-                  <p className="text-sm text-gray-500">Add multiple service with assigned staff.</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={() => setServiceRows((rows) => [...rows, createRow()])}
-                >
-                  Add
-                </Button>
-              </div>
-              <div className="space-y-3">
-                {serviceRows.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-                    No services added yet. You can sell products without a service.
-                  </p>
-                ) : (
-                  serviceRows.map((row) => {
-                    const isInvalid = invalidServiceRowIds.includes(row.id);
-
-                    return (
-                      <div
-                        key={row.id}
-                        className={cn(
-                          'grid gap-3 rounded-xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
-                          isInvalid
-                            ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
-                            : 'border-gray-100 bg-gray-50'
-                        )}
-                      >
-                        <CommonDropdown
-                          value={row.salon_service_id}
-                          onChange={(value) => updateServiceRow(row.id, 'salon_service_id', String(value))}
-                          options={serviceOptions}
-                          placeholder="Search service"
-                          searchable
-                          loading={isLoadingSalonServices}
-                        />
-                        <Select
-                          value={row.staff_id}
-                          onChange={(event) => updateServiceRow(row.id, 'staff_id', event.target.value)}
-                          options={staffOptions}
-                          placeholder="Service By"
-                        />
-                        <Input
-                          type="number"
-                          min="0"
-                          placeholder="Price"
-                          value={row.price}
-                          onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="!px-2"
-                          onClick={() => removeServiceRow(row.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        {isInvalid && (
-                          <p className="text-xs font-medium text-red-600 md:col-span-4">
-                            Select a service, assign staff, and enter a valid price.
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="font-semibold text-gray-900">Products</h2>
-                  <p className="text-sm text-gray-500">Add products with quantity and sold-by staff.</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={() => setProductRows((rows) => [...rows, createProductRow()])}
-                >
-                  Add
-                </Button>
-              </div>
-              <div className="space-y-3">
-                {productRows.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-                    No products added yet.
-                  </p>
-                ) : (
-                  productRows.map((row) => {
-                    const isInvalid = invalidProductRowIds.includes(row.id);
-
-                    return (
-                      <div
-                        key={row.id}
-                        className={cn(
-                          'grid gap-3 rounded-xl border p-3 md:grid-cols-[1.2fr_1fr_80px_110px_40px]',
-                          isInvalid
-                            ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
-                            : 'border-gray-100 bg-gray-50'
-                        )}
-                      >
-                        <CommonDropdown
-                          value={row.salon_product_id}
-                          onChange={(value) => updateProductRow(row.id, 'salon_product_id', String(value))}
-                          options={productOptions}
-                          placeholder="Search product"
-                          searchable
-                          loading={isLoadingSalonProducts}
-                        />
-                        <Select
-                          value={row.staff_id}
-                          onChange={(event) => updateProductRow(row.id, 'staff_id', event.target.value)}
-                          options={staffOptions}
-                          placeholder="Sold By"
-                        />
-                        <Input
-                          type="number"
-                          min="1"
-                          step="1"
-                          placeholder="Qty"
-                          value={row.quantity}
-                          onChange={(event) => updateProductRow(row.id, 'quantity', event.target.value)}
-                        />
-                        <Input
-                          type="number"
-                          min="0"
-                          placeholder="Unit price"
-                          value={row.price}
-                          onChange={(event) => updateProductRow(row.id, 'price', event.target.value)}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="!px-2"
-                          onClick={() => removeProductRow(row.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        {isInvalid && (
-                          <p className="text-xs font-medium text-red-600 md:col-span-5">
-                            Complete this product row (product, sold by, qty, price) or remove it.
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <h2 className="font-semibold text-gray-900">Previous history</h2>
-              {!selectedClient ? (
-                <p className="mt-3 text-sm text-gray-500">Select a client to view previous services.</p>
-              ) : isHistoryLoading ? (
-                <p className="mt-3 text-sm text-gray-500">Loading history...</p>
-              ) : history.length === 0 ? (
-                <p className="mt-3 text-sm text-gray-500">No previous appointments for this client.</p>
-              ) : (
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {history.slice(0, 5).map((item) => {
-                    const canUpdate = canUpdatePaymentStatus(item.payment_status);
-                    return (
-                      <div key={item.id} className="rounded-xl bg-gray-50 p-3 text-sm">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {formatDateDMY(item.start_datetime)}
-                            </p>
-                            <p className="mt-1 text-gray-500">
-                              {[
-                                ...item.services.map((s) => s.name),
-                                ...item.products.map((p) => p.name),
-                              ].join(', ')}
-                            </p>
-                          </div>
-                          <span
-                            className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusStyles[item.payment_status] ?? 'bg-gray-100 text-gray-600'}`}
-                          >
-                            {paymentStatusLabels[item.payment_status] ?? item.payment_status}
-                          </span>
-                        </div>
-                        {canUpdate && (
-                          <div className="mt-3">
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              className="!px-2 !py-1 text-xs"
-                              icon={<Pencil className="h-3.5 w-3.5" />}
-                              onClick={() => openAppointmentInList(item)}
-                            >
-                              Update payment
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </main>
-
-          {/* Bill summary */}
-          <aside className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm xl:sticky xl:top-6 xl:self-start">
-            <div className="mb-4 flex items-center gap-2">
-              <ReceiptText className="h-5 w-5 text-[var(--color-brand-gold)]" />
-              <h2 className="font-semibold text-gray-900">Bill summary</h2>
-            </div>
-            <div className="space-y-4">
-              <div className="rounded-xl bg-gray-50 p-3">
-                <p className="text-xs uppercase tracking-wide text-gray-500">Client</p>
-                <p className="mt-1 font-semibold text-gray-900">
-                  {selectedClient?.name ?? 'No client selected'}
-                </p>
-                {selectedClient && (
-                  <p className="text-xs font-semibold text-indigo-700">
-                    {selectedClient.is_member ? 'Member' : 'Non-member'}
-                  </p>
-                )}
-                <p className="text-sm text-gray-500">{selectedClient?.phone}</p>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Start time</label>
-                <Input
-                  type="datetime-local"
-                  value={startDateTime}
-                  onChange={(event) => setStartDateTime(event.target.value)}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Payment method</label>
-                <Select
-                  value={paymentMethod}
-                  onChange={(event) => setPaymentMethod(event.target.value)}
-                  options={paymentMethodOptions}
-                  placeholder="Payment method"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Payment status</label>
-                <Select
-                  value={paymentStatus}
-                  onChange={(event) => {
-                    setPaymentStatus(event.target.value);
-                    if (event.target.value !== 'PARTIALLY_PAID') setPaidAmount('');
-                  }}
-                  options={paymentStatusOptions}
-                  placeholder="Payment status"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Total amount</label>
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder={String(calculatedTotal)}
-                  value={totalAmount}
-                  onChange={(event) => setTotalAmount(event.target.value)}
-                />
-                <p className="mt-1 text-xs text-gray-500">Calculated: ₹{calculatedTotal}</p>
-              </div>
-              {paymentStatus === 'PARTIALLY_PAID' && (
-                <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-violet-700">
-                      Paid amount <span className="text-red-500">*</span>
-                    </label>
+                <form onSubmit={handleClientSearch} className="flex gap-2 relative">
+                  <div ref={dropdownRef} className="relative flex-1">
                     <Input
-                      type="number"
-                      min="0"
-                      max={effectiveTotal - 0.01}
-                      placeholder="Enter amount paid"
-                      value={paidAmount}
+                      placeholder="Phone number or client name"
+                      value={clientSearch}
                       onChange={(event) => {
-                        const val = event.target.value;
-                        if (Number(val) >= effectiveTotal) return;
-                        setPaidAmount(val);
+                        setClientSearch(event.target.value);
+                        setIsFullSearch(false);
+                        if (hasClientSearched) {
+                          setHasClientSearched(false);
+                          setClientSearchResults([]);
+                        }
+                      }}
+                      onKeyDown={handleKeyDown}
+                      onFocus={() => {
+                        if (clientSearchResults.length > 0) {
+                          setShowDropdown(true);
+                        }
                       }}
                     />
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
-                    <span className="text-xs font-medium text-gray-600">Remaining amount</span>
-                    <span className="text-sm font-bold text-amber-700">
-                      ₹{remainingAmount.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              )}
-              <div className="rounded-xl bg-gray-50 p-3 text-sm">
-                <p className="text-xs uppercase tracking-wide text-gray-500">Items</p>
-                <div className="mt-2 space-y-1 text-gray-600">
-                  {serviceRows.map((row) => {
-                    const item = services.find((service) => service.salon_service_id === row.salon_service_id);
-                    if (!item) return null;
-                    return (
-                      <div key={row.id} className="flex items-center justify-between gap-3">
-                        <span>{item.service_name}</span>
-                        <span>₹{row.price !== '' ? row.price : item.price}</span>
+
+                    {isSearchingClients && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                        <svg className="animate-spin h-4 w-4 text-[var(--color-brand-gold)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
                       </div>
-                    );
-                  })}
-                  {productRows.map((row) => {
-                    const item = products.find((product) => product.salon_product_id === row.salon_product_id);
-                    if (!item) return null;
-                    const qty = Math.max(1, Number(row.quantity || 1));
-                    const lineTotal = productLineTotal(row.price || item.price, qty);
-                    return (
-                      <div key={row.id} className="flex items-center justify-between gap-3">
-                        <span>
-                          {item.product_name}
-                          {qty > 1 ? ` × ${qty}` : ''}
+                    )}
+
+                    {!isSearchingClients && selectedClient && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-0.5">
+                          ✓
                         </span>
-                        <span>₹{lineTotal}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClientSearch('');
+                            setSelectedClient(null);
+                            setClientSearchResults([]);
+                            setHasClientSearched(false);
+                            setShowDropdown(false);
+                            setIsFullSearch(false);
+                          }}
+                          className="text-gray-400 hover:text-gray-600 font-medium text-sm transition"
+                          title="Clear selection"
+                        >
+                          ✕
+                        </button>
                       </div>
-                    );
-                  })}
+                    )}
+
+                    {showDropdown && (clientSearchResults.length > 0 || (hasClientSearched && clientSearch.trim().length > 0)) && (
+                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-[var(--color-border-soft)] rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-[var(--color-border-soft)]">
+                        {clientSearchResults.map((client, index) => (
+                          <div
+                            key={client.id}
+                            onClick={() => applyClientSelection(client)}
+                            onMouseEnter={() => setHighlightedIndex(index)}
+                            className={cn(
+                              "p-3 cursor-pointer transition text-left",
+                              index === highlightedIndex ? "bg-amber-50" : "bg-white"
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-[var(--color-text-primary)] text-sm">
+                                {client.name}
+                                {client.is_member && (
+                                  <span className="ml-2 text-xs font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                    Member
+                                  </span>
+                                )}
+                              </span>
+                              {client.gender && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 capitalize">
+                                  {client.gender.toLowerCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mt-1">
+                              <span>{client.phone}</span>
+                              {client.email && <span className="truncate max-w-[200px]">{client.email}</span>}
+                            </div>
+                          </div>
+                        ))}
+                        {clientSearchResults.length === 0 && (
+                          <div className="p-4 text-center text-sm text-[var(--color-text-secondary)]">
+                            No clients found
+                            {!quickAddOpen && (
+                              <button
+                                type="button"
+                                className="mt-2 block w-full text-[var(--color-brand-gold)] font-medium hover:underline text-center text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  prefillQuickAddFromSearch(clientSearch.trim());
+                                  setShowDropdown(false);
+                                }}
+                              >
+                                + Add New Client
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {clientSearchResults.length >= 10 && (
+                          <div className="p-2 bg-[var(--color-surface-bg)] text-center border-t border-[var(--color-border-soft)]">
+                            <button
+                              type="button"
+                              className="text-xs text-[var(--color-brand-gold)] font-medium hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsFullSearch(true);
+                                setShowDropdown(false);
+                              }}
+                            >
+                              View all matching clients
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <Button type="submit" isLoading={isSearchingClients} icon={<Search className="h-4 w-4" />}>
+                    Search
+                  </Button>
+                </form>
+
+                {isFullSearch && clientSearchResults.length > 0 && (
+                  <div className="mt-4 grid gap-2 md:grid-cols-2">
+                    {clientSearchResults.map((client) => (
+                      <button
+                        key={client.id}
+                        type="button"
+                        onClick={() => applyClientSelection(client)}
+                        className={`rounded-xl border p-3 text-left transition hover:border-[var(--color-brand-gold)] ${
+                          selectedClient?.id === client.id
+                            ? 'border-[var(--color-brand-gold)] bg-amber-50'
+                            : 'border-[var(--color-border-soft)] bg-white'
+                        }`}
+                      >
+                        <p className="font-semibold text-[var(--color-text-primary)]">{client.name}</p>
+                        <p className="text-xs font-semibold text-indigo-700">
+                          {client.is_member ? 'Member' : 'Non-member'}
+                        </p>
+                        <p className="text-sm text-[var(--color-text-secondary)]">{client.phone}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {isFullSearch && clientSearchResults.length === 0 && !isSearchingClients && (
+                  <div className="mt-4 rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-bg)]/50 p-4">
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      No client found for &ldquo;{clientSearch.trim()}&rdquo;.
+                    </p>
+                    {!quickAddOpen && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="mt-3"
+                        icon={<Plus className="h-4 w-4" />}
+                        onClick={() => prefillQuickAddFromSearch(clientSearch.trim())}
+                      >
+                        Quick add client
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {quickAddOpen && (
+                  <form onSubmit={handleCreateClient} className="mt-4 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/50 p-4">
+                    <h3 className="mb-3 text-sm font-bold text-[var(--color-text-primary)]">Quick add client</h3>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <Input
+                        placeholder="Name *"
+                        value={clientForm.name}
+                        onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })}
+                      />
+                      <div>
+                        <Input
+                          placeholder="Phone *"
+                          value={clientForm.phone}
+                          onChange={(event) => {
+                            setClientPhoneError('');
+                            setClientForm({ ...clientForm, phone: event.target.value });
+                          }}
+                          onBlur={() => {
+                            void handleClientPhoneBlur();
+                          }}
+                          className={clientPhoneError ? 'border-red-400' : undefined}
+                        />
+                        {clientPhoneError && (
+                          <p className="mt-1 text-xs text-red-500">{clientPhoneError}</p>
+                        )}
+                      </div>
+                      <Input
+                        placeholder="Email optional"
+                        value={clientForm.email}
+                        onChange={(event) => setClientForm({ ...clientForm, email: event.target.value })}
+                      />
+                      <div className="flex items-end gap-3">
+                        <div className="min-w-0 flex-1">
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Gender *</label>
+                          <Select
+                            value={clientForm.gender}
+                            onChange={(event) =>
+                              setClientForm({ ...clientForm, gender: event.target.value })
+                            }
+                            options={clientGenderOptions}
+                            placeholder="Select Gender"
+                          />
+                        </div>
+                        {allowMembership && (
+                          <label className="mb-2 flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-primary)]">
+                            <input
+                              type="checkbox"
+                              checked={clientForm.is_member}
+                              onChange={(event) =>
+                                setClientForm({ ...clientForm, is_member: event.target.checked })
+                              }
+                              className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
+                            />
+                            Member
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                    <Button type="submit" className="mt-3" isLoading={isCreatingClient}>
+                      Save client
+                    </Button>
+                  </form>
+                )}
+              </section>
+
+              <section className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-6 shadow-soft">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="font-bold text-[var(--color-text-primary)] text-base">Services</h2>
+                    <p className="text-sm text-[var(--color-text-secondary)]">Add multiple service with assigned staff.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Plus className="h-4 w-4" />}
+                    onClick={() => setServiceRows((rows) => [...rows, createRow()])}
+                  >
+                    Add
+                  </Button>
                 </div>
+                <div className="space-y-3">
+                  {serviceRows.length === 0 ? (
+                    <p className="rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-bg)]/50 p-4 text-sm text-[var(--color-text-secondary)]">
+                      No services added yet. You can sell products without a service.
+                    </p>
+                  ) : (
+                    serviceRows.map((row) => {
+                      const isInvalid = invalidServiceRowIds.includes(row.id);
+                      const selectedService = services.find((s) => s.salon_service_id === row.salon_service_id);
+                      const isMemberApplied = Boolean(
+                        selectedClient?.is_member &&
+                        selectedService &&
+                        selectedService.member_price !== null &&
+                        selectedService.member_price !== undefined &&
+                        selectedService.price > selectedService.member_price &&
+                        Number(row.price) === selectedService.member_price
+                      );
+                      const discountSavings = isMemberApplied && selectedService ? selectedService.price - selectedService.member_price! : 0;
+
+                      return (
+                        <div
+                          key={row.id}
+                          className={cn(
+                            'grid gap-3 rounded-2xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
+                            isInvalid
+                              ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
+                              : 'border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/50'
+                          )}
+                        >
+                          <CommonDropdown
+                            value={row.salon_service_id}
+                            onChange={(value) => updateServiceRow(row.id, 'salon_service_id', String(value))}
+                            options={serviceOptions}
+                            placeholder="Search service"
+                            searchable
+                            loading={isLoadingSalonServices}
+                          />
+                          <Select
+                            value={row.staff_id}
+                            onChange={(event) => updateServiceRow(row.id, 'staff_id', event.target.value)}
+                            options={staffOptions}
+                            placeholder="Service By"
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="Price"
+                            value={row.price}
+                            onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="!px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => removeServiceRow(row.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          {isMemberApplied && (
+                            <div className="md:col-span-4 mt-0.5 flex items-center gap-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5">
+                              <Sparkles className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                              <span>Member Savings: ₹{discountSavings} discount applied (Normal ₹{selectedService?.price} → Member ₹{selectedService?.member_price})</span>
+                            </div>
+                          )}
+                          {isInvalid && (
+                            <p className="text-xs font-medium text-red-600 md:col-span-4">
+                              Select a service, assign staff, and enter a valid price.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-6 shadow-soft">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="font-bold text-[var(--color-text-primary)] text-base">Products</h2>
+                    <p className="text-sm text-[var(--color-text-secondary)]">Add products with quantity and sold-by staff.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Plus className="h-4 w-4" />}
+                    onClick={() => setProductRows((rows) => [...rows, createProductRow()])}
+                  >
+                    Add
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  {productRows.length === 0 ? (
+                    <p className="rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-bg)]/50 p-4 text-sm text-[var(--color-text-secondary)]">
+                      No products added yet.
+                    </p>
+                  ) : (
+                    productRows.map((row) => {
+                      const isInvalid = invalidProductRowIds.includes(row.id);
+
+                      return (
+                        <div
+                          key={row.id}
+                          className={cn(
+                            'grid gap-3 rounded-2xl border p-3 md:grid-cols-[1.2fr_1fr_80px_110px_40px]',
+                            isInvalid
+                              ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
+                              : 'border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/50'
+                          )}
+                        >
+                          <CommonDropdown
+                            value={row.salon_product_id}
+                            onChange={(value) => updateProductRow(row.id, 'salon_product_id', String(value))}
+                            options={productOptions}
+                            placeholder="Search product"
+                            searchable
+                            loading={isLoadingSalonProducts}
+                          />
+                          <Select
+                            value={row.staff_id}
+                            onChange={(event) => updateProductRow(row.id, 'staff_id', event.target.value)}
+                            options={staffOptions}
+                            placeholder="Sold By"
+                          />
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            placeholder="Qty"
+                            value={row.quantity}
+                            onChange={(event) => updateProductRow(row.id, 'quantity', event.target.value)}
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="Unit price"
+                            value={row.price}
+                            onChange={(event) => updateProductRow(row.id, 'price', event.target.value)}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="!px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => removeProductRow(row.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          {isInvalid && (
+                            <p className="text-xs font-medium text-red-600 md:col-span-5">
+                              Complete this product row (product, sold by, qty, price) or remove it.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-6 shadow-soft">
+                <h2 className="font-bold text-[var(--color-text-primary)] text-base">Previous history</h2>
+                {!selectedClient ? (
+                  <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Select a client to view previous services.</p>
+                ) : isHistoryLoading ? (
+                  <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Loading history...</p>
+                ) : history.length === 0 ? (
+                  <p className="mt-3 text-sm text-[var(--color-text-secondary)]">No previous billing history for this client.</p>
+                ) : (
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {history.slice(0, 5).map((item) => {
+                      const canUpdate = canUpdatePaymentStatus(item.payment_status);
+                      return (
+                        <div key={item.id} className="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/60 p-3.5 text-sm">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-[var(--color-text-primary)]">
+                                {formatDateDMY(item.start_datetime)}
+                              </p>
+                              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                                {[
+                                  ...item.services.map((s) => s.name),
+                                  ...item.products.map((p) => p.name),
+                                ].join(', ')}
+                              </p>
+                            </div>
+                            <span
+                              className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${paymentStatusStyles[item.payment_status] ?? 'bg-gray-100 text-gray-600'}`}
+                            >
+                              {paymentStatusLabels[item.payment_status] ?? item.payment_status}
+                            </span>
+                          </div>
+                          {canUpdate && (
+                            <div className="mt-3">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                className="!px-2.5 !py-1 text-xs"
+                                icon={<Pencil className="h-3.5 w-3.5" />}
+                                onClick={() => openAppointmentInList(item)}
+                              >
+                                Update payment
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </main>
+
+            {/* Bill summary */}
+            <aside className="rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-6 shadow-soft xl:sticky xl:top-6 xl:self-start">
+              <div className="mb-4 flex items-center gap-2">
+                <ReceiptText className="h-5 w-5 text-[var(--color-brand-gold)]" />
+                <h2 className="font-bold text-[var(--color-text-primary)] text-lg">Bill summary</h2>
               </div>
-              <textarea
-                className="min-h-24 w-full rounded-xl border border-gray-200 p-3 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-gold)]"
-                placeholder="Notes for stylist or front desk"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-              <Button fullWidth type="button" isLoading={isSubmitting} onClick={handleSubmit}>
-                Submit appointment
-              </Button>
-            </div>
-          </aside>
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">Client</p>
+                  <p className="mt-1 font-bold text-[var(--color-text-primary)]">
+                    {selectedClient?.name ?? 'No client selected'}
+                  </p>
+                  {selectedClient && (
+                    <p className="text-xs font-semibold text-indigo-700">
+                      {selectedClient.is_member ? 'Member' : 'Non-member'}
+                    </p>
+                  )}
+                  <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">{selectedClient?.phone}</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Start time</label>
+                  <Input
+                    type="datetime-local"
+                    value={startDateTime}
+                    onChange={(event) => setStartDateTime(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Payment method</label>
+                  <Select
+                    value={paymentMethod}
+                    onChange={(event) => setPaymentMethod(event.target.value)}
+                    options={paymentMethodOptions}
+                    placeholder="Payment method"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Payment status</label>
+                  <Select
+                    value={paymentStatus}
+                    onChange={(event) => {
+                      setPaymentStatus(event.target.value);
+                      if (event.target.value !== 'PARTIALLY_PAID') setPaidAmount('');
+                    }}
+                    options={paymentStatusOptions}
+                    placeholder="Payment status"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Total amount</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder={String(calculatedTotal)}
+                    value={totalAmount}
+                    onChange={(event) => setTotalAmount(event.target.value)}
+                  />
+                  <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Calculated: ₹{calculatedTotal}</p>
+                </div>
+                {paymentStatus === 'PARTIALLY_PAID' && (
+                  <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 space-y-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-violet-700">
+                        Paid amount <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={effectiveTotal - 0.01}
+                        placeholder="Enter amount paid"
+                        value={paidAmount}
+                        onChange={(event) => {
+                          const val = event.target.value;
+                          if (Number(val) >= effectiveTotal) return;
+                          setPaidAmount(val);
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2 border border-violet-100">
+                      <span className="text-xs font-semibold text-gray-600">Remaining amount</span>
+                      <span className="text-sm font-bold text-amber-700">
+                        ₹{remainingAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/60 p-4 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Items</p>
+                  <div className="mt-2 space-y-2 text-[var(--color-text-primary)] font-medium">
+                    {serviceRows.map((row) => {
+                      const item = services.find((service) => service.salon_service_id === row.salon_service_id);
+                      if (!item) return null;
+                      const appliedPrice = Number(row.price !== '' ? row.price : item.price);
+                      const isMemberDiscount = Boolean(
+                        selectedClient?.is_member &&
+                        item.member_price !== null &&
+                        item.member_price !== undefined &&
+                        item.price > item.member_price &&
+                        appliedPrice === item.member_price
+                      );
+                      const savings = isMemberDiscount ? item.price - item.member_price! : 0;
+
+                      return (
+                        <div key={row.id} className="border-b border-dashed border-[var(--color-border-soft)] pb-2 last:border-0 last:pb-0">
+                          <div className="flex items-center justify-between gap-3 text-xs">
+                            <span>{item.service_name}</span>
+                            <div className="flex items-center gap-1.5">
+                              {isMemberDiscount && (
+                                <span className="text-[11px] text-gray-400 line-through">₹{item.price}</span>
+                              )}
+                              <span className="font-semibold">₹{appliedPrice}</span>
+                            </div>
+                          </div>
+                          {isMemberDiscount && (
+                            <div className="mt-0.5 flex items-center justify-between text-[11px] font-semibold text-emerald-700">
+                              <span>Member Discount</span>
+                              <span>-₹{savings}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {productRows.map((row) => {
+                      const item = products.find((product) => product.salon_product_id === row.salon_product_id);
+                      if (!item) return null;
+                      const qty = Math.max(1, Number(row.quantity || 1));
+                      const lineTotal = productLineTotal(row.price || item.price, qty);
+                      return (
+                        <div key={row.id} className="flex items-center justify-between gap-3 text-xs">
+                          <span>
+                            {item.product_name}
+                            {qty > 1 ? ` × ${qty}` : ''}
+                          </span>
+                          <span className="font-semibold">₹{lineTotal}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {summaryBreakdown.membershipDiscount > 0 && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border-soft)] space-y-1.5 text-xs">
+                      <div className="flex justify-between text-[var(--color-text-secondary)]">
+                        <span>Normal Subtotal</span>
+                        <span>₹{summaryBreakdown.originalSubtotal}</span>
+                      </div>
+                      <div className="flex justify-between font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1">
+                        <span>Membership Discount</span>
+                        <span>-₹{summaryBreakdown.membershipDiscount}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <textarea
+                  className="min-h-24 w-full rounded-2xl border border-[var(--color-border-soft)] bg-white p-3 text-sm outline-none transition-all focus:border-[var(--color-brand-gold)] focus:ring-1 focus:ring-[var(--color-brand-gold)]"
+                  placeholder="Notes for stylist or front desk"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                />
+                <Button fullWidth type="button" isLoading={isSubmitting} onClick={handleSubmit}>
+                  Submit Billing
+                </Button>
+              </div>
+            </aside>
+          </div>
         </div>
       )}
 
@@ -2439,6 +2664,7 @@ const Appointments: React.FC = () => {
         </ModalFooter>
       </Modal>
     </div>
+  </div>
   );
 };
 

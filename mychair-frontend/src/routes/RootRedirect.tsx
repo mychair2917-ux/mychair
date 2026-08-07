@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom';
 
 import { isSuperAdmin } from '../config/rbac';
 import { ROUTE_PATHS } from '../constants';
+import { LandingPage } from '../pages';
 import { useAppSelector } from '../redux/hooks';
 
 const RootRedirect = () => {
@@ -10,7 +11,7 @@ const RootRedirect = () => {
   const user = useAppSelector((state) => state.auth.user);
 
   if (!token) {
-    return <Navigate to={`/${ROUTE_PATHS.LOGIN}`} replace />;
+    return <LandingPage />;
   }
 
   if (isSuperAdmin(user?.role)) {
@@ -25,3 +26,4 @@ const RootRedirect = () => {
 };
 
 export default RootRedirect;
+

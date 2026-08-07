@@ -95,9 +95,20 @@ class CustomerQuickCreate(BaseModel):
         return normalized
 
 
+class QuickAppointmentCreate(BaseModel):
+    customer_name: str = Field(..., min_length=1, max_length=100)
+    phone: str = Field(..., min_length=5, max_length=20)
+    appointment_date: str = Field(..., description="YYYY-MM-DD")
+    appointment_time: str = Field(..., description="HH:MM")
+    notes: Optional[str] = Field(default=None)
+    type: Optional[str] = Field(default="Appointment", description="Appointment or Walk-in")
+    salon_id: str = Field(..., min_length=1)
+
+
 class FrontDeskAppointmentCreate(BaseModel):
     salon_id: str
     customer_id: str
+    appointment_id: Optional[str] = None
     start_datetime: datetime
     services: List[AppointmentServiceCreate] = Field(default_factory=list)
     products: List[AppointmentProductCreate] = Field(default_factory=list)

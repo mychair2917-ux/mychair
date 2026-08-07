@@ -40,6 +40,7 @@ export const ROUTE_PATHS = {
   // Salon ERP Module routes
   SALON_MANAGEMENT: 'salon-management',
   APPOINTMENTS: 'appointments',
+  APPOINTMENT_REGISTER: 'appointment-register',
   SALON_EMPLOYEES: 'salon-management/employees',
   SALON_SERVICES: 'salon-management/services',
   USER_MANAGEMENT: 'user-management',
@@ -58,8 +59,9 @@ export const ROUTE_PATHS = {
   ADMIN_DASHBOARD: 'admin/dashboard',
   ADMIN_PROFILE: 'admin/profile',
   ADMIN_SETTINGS: 'admin/settings',
-  ADMIN_INVITE: 'admin/invite',
   ADMIN_APPOINTMENTS: 'admin/appointments',
+  ADMIN_APPOINTMENT_REGISTER: 'admin/appointment-register',
+  ADMIN_INVITE: 'admin/invite',
   ADMIN_MY_EARNINGS: 'admin/my-earnings',
   SALON_INVITE: 'salon-owner/invite',
   ORG_INVITE: 'invite-users',

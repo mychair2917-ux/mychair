@@ -49,7 +49,8 @@ def resolve_applied_service_price(
 
     - Default / catalog match → membership-correct catalog price
     - Submitted price matching the *other* catalog price → still enforce catalog
-      (prevents non-members from selecting member price via the API)
+      (prevents non-members from selecting member price via the API,
+       and ensures members receive member pricing if standard price was sent)
     - Any other submitted amount → treated as a manual override (existing POS behavior)
     """
     catalog_price, pricing_type = resolve_catalog_service_price(
@@ -65,9 +66,8 @@ def resolve_applied_service_price(
     if abs(submitted - catalog_price) < _PRICE_EPSILON:
         return catalog_price, pricing_type
 
-    if _has_member_price(member_price) and abs(submitted - float(member_price)) < _PRICE_EPSILON:
-        return submitted, PRICING_TYPE_MEMBER
-    if abs(submitted - float(normal_price)) < _PRICE_EPSILON:
-        return submitted, PRICING_TYPE_NORMAL
+    other_price = float(normal_price) if pricing_type == PRICING_TYPE_MEMBER else (float(member_price) if _has_member_price(member_price) else None)
+    if other_price is not None and abs(submitted - other_price) < _PRICE_EPSILON:
+        return catalog_price, pricing_type
 
     return submitted, PRICING_TYPE_MANUAL

@@ -38,15 +38,20 @@ class BillService:
         items: List[BillItem] = []
         subtotal = 0.0
         tax_amount = 0.0
+        discount_amount = 0.0
 
         # Build SERVICE line items
         for svc in services:
-            unit_price = float(svc.get("price", 0.0))
+            applied_price = float(svc.get("price", 0.0))
+            discount = float(svc.get("discount", 0.0))
+            unit_price = float(svc.get("unit_price") or (applied_price + discount))
             tax_rate = float(svc.get("tax_rate", 0.0))
-            line_tax = round(unit_price * (tax_rate / 100.0), 2)
-            line_total = round(unit_price + line_tax, 2)
+            line_subtotal = (unit_price * 1) - discount
+            line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
+            line_total = round(line_subtotal + line_tax, 2)
 
             subtotal += unit_price
+            discount_amount += discount
             tax_amount += line_tax
 
             items.append(BillItem(
@@ -55,6 +60,7 @@ class BillService:
                 name=svc.get("name", "Service"),
                 quantity=1,
                 unit_price=unit_price,
+                discount=discount,
                 tax_rate=tax_rate,
                 tax_amount=line_tax,
                 staff_id=svc.get("staff_id"),
@@ -64,7 +70,9 @@ class BillService:
 
         # Build PRODUCT line items
         for prod in products:
-            unit_price = float(prod.get("price", 0.0))
+            applied_price = float(prod.get("price", 0.0))
+            discount = float(prod.get("discount", 0.0))
+            unit_price = float(prod.get("unit_price") or (applied_price + discount))
             tax_rate = float(prod.get("tax_rate", 0.0))
             try:
                 quantity = int(prod.get("quantity") or 1)
@@ -72,11 +80,12 @@ class BillService:
                 quantity = 1
             if quantity < 1:
                 quantity = 1
-            line_subtotal = unit_price * quantity
+            line_subtotal = (unit_price * quantity) - discount
             line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
             line_total = round(line_subtotal + line_tax, 2)
 
-            subtotal += line_subtotal
+            subtotal += unit_price * quantity
+            discount_amount += discount
             tax_amount += line_tax
 
             items.append(BillItem(
@@ -85,6 +94,7 @@ class BillService:
                 name=prod.get("name", "Product"),
                 quantity=quantity,
                 unit_price=unit_price,
+                discount=discount,
                 tax_rate=tax_rate,
                 tax_amount=line_tax,
                 staff_id=prod.get("staff_id"),
@@ -92,7 +102,7 @@ class BillService:
                 line_total=line_total,
             ))
 
-        computed_total = total_amount if total_amount > 0 else round(subtotal + tax_amount, 2)
+        computed_total = total_amount if total_amount > 0 else round(subtotal - discount_amount + tax_amount, 2)
 
         # Resolve paid/remaining amounts based on payment status
         if payment_status == "PAID":
@@ -140,7 +150,7 @@ class BillService:
             items=items,
             subtotal=round(subtotal, 2),
             tax_amount=round(tax_amount, 2),
-            discount_amount=0.0,
+            discount_amount=round(discount_amount, 2),
             total_amount=computed_total,
             paid_amount=round(effective_paid, 2),
             remaining_amount=remaining,
@@ -197,14 +207,19 @@ class BillService:
         items: List[BillItem] = []
         subtotal = 0.0
         tax_amount = 0.0
+        discount_amount = 0.0
 
         for svc in services:
-            unit_price = float(svc.get("price", 0.0))
+            applied_price = float(svc.get("price", 0.0))
+            discount = float(svc.get("discount", 0.0))
+            unit_price = float(svc.get("unit_price") or (applied_price + discount))
             tax_rate = float(svc.get("tax_rate", 0.0))
-            line_tax = round(unit_price * (tax_rate / 100.0), 2)
-            line_total = round(unit_price + line_tax, 2)
+            line_subtotal = (unit_price * 1) - discount
+            line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
+            line_total = round(line_subtotal + line_tax, 2)
 
             subtotal += unit_price
+            discount_amount += discount
             tax_amount += line_tax
 
             items.append(
@@ -214,6 +229,7 @@ class BillService:
                     name=svc.get("name", "Service"),
                     quantity=1,
                     unit_price=unit_price,
+                    discount=discount,
                     tax_rate=tax_rate,
                     tax_amount=line_tax,
                     staff_id=svc.get("staff_id"),
@@ -223,7 +239,9 @@ class BillService:
             )
 
         for prod in products:
-            unit_price = float(prod.get("price", 0.0))
+            applied_price = float(prod.get("price", 0.0))
+            discount = float(prod.get("discount", 0.0))
+            unit_price = float(prod.get("unit_price") or (applied_price + discount))
             tax_rate = float(prod.get("tax_rate", 0.0))
             try:
                 quantity = int(prod.get("quantity") or 1)
@@ -231,11 +249,12 @@ class BillService:
                 quantity = 1
             if quantity < 1:
                 quantity = 1
-            line_subtotal = unit_price * quantity
+            line_subtotal = (unit_price * quantity) - discount
             line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
             line_total = round(line_subtotal + line_tax, 2)
 
-            subtotal += line_subtotal
+            subtotal += unit_price * quantity
+            discount_amount += discount
             tax_amount += line_tax
 
             items.append(
@@ -245,6 +264,7 @@ class BillService:
                     name=prod.get("name", "Product"),
                     quantity=quantity,
                     unit_price=unit_price,
+                    discount=discount,
                     tax_rate=tax_rate,
                     tax_amount=line_tax,
                     staff_id=prod.get("staff_id"),
@@ -253,7 +273,7 @@ class BillService:
                 )
             )
 
-        computed_total = total_amount if total_amount > 0 else round(subtotal + tax_amount, 2)
+        computed_total = total_amount if total_amount > 0 else round(subtotal - discount_amount + tax_amount, 2)
 
         if payment_status == "PAID":
             effective_paid = computed_total
@@ -268,6 +288,7 @@ class BillService:
         bill.items = items
         bill.subtotal = round(subtotal, 2)
         bill.tax_amount = round(tax_amount, 2)
+        bill.discount_amount = round(discount_amount, 2)
         bill.total_amount = computed_total
         bill.paid_amount = round(effective_paid, 2)
         bill.remaining_amount = remaining

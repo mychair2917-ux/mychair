@@ -137,6 +137,7 @@ export interface AppointmentProductRequest {
 export interface CreateFrontDeskAppointmentRequest {
   salon_id: string;
   customer_id: string;
+  appointment_id?: string;
   start_datetime: string;
   services: AppointmentServiceRequest[];
   products?: AppointmentProductRequest[];
@@ -146,6 +147,46 @@ export interface CreateFrontDeskAppointmentRequest {
   total_amount: number;
   booking_source: string;
   notes?: string;
+}
+
+export interface QuickAppointmentRequest {
+  customer_name: string;
+  phone: string;
+  appointment_date: string;
+  appointment_time: string;
+  notes?: string;
+  type?: string;
+  salon_id: string;
+}
+
+export interface TodayAppointmentItem {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  customer_phone: string;
+  appointment_date: string;
+  appointment_time: string;
+  type: string;
+  status: string;
+  start_datetime: string;
+  notes?: string;
+}
+
+export interface TodayAppointmentsSummary {
+  today_appointments: number;
+  today_walkins: number;
+  upcoming_appointments: number;
+  completed_today: number;
+  next_upcoming?: {
+    customer_name: string;
+    phone: string;
+    time: string;
+  } | null;
+}
+
+export interface TodayAppointmentsData {
+  summary: TodayAppointmentsSummary;
+  items: TodayAppointmentItem[];
 }
 
 export interface UpdateAppointmentPaymentRequest {
@@ -180,8 +221,8 @@ export interface PhoneAvailability {
 
 export interface TodayAppointmentsParams {
   salon_id: string;
-  status_filter?: string;
-  include_completed?: boolean;
+  search?: string;
+  date?: string;
 }
 
 export interface BillByAppointmentParams {

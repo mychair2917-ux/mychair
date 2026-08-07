@@ -18,7 +18,9 @@ import {
   CreateFrontDeskAppointmentRequest,
   PaginatedAppointmentData,
   PhoneAvailability,
+  QuickAppointmentRequest,
   SearchClientsParams,
+  TodayAppointmentsData,
   TodayAppointmentsParams,
   UpdateAppointmentPaymentRequest,
 } from './Types';
@@ -26,6 +28,22 @@ import type { BillDetail } from '../billing/Types';
 
 export const appointmentsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
+    getRegisterTodayAppointments: builder.query<ApiResponse<TodayAppointmentsData>, TodayAppointmentsParams>({
+      query: (params) => ({
+        url: API_PATHS.APPOINTMENTS.REGISTER_TODAY,
+        method: HTTP_METHODS.GET,
+        params,
+      }),
+      providesTags: ['Appointments'],
+    }),
+    createQuickAppointment: builder.mutation<ApiResponse<any>, QuickAppointmentRequest>({
+      query: (body) => ({
+        url: API_PATHS.APPOINTMENTS.CREATE_QUICK,
+        method: HTTP_METHODS.POST,
+        body,
+      }),
+      invalidatesTags: ['Appointments'],
+    }),
     getTodayAppointments: builder.query<ApiResponse<AppointmentListItem[]>, TodayAppointmentsParams>({
       query: (params) => ({
         url: API_PATHS.APPOINTMENTS.TODAY,
@@ -164,10 +182,19 @@ export const appointmentsApi = baseApi.injectEndpoints({
         return { ...response, data: first };
       },
     }),
+    deleteAppointment: builder.mutation<ApiResponse<any>, string>({
+      query: (id) => ({
+        url: `/api/v1/appointments/${id}`,
+        method: HTTP_METHODS.DELETE,
+      }),
+      invalidatesTags: ['Appointments'],
+    }),
   }),
 });
 
 export const {
+  useGetRegisterTodayAppointmentsQuery,
+  useCreateQuickAppointmentMutation,
   useGetTodayAppointmentsQuery,
   useLazySearchAppointmentClientsQuery,
   useLazyCheckAppointmentClientPhoneQuery,
@@ -181,4 +208,5 @@ export const {
   useUpdateAppointmentPaymentMutation,
   useListAppointmentsQuery,
   useLazyGetBillByAppointmentQuery,
+  useDeleteAppointmentMutation,
 } = appointmentsApi;

@@ -357,7 +357,19 @@ export const formatDateDMY = (
   fallback: string = '---'
 ): string => {
   if (!dateInput) return fallback;
-  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  let date: Date;
+  if (dateInput instanceof Date) {
+    date = dateInput;
+  } else {
+    const rawIso =
+      typeof dateInput === 'string' &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dateInput) &&
+      !dateInput.endsWith('Z') &&
+      !/[+-]\d{2}:\d{2}$/.test(dateInput)
+        ? `${dateInput}Z`
+        : dateInput;
+    date = new Date(rawIso);
+  }
   if (isNaN(date.getTime())) return fallback;
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');

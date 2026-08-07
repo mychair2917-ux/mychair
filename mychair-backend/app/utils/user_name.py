@@ -7,6 +7,9 @@ from __future__ import annotations
 from typing import Any
 
 
+from app.utils.title_case import to_title_case
+
+
 def _attr(obj: Any, key: str) -> str:
     if obj is None:
         return ""
@@ -27,17 +30,18 @@ def user_display_name(user: Any, *, fallback: str = "Unknown") -> str:
 
     Never returns an email address or email local-part.
     Never returns the account role field.
+    Formats returned display name in Title Case.
     """
     first = _attr(user, "first_name")
     last = _attr(user, "last_name")
     name = f"{first} {last}".strip()
     if name and not _looks_like_email(name):
-        return name
+        return to_title_case(name) or fallback
 
     for key in ("full_name", "name"):
         value = _attr(user, key)
         if value and not _looks_like_email(value):
-            return value
+            return to_title_case(value) or fallback
 
     username = _attr(user, "username")
     email = _attr(user, "email").lower()
@@ -47,6 +51,7 @@ def user_display_name(user: Any, *, fallback: str = "Unknown") -> str:
         and not _looks_like_email(username)
         and username.lower() != email_local
     ):
-        return username.replace("_", " ").strip().title()
+        return to_title_case(username.replace("_", " ").strip()) or fallback
 
     return fallback
+

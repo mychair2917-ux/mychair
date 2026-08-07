@@ -62,6 +62,8 @@ export const API_PATHS = {
   },
   APPOINTMENTS: {
     TODAY: '/appointments/frontdesk/today',
+    REGISTER_TODAY: '/appointments/today',
+    CREATE_QUICK: '/appointments/quick',
     CREATE_FRONTDESK: '/appointments/frontdesk',
     LIST: '/appointments/list',
     UPDATE: (id: string) => `/appointments/${id}`,

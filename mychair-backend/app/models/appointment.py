@@ -14,6 +14,8 @@ class ServiceSnapshot(BaseModel):
     tax_rate: float
     # NORMAL | MEMBER | MANUAL — optional for backward-compatible historical rows
     pricing_type: Optional[str] = None
+    unit_price: Optional[float] = None
+    discount: float = 0.0
     staff_id: Optional[str] = None
     staff_name: Optional[str] = None
 
@@ -48,6 +50,13 @@ class Appointment(BaseTenantDocument):
     customer_id: str = Field(..., index=True)
     staff_id: Optional[str] = Field(default=None, index=True)
     
+    # Customer snapshot info
+    customer_name: Optional[str] = Field(default=None)
+    customer_phone: Optional[str] = Field(default=None)
+    appointment_date: Optional[str] = Field(default=None)
+    appointment_time: Optional[str] = Field(default=None)
+    type: str = Field(default="Appointment")  # 'Appointment' or 'Walk-in'
+    
     # Scheduling - Must be UTC-aware datetime objects
     start_datetime: datetime = Field(..., index=True)
     end_datetime: datetime = Field(..., index=True)
@@ -58,7 +67,7 @@ class Appointment(BaseTenantDocument):
     total_price: float = Field(default=0.0)
     
     # State management
-    status: str = Field(default="BOOKED", index=True)  # Current overall status
+    status: str = Field(default="SCHEDULED", index=True)  # SCHEDULED, BOOKED, CONFIRMED, CHECKED_IN, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
     status_history: List[StatusHistory] = Field(default_factory=list)
     
     # Additional Context

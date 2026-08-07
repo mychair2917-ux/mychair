@@ -25,6 +25,9 @@ const Services = lazy(() =>
 const Appointments = lazy(() =>
   import('../pages').then((module) => ({ default: module.Appointments }))
 );
+const AppointmentRegister = lazy(() =>
+  import('../pages').then((module) => ({ default: module.AppointmentRegister }))
+);
 const MyEarnings = lazy(() =>
   import('../pages').then((module) => ({ default: module.MyEarnings }))
 );
@@ -133,6 +136,10 @@ export const routes: RouteObject[] = [
       {
         path: ROUTE_PATHS.ADMIN_APPOINTMENTS,
         element: protectAdmin(MODULES.APPOINTMENTS, <Appointments />),
+      },
+      {
+        path: ROUTE_PATHS.ADMIN_APPOINTMENT_REGISTER,
+        element: protectAdmin(MODULES.APPOINTMENT_REGISTER, <AppointmentRegister />),
       },
       {
         path: ROUTE_PATHS.ADMIN_MY_EARNINGS,
@@ -252,6 +259,10 @@ export const routes: RouteObject[] = [
       {
         path: `orgs/:orgId/${ROUTE_PATHS.APPOINTMENTS}`,
         element: protectOrg(MODULES.APPOINTMENTS, <Appointments />),
+      },
+      {
+        path: `orgs/:orgId/${ROUTE_PATHS.APPOINTMENT_REGISTER}`,
+        element: protectOrg(MODULES.APPOINTMENT_REGISTER, <AppointmentRegister />),
       },
       {
         path: `orgs/:orgId/${ROUTE_PATHS.MY_EARNINGS}`,

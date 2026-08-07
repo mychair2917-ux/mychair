@@ -505,7 +505,7 @@ const Profile: React.FC = () => {
           <CommonCard title="Account Settings" subtitle="Security and account visibility">
             <div className="space-y-4">
               <InfoRow icon={Mail} label="Primary Email" value={profile.email} />
-              <InfoRow icon={Phone} label="Last Login" value={profile.last_login ? `${formatDateDMY(profile.last_login)} • ${new Date(profile.last_login).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '---'} />
+              <InfoRow icon={Phone} label="Last Login" value={profile.last_login ? `${formatDateDMY(profile.last_login)} • ${new Date(profile.last_login).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}` : '---'} />
               
               <InfoRow icon={ShieldCheck} label="Account Status" value={profile.status === 'ACTIVE' ? 'Active' : 'Inactive'} />
             </div>

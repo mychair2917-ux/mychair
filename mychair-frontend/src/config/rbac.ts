@@ -9,6 +9,7 @@ import {
   LineChart,
   MailPlus,
   Palmtree,
+  ReceiptText,
   Shield,
   Store,
   Users,
@@ -21,7 +22,8 @@ import { ROLES, ROUTE_PATHS } from '../constants';
 export const MODULES = {
   DASHBOARD: 'dashboard',
   INVITE: 'invite',
-  APPOINTMENTS: 'appointments',
+  APPOINTMENTS: 'appointments', // POS Billing
+  APPOINTMENT_REGISTER: 'appointment_register', // Appointment Dashboard
   MY_EARNINGS: 'my_earnings',
   SALON_MANAGEMENT: 'salon_management',
   EMPLOYEES: 'employees',
@@ -69,6 +71,7 @@ const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
     MODULES.DASHBOARD,
     MODULES.INVITE,
     MODULES.APPOINTMENTS,
+    MODULES.APPOINTMENT_REGISTER,
     MODULES.MY_EARNINGS,
     MODULES.SALON_MANAGEMENT,
     MODULES.EMPLOYEES,
@@ -110,6 +113,9 @@ export function canAccessModule(
   }
 
   if (permissions) {
+    if (module === MODULES.APPOINTMENT_REGISTER) {
+      return Boolean(permissions[MODULES.APPOINTMENTS]);
+    }
     return Boolean(permissions[module]);
   }
 
@@ -285,9 +291,15 @@ export function getSidebarNavItems(
           icon: MailPlus,
         },
         {
-          name: 'Appointments',
+          name: 'Billing',
           module: MODULES.APPOINTMENTS,
           path: `/${ROUTE_PATHS.ADMIN_APPOINTMENTS}`,
+          icon: ReceiptText,
+        },
+        {
+          name: 'Appointments',
+          module: MODULES.APPOINTMENT_REGISTER,
+          path: `/${ROUTE_PATHS.ADMIN_APPOINTMENT_REGISTER}`,
           icon: CalendarDays,
         },
         {
@@ -381,9 +393,15 @@ export function getSidebarNavItems(
             icon: MailPlus,
           },
           {
-            name: 'Appointments',
+            name: 'Billing',
             module: MODULES.APPOINTMENTS,
             path: orgPath(orgId, ROUTE_PATHS.APPOINTMENTS),
+            icon: ReceiptText,
+          },
+          {
+            name: 'Appointments',
+            module: MODULES.APPOINTMENT_REGISTER,
+            path: orgPath(orgId, ROUTE_PATHS.APPOINTMENT_REGISTER),
             icon: CalendarDays,
           },
           {
