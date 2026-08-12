@@ -17,6 +17,7 @@ class SalonProductCreate(BaseModel):
     custom_product_name: str | None = Field(default=None, max_length=150)
     custom_brand_name: str | None = Field(default=None, max_length=100)
     price: float = Field(..., ge=0)
+    product_type: str = Field(default="SELLING", max_length=20)
 
     @model_validator(mode="after")
     def validate_product_source(self) -> "SalonProductCreate":
@@ -34,6 +35,8 @@ class SalonProductCreate(BaseModel):
             self.custom_product_name = self.custom_product_name.strip()
         if self.custom_brand_name is not None:
             self.custom_brand_name = self.custom_brand_name.strip()
+        if self.product_type:
+            self.product_type = self.product_type.strip().upper()
         return self
 
 
@@ -44,6 +47,7 @@ class SalonProductUpdate(BaseModel):
     custom_brand_name: str | None = Field(default=None, max_length=100)
     price: float = Field(..., ge=0)
     status: str = Field(default="ACTIVE", max_length=20)
+    product_type: str = Field(default="SELLING", max_length=20)
 
     @model_validator(mode="after")
     def validate_product_source(self) -> "SalonProductUpdate":
@@ -62,6 +66,8 @@ class SalonProductUpdate(BaseModel):
         if self.custom_brand_name is not None:
             self.custom_brand_name = self.custom_brand_name.strip()
         self.status = self.status.strip().upper()
+        if self.product_type:
+            self.product_type = self.product_type.strip().upper()
         return self
 
 
@@ -77,6 +83,7 @@ class SalonProductListItem(BaseModel):
     brand_name: str | None = None
     price: float
     status: str
+    product_type: str = "SELLING"
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime

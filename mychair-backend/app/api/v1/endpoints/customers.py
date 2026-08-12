@@ -12,7 +12,13 @@ from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 
 from app.api.dependencies.auth import PermissionChecker
-from app.auth.rbac_config import ROLE_SALON_OWNER, ROLE_SUPER_ADMIN, normalize_role
+from app.auth.rbac_config import (
+    ROLE_SALON_ADMIN,
+    ROLE_SALON_MANAGER,
+    ROLE_SALON_OWNER,
+    ROLE_SUPER_ADMIN,
+    normalize_role,
+)
 from app.core import tenant_context
 from app.core.exceptions import PermissionDeniedException, ResourceNotFoundException
 from app.models.appointment import Appointment
@@ -32,6 +38,7 @@ from app.services.customer_phone import (
     customer_display_name,
     duplicate_phone_message,
     find_client_by_phone,
+    generate_client_reference_id,
 )
 from app.services.notifications import notification_service
 from app.utils.api_response import error_response, success_response
@@ -114,9 +121,24 @@ class CustomerUpdate(BaseModel):
     is_member: Optional[bool] = None
 
 
-# ─────────────────────────────── import ─────────────────────────────────────
-# NOTE: These routes MUST be declared before `/{customer_id}` so "import"
+# ─────────────────────────────── import / utilities ─────────────────────────────
+# NOTE: These routes MUST be declared before `/{customer_id}` so "import" / "generate-id"
 # is not captured as a customer id.
+
+@router.get("/generate-id")
+async def generate_customer_id(
+    current_user: User = Depends(PermissionChecker("customer_analytics.create")),
+):
+    """
+    Generate a unique alphanumeric client reference ID (CL-XXXXXX).
+    """
+    tenant_id = _effective_tenant(current_user)
+    client_id = await generate_client_reference_id(tenant_id)
+    return success_response(
+        "Client ID generated successfully",
+        data={"client_id": client_id},
+    )
+
 
 @router.get("/check-phone")
 async def check_customer_phone(

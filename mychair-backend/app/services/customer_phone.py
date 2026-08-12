@@ -7,7 +7,9 @@ messaging stay consistent and tenant-scoped.
 """
 from __future__ import annotations
 
+import random
 import re
+import string
 from typing import Dict, Iterable, List, Optional, Set
 
 from beanie import PydanticObjectId
@@ -16,6 +18,28 @@ from app.models.customer import Customer
 from app.utils.phone import normalize_mobile, phone_lookup_variants
 
 BATCH_SIZE = 500
+
+
+def _generate_candidate_id() -> str:
+    chars = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"CL-{chars}"
+
+
+async def generate_client_reference_id(tenant_id: Optional[str] = None) -> str:
+    """
+    Generate a unique, readable alphanumeric client reference ID (format: CL-XXXXXX).
+    Checks the database to guarantee uniqueness for the tenant.
+    """
+    for _ in range(20):
+        candidate = _generate_candidate_id()
+        query: dict = {"phone": candidate, "is_deleted": False}
+        if tenant_id:
+            query["tenant_id"] = tenant_id
+        existing = await Customer.find_one(query)
+        if not existing:
+            return candidate
+    raise RuntimeError("Failed to generate a unique client ID after 20 attempts")
+
 
 
 def customer_display_name(customer: Customer) -> str:

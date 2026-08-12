@@ -83,16 +83,15 @@ class CustomerQuickCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     phone: str = Field(..., min_length=5, max_length=20)
     email: Optional[str] = Field(default=None, max_length=120)
-    gender: str = Field(..., min_length=1, max_length=20)
+    gender: Optional[str] = Field(default=None, max_length=30)
     is_member: bool = False
 
     @field_validator("gender")
     @classmethod
-    def validate_gender(cls, v: str) -> str:
-        normalized = (v or "").strip().upper()
-        if normalized not in {"MALE", "FEMALE"}:
-            raise ValueError("Gender must be MALE or FEMALE")
-        return normalized
+    def validate_gender(cls, v: Optional[str]) -> Optional[str]:
+        if not v or not str(v).strip():
+            return None
+        return str(v).strip().upper()
 
 
 class QuickAppointmentCreate(BaseModel):

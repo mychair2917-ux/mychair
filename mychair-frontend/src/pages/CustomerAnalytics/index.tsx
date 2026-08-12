@@ -14,6 +14,7 @@ import {
   Upload,
   UserCheck,
   Users,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { useFormik } from 'formik';
@@ -27,6 +28,7 @@ import { cn } from '../../utils/cn';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
 import { applyApiFieldErrors, getApiErrorMessage } from '../../utils/apiErrors';
+import { generateLocalClientId } from '../../utils/clientId';
 import { useAppSelector } from '../../redux/hooks';
 import { normalizeRole } from '../../config/rbac';
 import { ROLES } from '../../constants';
@@ -36,6 +38,7 @@ import {
   useGetCustomerByIdQuery,
   useCreateCustomerMutation,
   useLazyCheckCustomerPhoneQuery,
+  useLazyGenerateCustomerIdQuery,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
   useLazyDownloadCustomerImportTemplateQuery,
@@ -150,8 +153,8 @@ const CustomerSchema = Yup.object({
   first_name: Yup.string().trim().min(1, 'Required').required('Full name is required'),
   phone: Yup.string()
     .trim()
-    .min(6, 'Enter a valid mobile number')
-    .required('Mobile number is required'),
+    .min(6, 'Enter a valid mobile number or Client ID')
+    .required('Mobile number or Client ID is required'),
   email: Yup.string().email('Enter a valid email').optional(),
   gender: Yup.string().optional(),
   dob: Yup.string().optional(),
@@ -344,7 +347,24 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   const [createCustomer, { isLoading: creating }] = useCreateCustomerMutation();
   const [updateCustomer, { isLoading: updating }] = useUpdateCustomerMutation();
   const [checkCustomerPhone] = useLazyCheckCustomerPhoneQuery();
+  const [triggerGenerateId, { isLoading: isGeneratingId }] = useLazyGenerateCustomerIdQuery();
   const isEdit = !!editCustomer;
+
+  const handleGenerateId = async () => {
+    try {
+      const res = await triggerGenerateId().unwrap();
+      if (res.data?.client_id) {
+        formik.setFieldValue('phone', res.data.client_id);
+        formik.setFieldError('phone', undefined);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    const fallbackId = generateLocalClientId();
+    formik.setFieldValue('phone', fallbackId);
+    formik.setFieldError('phone', undefined);
+  };
 
   const formik = useFormik({
     enableReinitialize: true,
@@ -468,7 +488,53 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
               {field('last_name', 'Last Name')}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              {field('phone', 'Mobile Number', 'text', true)}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Mobile / Client ID <span className="text-red-500">*</span>
+                  </label>
+                  {!isEdit && (
+                    <button
+                      type="button"
+                      onClick={handleGenerateId}
+                      disabled={isGeneratingId}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-brand-gold-dark)] hover:underline focus:outline-none"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Generate ID
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    name="phone"
+                    value={formik.values.phone}
+                    onChange={formik.handleChange}
+                    onBlur={handlePhoneBlur}
+                    placeholder="Phone or CL-XXXXXX"
+                    className={cn(
+                      'flex-1',
+                      formik.touched.phone && formik.errors.phone ? 'border-red-400' : ''
+                    )}
+                  />
+                  {!isEdit && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateId}
+                      disabled={isGeneratingId}
+                      className="whitespace-nowrap px-3 text-xs font-semibold"
+                    >
+                      Generate ID
+                    </Button>
+                  )}
+                </div>
+                {formik.touched.phone && formik.errors.phone && (
+                  <p className="mt-1 text-xs text-red-500">{formik.errors.phone}</p>
+                )}
+              </div>
               {field('email', 'Email', 'email')}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">

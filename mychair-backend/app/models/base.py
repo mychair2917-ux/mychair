@@ -33,11 +33,20 @@ class BaseTenantDocument(Document):
         return data
 
     def _apply_title_case_formatting(self) -> None:
+        cls = self.__class__
         for field in PROPER_NAME_FIELDS:
-            if field not in EXCLUDED_FIELDS and hasattr(self, field):
-                val = getattr(self, field)
-                if isinstance(val, str) and val:
-                    setattr(self, field, to_title_case(val))
+            if field in EXCLUDED_FIELDS:
+                continue
+            cls_attr = getattr(cls, field, None)
+            if isinstance(cls_attr, property):
+                continue
+            if hasattr(self, field):
+                try:
+                    val = getattr(self, field)
+                    if isinstance(val, str) and val:
+                        setattr(self, field, to_title_case(val))
+                except AttributeError:
+                    pass
 
     @before_event(Insert)
     def before_insert(self) -> None:

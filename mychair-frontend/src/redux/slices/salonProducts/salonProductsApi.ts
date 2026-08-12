@@ -25,7 +25,11 @@ export const salonProductsApi = baseApi.injectEndpoints({
       query: (params) => ({
         url: API_PATHS.SALON_PRODUCTS.LIST,
         method: HTTP_METHODS.GET,
-        params: params?.salon_id ? { salon_id: params.salon_id } : undefined,
+        params: {
+          ...(params?.salon_id ? { salon_id: params.salon_id } : {}),
+          ...(params?.product_type ? { product_type: params.product_type } : {}),
+          ...(params?.type ? { type: params.type } : {}),
+        },
       }),
       providesTags: ['SalonProducts'],
     }),

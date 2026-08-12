@@ -36,13 +36,17 @@ async def get_inventory_stocks(
     search: str | None = Query(default=None),
     category: str | None = Query(default=None),
     brand: str | None = Query(default=None),
+    product_type: str | None = Query(default=None),
+    type: str | None = Query(default=None),
     current_user: User = Depends(require_module(Module.PRODUCTS_INVENTORY)),
 ):
+    resolved_type = product_type or type
     data = await inventory_service.list_stocks(
         salon_id=salon_id,
         search=search,
         category=category,
         brand=brand,
+        product_type=resolved_type,
     )
     return success_response(
         "Inventory stocks retrieved successfully",
@@ -64,10 +68,12 @@ async def create_inventory_purchase(
         brand_id=payload.brand_id,
         custom_brand_name=payload.custom_brand_name,
         buying_price=payload.buying_price,
+        selling_price=payload.selling_price,
         quantity=payload.quantity,
         category=payload.category,
         min_threshold=payload.min_threshold,
         notes=payload.notes,
+        product_type=payload.product_type,
     )
     return success_response(
         "Inventory purchase recorded successfully",
@@ -106,14 +112,18 @@ async def get_inventory_reports(
     end_date: str | None = Query(default=None),
     category: str | None = Query(default=None),
     brand: str | None = Query(default=None),
+    product_type: str | None = Query(default=None),
+    type: str | None = Query(default=None),
     current_user: User = Depends(require_module(Module.PRODUCTS_INVENTORY)),
 ):
+    resolved_type = product_type or type
     data = await inventory_service.reports(
         salon_id=salon_id,
         start_date=start_date,
         end_date=end_date,
         category=category,
         brand=brand,
+        product_type=resolved_type,
     )
     return success_response("Inventory reports retrieved successfully", data=data.model_dump(mode="json"))
 

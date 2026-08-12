@@ -166,6 +166,13 @@ export const customerAnalyticsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['RewardSettings'],
     }),
+
+    generateCustomerId: builder.query<ApiResponse<{ client_id: string }>, void>({
+      query: () => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.GENERATE_ID,
+        method: HTTP_METHODS.GET,
+      }),
+    }),
   }),
 });
 
@@ -175,6 +182,7 @@ export const {
   useGetCustomerByIdQuery,
   useCreateCustomerMutation,
   useLazyCheckCustomerPhoneQuery,
+  useLazyGenerateCustomerIdQuery,
   useUpdateCustomerMutation,
   useDeleteCustomerMutation,
   useImportCustomersMutation,

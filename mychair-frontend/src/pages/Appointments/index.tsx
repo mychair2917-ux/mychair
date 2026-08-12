@@ -20,6 +20,7 @@ import ModalFooter from '../../components/common/Modal/ModalFooter';
 import ModalHeader from '../../components/common/Modal/ModalHeader';
 import { useDebouncedSearch } from '../../hooks';
 import { useAppointmentNotifications } from '../../hooks/useAppointmentNotifications';
+import { generateLocalClientId } from '../../utils/clientId';
 import { useAppSelector } from '../../redux/hooks';
 import {
   useCreateAppointmentClientMutation,
@@ -30,6 +31,7 @@ import {
   useGetAppointmentStaffQuery,
   useGetRegisterTodayAppointmentsQuery,
   useLazyCheckAppointmentClientPhoneQuery,
+  useLazyGenerateAppointmentClientIdQuery,
   useLazyGetBillByAppointmentQuery,
   useLazySearchAppointmentClientsQuery,
   useListAppointmentsQuery,
@@ -91,6 +93,8 @@ const paymentStatusOptions = [
 const clientGenderOptions = [
   { value: 'MALE', label: 'Male' },
   { value: 'FEMALE', label: 'Female' },
+  { value: 'OTHER', label: 'Other' },
+  { value: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say' },
 ];
 
 const paymentStatusStyles: Record<string, string> = {
@@ -1417,8 +1421,25 @@ const Appointments: React.FC = () => {
   const [searchClients, { isFetching: isSearchingClients }] =
     useLazySearchAppointmentClientsQuery();
   const [checkClientPhone] = useLazyCheckAppointmentClientPhoneQuery();
+  const [triggerGenerateId, { isLoading: isGeneratingId }] = useLazyGenerateAppointmentClientIdQuery();
   const [createClient, { isLoading: isCreatingClient }] = useCreateAppointmentClientMutation();
   const [createAppointment, { isLoading: isSubmitting }] = useCreateFrontDeskAppointmentMutation();
+
+  const handleGenerateClientFormId = async () => {
+    try {
+      const res = await triggerGenerateId().unwrap();
+      if (res.data?.client_id) {
+        setClientPhoneError('');
+        setClientForm((prev) => ({ ...prev, phone: res.data.client_id }));
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    const fallbackId = generateLocalClientId();
+    setClientPhoneError('');
+    setClientForm((prev) => ({ ...prev, phone: fallbackId }));
+  };
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -1638,6 +1659,11 @@ const Appointments: React.FC = () => {
     try {
       const phoneCheck = await checkClientPhone({ phone: clientForm.phone.trim() }).unwrap();
       if (phoneCheck.data?.exists && phoneCheck.data.message) {
+        setClientPhoneError(phoneCheck.data.message);
+        showToast('error', phoneCheck.data.message);
+        return;
+      }
+      if (phoneCheck.data?.valid === false && phoneCheck.data?.message) {
         setClientPhoneError(phoneCheck.data.message);
         showToast('error', phoneCheck.data.message);
         return;
@@ -2152,18 +2178,30 @@ const Appointments: React.FC = () => {
                         onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })}
                       />
                       <div>
-                        <Input
-                          placeholder="Phone *"
-                          value={clientForm.phone}
-                          onChange={(event) => {
-                            setClientPhoneError('');
-                            setClientForm({ ...clientForm, phone: event.target.value });
-                          }}
-                          onBlur={() => {
-                            void handleClientPhoneBlur();
-                          }}
-                          className={clientPhoneError ? 'border-red-400' : undefined}
-                        />
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Phone / Mobile *"
+                            value={clientForm.phone}
+                            onChange={(event) => {
+                              setClientPhoneError('');
+                              setClientForm({ ...clientForm, phone: event.target.value });
+                            }}
+                            onBlur={() => {
+                              void handleClientPhoneBlur();
+                            }}
+                            className={cn('flex-1', clientPhoneError ? 'border-red-400' : undefined)}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleGenerateClientFormId}
+                            disabled={isGeneratingId}
+                            className="whitespace-nowrap px-3 text-xs font-semibold"
+                          >
+                            Generate ID
+                          </Button>
+                        </div>
                         {clientPhoneError && (
                           <p className="mt-1 text-xs text-red-500">{clientPhoneError}</p>
                         )}

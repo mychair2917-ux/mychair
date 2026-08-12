@@ -6,7 +6,13 @@ from beanie import PydanticObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 
 from app.api.dependencies.auth import PermissionChecker, get_current_user
-from app.auth.rbac_config import ROLE_SALON_OWNER, ROLE_SUPER_ADMIN, normalize_role
+from app.auth.rbac_config import (
+    ROLE_SALON_ADMIN,
+    ROLE_SALON_MANAGER,
+    ROLE_SALON_OWNER,
+    ROLE_SUPER_ADMIN,
+    normalize_role,
+)
 from app.core import tenant_context
 from app.core.exceptions import PermissionDeniedException, ResourceNotFoundException
 from app.models.appointment import Appointment
@@ -37,6 +43,7 @@ from app.services.customer_phone import (
     customer_display_name,
     duplicate_phone_message,
     find_client_by_phone,
+    generate_client_reference_id,
 )
 from app.services.notifications import notification_service
 from app.services.websocket import manager
@@ -294,6 +301,19 @@ async def search_clients(
     return success_response("Clients retrieved successfully", data=[_customer_response(c) for c in top_customers])
 
 
+@router.get("/clients/generate-id")
+async def generate_appointment_client_id(
+    current_user: User = Depends(PermissionChecker("appointments.create")),
+):
+    """Generate a unique alphanumeric client reference ID (CL-XXXXXX)."""
+    tenant_id = _effective_tenant_id(current_user)
+    client_id = await generate_client_reference_id(tenant_id)
+    return success_response(
+        "Client ID generated successfully",
+        data={"client_id": client_id},
+    )
+
+
 @router.get("/clients/check-phone")
 async def check_client_phone(
     phone: str = Query(..., min_length=5, max_length=20),
@@ -332,7 +352,7 @@ async def create_client(
 ):
     if payload.is_member and not _can_manage_membership(current_user):
         raise PermissionDeniedException(
-            detail="Only Super Admin or Salon Owner can mark a client as a member"
+            detail="Only Salon Owner, Admin or Manager can mark a client as a member"
         )
 
     normalized_phone, phone_err = _normalize_client_phone(payload.phone)

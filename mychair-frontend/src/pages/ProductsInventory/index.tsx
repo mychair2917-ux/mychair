@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   BarChart3,
   Boxes,
-  ClipboardCheck,
   Download,
   Layers3,
   PackagePlus,
@@ -12,6 +11,10 @@ import {
   TrendingDown,
   Upload,
   FileText,
+  ShoppingBag,
+  Scissors,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 
@@ -49,6 +52,7 @@ import { formatCurrency } from '../../utils/currency';
 import { formatDateDMY } from '../../utils/utilities';
 
 type InventoryTab = 'overview' | 'stocks' | 'purchase' | 'usage' | 'reports';
+type ProductTypeFilter = 'SELLING' | 'SERVICE';
 
 const tabs: Array<{ key: InventoryTab; label: string }> = [
   { key: 'overview', label: 'Overview' },
@@ -66,15 +70,17 @@ const emptyPurchase = {
   brandName: '',
   brandId: undefined as string | undefined,
   buyingPrice: '',
-  quantity: '',
+  sellingPrice: '',
+  quantity: '1',
   category: 'General',
+  productType: 'SELLING' as ProductTypeFilter,
   minThreshold: '5',
   notes: '',
 };
 
 const emptyUsage = {
   inventoryId: '',
-  quantity: '',
+  quantity: '1',
   type: 'USAGE' as 'USAGE' | 'SALE',
   referenceId: '',
   notes: '',
@@ -97,8 +103,6 @@ const MetricCard: React.FC<{
   </div>
 );
 
-
-
 const ProductsInventory: React.FC = () => {
   const { orgId } = useParams<{ orgId: string }>();
   const user = useAppSelector((state) => state.auth.user);
@@ -107,12 +111,19 @@ const ProductsInventory: React.FC = () => {
   const salonId = orgId ?? (isSuperAdmin(user?.role) ? selectedSalonId : storedOrgId) ?? undefined;
 
   const [activeTab, setActiveTab] = useState<InventoryTab>('overview');
+  const [productType, setProductType] = useState<ProductTypeFilter>('SELLING');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
-  const [purchaseDraft, setPurchaseDraft] = useState(emptyPurchase);
+  const [purchaseDraft, setPurchaseDraft] = useState({
+    ...emptyPurchase,
+    productType: 'SELLING' as ProductTypeFilter,
+  });
   const [usageDraft, setUsageDraft] = useState(emptyUsage);
   const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false);
+  const [adjustItem, setAdjustItem] = useState<InventoryStockItem | null>(null);
+  const [adjustQty, setAdjustQty] = useState<number>(1);
+  const [adjustMode, setAdjustMode] = useState<'ADD' | 'DEDUCT'>('DEDUCT');
   const [billFile, setBillFile] = useState<File | null>(null);
   const [reportStart, setReportStart] = useState('');
   const [reportEnd, setReportEnd] = useState('');
@@ -129,6 +140,7 @@ const ProductsInventory: React.FC = () => {
       search: debouncedSearch || undefined,
       category: categoryFilter || undefined,
       brand: brandFilter || undefined,
+      product_type: productType,
     },
     { skip }
   );
@@ -139,11 +151,12 @@ const ProductsInventory: React.FC = () => {
       end_date: reportEnd || undefined,
       category: categoryFilter || undefined,
       brand: brandFilter || undefined,
+      product_type: productType,
     },
     { skip }
   );
   const { data: productsData, isLoading: isLoadingProducts } = useGetSalonProductsQuery(
-    { salon_id: salonId || '' },
+    { salon_id: salonId || '', product_type: productType },
     { skip: !salonId }
   );
   const { data: brandsData, isLoading: isLoadingBrands } = useGetBrandsQuery(
@@ -216,6 +229,7 @@ const ProductsInventory: React.FC = () => {
       brandName: matched?.brand_name ?? '',
       brandId: matched?.brand_id || undefined,
       buyingPrice: matched?.price ? String(matched.price) : current.buyingPrice,
+      productType: (matched?.product_type as ProductTypeFilter) || current.productType,
     }));
   };
 
@@ -228,20 +242,84 @@ const ProductsInventory: React.FC = () => {
     }));
   };
 
+  const showSellingPrice = purchaseDraft.productType === 'SELLING' && !purchaseDraft.productId;
+
+  const handleQuickDeduct = async (stockItem: InventoryStockItem, qty = 1) => {
+    if (!salonId) return;
+    try {
+      const response = await createUse({
+        salon_id: salonId,
+        body: {
+          inventory_id: stockItem.id,
+          quantity: qty,
+          type: stockItem.product_type === 'SELLING' ? 'SALE' : 'USAGE',
+        },
+      }).unwrap();
+      if (response.success) {
+        showToast('success', `Deducted ${qty} unit(s) of "${stockItem.display_name}" (-${qty})`);
+      }
+    } catch (err: unknown) {
+      showToast('error', getApiErrorMessage(err, 'Failed to deduct stock'));
+    }
+  };
+
+  const handleQuickAdd = async (stockItem: InventoryStockItem, qty = 1) => {
+    if (!salonId) return;
+    try {
+      const response = await createPurchase({
+        salon_id: salonId,
+        body: {
+          product_id: stockItem.product_id,
+          buying_price: stockItem.buying_price,
+          quantity: qty,
+          category: stockItem.category,
+          product_type: stockItem.product_type,
+          min_threshold: stockItem.min_threshold,
+        },
+      }).unwrap();
+      if (response.success) {
+        showToast('success', `Added ${qty} unit(s) to "${stockItem.display_name}" (+${qty})`);
+      }
+    } catch (err: unknown) {
+      showToast('error', getApiErrorMessage(err, 'Failed to add stock'));
+    }
+  };
+
+  const handleAdjustSubmit = async () => {
+    if (!adjustItem || adjustQty <= 0) return;
+    if (adjustMode === 'ADD') {
+      await handleQuickAdd(adjustItem, adjustQty);
+    } else {
+      await handleQuickDeduct(adjustItem, adjustQty);
+    }
+    setAdjustItem(null);
+    setAdjustQty(1);
+  };
+
   const handlePurchase = async () => {
     if (!salonId) return;
     const productName = purchaseDraft.productName.trim();
     const brandName = purchaseDraft.brandName.trim();
     const quantity = Number(purchaseDraft.quantity);
     const buyingPrice = Number(purchaseDraft.buyingPrice);
+    const sellingPrice = Number(purchaseDraft.sellingPrice);
     const minThreshold = Number(purchaseDraft.minThreshold || 0);
+    const isNewProduct = !purchaseDraft.productId && Boolean(productName);
+    const isSellingType = purchaseDraft.productType === 'SELLING';
+
     if (!productName || !quantity || quantity <= 0 || Number.isNaN(quantity)) {
       showToast('warning', 'Select a product and enter a valid quantity');
       return;
     }
-    if (Number.isNaN(buyingPrice) || buyingPrice < 0) {
-      showToast('warning', 'Enter a valid buying price');
+    if (!purchaseDraft.buyingPrice.toString().trim() || Number.isNaN(buyingPrice) || buyingPrice < 0) {
+      showToast('warning', 'Please enter a valid Buying Price');
       return;
+    }
+    if (isSellingType && isNewProduct) {
+      if (!purchaseDraft.sellingPrice.toString().trim() || Number.isNaN(sellingPrice) || sellingPrice <= 0) {
+        showToast('warning', 'Please enter a valid Selling Price for the new selling product');
+        return;
+      }
     }
 
     try {
@@ -264,8 +342,12 @@ const ProductsInventory: React.FC = () => {
               : { custom_brand_name: brandName }
             : {}),
           buying_price: buyingPrice,
+          ...(isSellingType && isNewProduct && !Number.isNaN(sellingPrice)
+            ? { selling_price: sellingPrice }
+            : {}),
           quantity,
           category: purchaseDraft.category,
+          product_type: purchaseDraft.productType,
           min_threshold: Number.isNaN(minThreshold) ? 0 : minThreshold,
           notes: finalNotes || undefined,
         },
@@ -277,7 +359,7 @@ const ProductsInventory: React.FC = () => {
             ? `Inventory purchase recorded and bill "${billFile.name}" submitted successfully!`
             : response.message || 'Inventory purchase recorded'
         );
-        setPurchaseDraft(emptyPurchase);
+        setPurchaseDraft({ ...emptyPurchase, productType });
         setBillFile(null);
         setIsAddStockModalOpen(false);
       }
@@ -337,7 +419,7 @@ const ProductsInventory: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'inventory-reports.csv';
+    link.download = `inventory-reports-${productType.toLowerCase()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -355,6 +437,23 @@ const ProductsInventory: React.FC = () => {
         )}
       >
         {isOos ? 'OUT OF STOCK' : row.status}
+      </span>
+    );
+  };
+
+  const productTypeBadge = (type?: string) => {
+    const isSelling = (type || 'SELLING').toUpperCase() === 'SELLING';
+    return (
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border',
+          isSelling
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+        )}
+      >
+        {isSelling ? <ShoppingBag className="h-3 w-3" /> : <Scissors className="h-3 w-3" />}
+        {isSelling ? 'Selling Product' : 'Service Product'}
       </span>
     );
   };
@@ -387,8 +486,54 @@ const ProductsInventory: React.FC = () => {
         <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 shadow-sm">
           {isLoadingStocks
             ? 'Refreshing inventory data...'
-            : `${stocks.length} products tracked`}
+            : `${stocks.length} ${productType === 'SELLING' ? 'Selling' : 'Service'} products tracked`}
         </div>
+      </div>
+
+      {/* Product Type Categorization Bar (Selling vs Service) */}
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setProductType('SELLING');
+              setPurchaseDraft((current) => ({ ...current, productType: 'SELLING' }));
+            }}
+            className={cn(
+              'flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition',
+              productType === 'SELLING'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Selling Products
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setProductType('SERVICE');
+              setPurchaseDraft((current) => ({ ...current, productType: 'SERVICE' }));
+            }}
+            className={cn(
+              'flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition',
+              productType === 'SERVICE'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            <Scissors className="h-4 w-4" />
+            Service Products
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 px-3 hidden md:block">
+          Currently displaying:{' '}
+          <span className="font-semibold text-gray-800">
+            {productType === 'SELLING'
+              ? 'Selling Products (Retail Products)'
+              : 'Service Products (Internal In-Salon Use)'}
+          </span>
+        </p>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-3">
@@ -494,8 +639,8 @@ const ProductsInventory: React.FC = () => {
           data={stocks}
           rowKey="id"
           loading={isLoadingStocks}
-          title="Stock management"
-          subtitle="Track salon stock by product and brand combination."
+          title={`${productType === 'SELLING' ? 'Selling Products' : 'Service Products'} Stock`}
+          subtitle={`Track ${productType === 'SELLING' ? 'retail selling products' : 'in-salon service products'} by brand and category. Use + and - for quick quantity adjustments.`}
           enableGlobalSearch={false}
           filters={
             <div className="flex flex-col gap-3 w-full sm:flex-row sm:items-center">
@@ -528,7 +673,7 @@ const ProductsInventory: React.FC = () => {
                 type="button"
                 variant="primary"
                 onClick={() => {
-                  setPurchaseDraft(emptyPurchase);
+                  setPurchaseDraft({ ...emptyPurchase, productType });
                   setBillFile(null);
                   setIsAddStockModalOpen(true);
                 }}
@@ -540,21 +685,42 @@ const ProductsInventory: React.FC = () => {
           }
           columns={[
             { key: 'display_name', header: 'Product Name', accessor: 'display_name', sortable: true },
+            { key: 'product_type', header: 'Type', render: (row) => productTypeBadge(row.product_type), sortable: true },
             { key: 'category', header: 'Category', accessor: 'category', sortable: true },
             {
               key: 'stock_quantity',
-              header: 'Current Stock',
+              header: 'Current Stock (+ / -)',
               render: (row) => (
-                <span
-                  className={cn(
-                    'tabular-nums font-semibold',
-                    row.stock_quantity < 0
-                      ? 'inline-flex items-center rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-800 border border-red-200'
-                      : 'text-gray-900'
-                  )}
-                >
-                  {row.stock_quantity}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={row.stock_quantity <= 0 || isCreatingUse}
+                    onClick={() => handleQuickDeduct(row, 1)}
+                    title="Quick Deduct 1 unit"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100 disabled:opacity-40"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span
+                    className={cn(
+                      'tabular-nums font-bold min-w-[2.5rem] text-center px-1 text-sm',
+                      row.stock_quantity <= 0
+                        ? 'rounded-md bg-red-100 px-2 py-0.5 text-xs text-red-800 border border-red-200 font-semibold'
+                        : 'text-gray-900'
+                    )}
+                  >
+                    {row.stock_quantity}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isCreatingPurchase}
+                    onClick={() => handleQuickAdd(row, 1)}
+                    title="Quick Add 1 unit"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ),
               sortable: true,
             },
@@ -572,43 +738,28 @@ const ProductsInventory: React.FC = () => {
           actions={[
             {
               type: 'custom',
-              label: 'Mark as Used',
-              icon: <ClipboardCheck className="h-4 w-4" />,
-              onClick: (row) => {
-                setUsageDraft((current) => ({ ...current, inventoryId: row.id, type: 'USAGE' }));
-                setActiveTab('usage');
-              },
+              label: 'Deduct (-1)',
+              icon: <Minus className="h-4 w-4" />,
+              onClick: (row) => handleQuickDeduct(row, 1),
             },
             {
               type: 'custom',
-              label: 'Update Stock',
-              icon: <PackagePlus className="h-4 w-4" />,
-              onClick: (row) => {
-                setPurchaseDraft((current) => ({
-                  ...current,
-                  productName: row.product_name,
-                  productId: row.product_id,
-                  brandName: row.brand_name ?? '',
-                  brandId: row.brand_id ?? undefined,
-                  buyingPrice: String(row.buying_price),
-                  category: row.category,
-                  minThreshold: String(row.min_threshold),
-                }));
-                setBillFile(null);
-                setIsAddStockModalOpen(true);
-              },
+              label: 'Add Stock (+1)',
+              icon: <Plus className="h-4 w-4" />,
+              onClick: (row) => handleQuickAdd(row, 1),
             },
             {
               type: 'custom',
-              label: 'Adjust Quantity',
+              label: 'Adjust Stock (+ / -)',
               icon: <Sliders className="h-4 w-4" />,
               onClick: (row) => {
-                setUsageDraft((current) => ({ ...current, inventoryId: row.id, type: 'USAGE' }));
-                setActiveTab('usage');
+                setAdjustItem(row);
+                setAdjustQty(1);
+                setAdjustMode('DEDUCT');
               },
             },
           ]}
-          emptyTitle="No inventory products yet"
+          emptyTitle={`No ${productType === 'SELLING' ? 'selling' : 'service'} products found`}
           emptyDescription="Use Purchase Entry to create products, brands, and stock records."
         />
       )}
@@ -617,115 +768,193 @@ const ProductsInventory: React.FC = () => {
         <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">Purchase entry</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Add stock purchases. New products or brands are created inline when no match exists.
+            Add stock purchases. Specify whether product is for selling to customers or in-salon service use.
           </p>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <FormField label="Product" name="purchaseProduct" required>
-              <CommonDropdown
-                options={productOptions}
-                value={purchaseDraft.productId}
-                onChange={(value) => updatePurchaseProduct(String(value))}
-                placeholder="Search product"
-                loading={isLoadingProducts}
-              />
-              <Input
-                className="mt-2"
-                placeholder="Or type new product"
-                value={purchaseDraft.productName}
-                onChange={(event) =>
-                  setPurchaseDraft((current) => ({
-                    ...current,
-                    productName: event.target.value,
-                    productId: undefined,
-                  }))
-                }
-              />
-            </FormField>
-            <FormField label="Brand" name="purchaseBrand">
-              <div className="space-y-2">
+
+          <div className="mt-5 space-y-4">
+            {/* Row 1: Product Type & Category */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField label="Product Type" name="productType" required>
                 <CommonDropdown
-                  options={brandOptions}
-                  value={purchaseDraft.brandId}
-                  onChange={(value) => updatePurchaseBrand(String(value))}
-                  placeholder="Search brand"
-                  searchable
-                  loading={isLoadingBrands}
+                  options={[
+                    { value: 'SELLING', label: 'Selling Product' },
+                    { value: 'SERVICE', label: 'Service Product' },
+                  ]}
+                  value={purchaseDraft.productType}
+                  onChange={(value) =>
+                    setPurchaseDraft((current) => ({
+                      ...current,
+                      productType: String(value) as ProductTypeFilter,
+                    }))
+                  }
+                  searchable={false}
+                  clearable={false}
+                />
+              </FormField>
+
+              <FormField label="Category" name="category" required>
+                <CommonDropdown
+                  options={categories.map((category) => ({ value: category, label: category }))}
+                  value={purchaseDraft.category}
+                  onChange={(value) =>
+                    setPurchaseDraft((current) => ({ ...current, category: String(value) }))
+                  }
+                  searchable={false}
+                  clearable={false}
+                />
+              </FormField>
+            </div>
+
+            {/* Row 2: Product & Brand */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField label="Product" name="purchaseProduct" required>
+                <CommonDropdown
+                  options={productOptions}
+                  value={purchaseDraft.productId}
+                  onChange={(value) => updatePurchaseProduct(String(value))}
+                  placeholder="Search product"
+                  loading={isLoadingProducts}
                 />
                 <Input
-                  placeholder="Or type new brand"
-                  value={purchaseDraft.brandName}
+                  className="mt-2"
+                  placeholder="Or type new product"
+                  value={purchaseDraft.productName}
                   onChange={(event) =>
                     setPurchaseDraft((current) => ({
                       ...current,
-                      brandName: event.target.value,
-                      brandId: undefined,
+                      productName: event.target.value,
+                      productId: undefined,
                     }))
                   }
                 />
-                {purchaseDraft.brandName.trim() &&
-                  !brandOptions.some(
-                    (option) =>
-                      option.label.trim().toLowerCase() ===
-                      purchaseDraft.brandName.trim().toLowerCase()
-                  ) && (
-                    <p className="text-xs text-[var(--color-brand-gold-dark)]">
-                      Create new brand: "{purchaseDraft.brandName.trim()}"
-                    </p>
-                  )}
-              </div>
-            </FormField>
-            <FormField label="Buying Price" name="buyingPrice" required>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={purchaseDraft.buyingPrice}
-                onChange={(event) =>
-                  setPurchaseDraft((current) => ({ ...current, buyingPrice: event.target.value }))
-                }
-              />
-            </FormField>
-            <FormField label="Quantity" name="quantity" required>
-              <Input
-                type="number"
-                min="1"
-                value={purchaseDraft.quantity}
-                onChange={(event) =>
-                  setPurchaseDraft((current) => ({ ...current, quantity: event.target.value }))
-                }
-              />
-            </FormField>
-            <FormField label="Category" name="category" required>
-              <CommonDropdown
-                options={categories.map((category) => ({ value: category, label: category }))}
-                value={purchaseDraft.category}
-                onChange={(value) =>
-                  setPurchaseDraft((current) => ({ ...current, category: String(value) }))
-                }
-                searchable={false}
-                clearable={false}
-              />
-            </FormField>
-            <FormField label="Low Stock Alert Level" name="minThreshold">
-              <Input
-                type="number"
-                min="0"
-                value={purchaseDraft.minThreshold}
-                onChange={(event) =>
-                  setPurchaseDraft((current) => ({ ...current, minThreshold: event.target.value }))
-                }
-                placeholder="e.g. 5"
-              />
-              <span className="text-[11px] text-gray-500 mt-0.5">
-                Alerts you when stock falls below this quantity.
-              </span>
-            </FormField>
+              </FormField>
+
+              <FormField label="Brand" name="purchaseBrand">
+                <div className="space-y-2">
+                  <CommonDropdown
+                    options={brandOptions}
+                    value={purchaseDraft.brandId}
+                    onChange={(value) => updatePurchaseBrand(String(value))}
+                    placeholder="Search brand"
+                    searchable
+                    loading={isLoadingBrands}
+                  />
+                  <Input
+                    placeholder="Or type new brand"
+                    value={purchaseDraft.brandName}
+                    onChange={(event) =>
+                      setPurchaseDraft((current) => ({
+                        ...current,
+                        brandName: event.target.value,
+                        brandId: undefined,
+                      }))
+                    }
+                  />
+                  {purchaseDraft.brandName.trim() &&
+                    !brandOptions.some(
+                      (option) =>
+                        option.label.trim().toLowerCase() ===
+                        purchaseDraft.brandName.trim().toLowerCase()
+                    ) && (
+                      <p className="text-xs text-[var(--color-brand-gold-dark)]">
+                        Create new brand: "{purchaseDraft.brandName.trim()}"
+                      </p>
+                    )}
+                </div>
+              </FormField>
+            </div>
+
+            {/* Row 3: Buying Price, Selling Price (if new selling product), Quantity & Low Stock Alert Level */}
+            <div className={cn('grid gap-4', showSellingPrice ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3')}>
+              <FormField label="Buying Price" name="buyingPrice" required>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={purchaseDraft.buyingPrice}
+                  onChange={(event) =>
+                    setPurchaseDraft((current) => ({ ...current, buyingPrice: event.target.value }))
+                  }
+                />
+              </FormField>
+
+              {showSellingPrice && (
+                <FormField label="Selling Price" name="sellingPrice" required>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 25.00"
+                    value={purchaseDraft.sellingPrice}
+                    onChange={(event) =>
+                      setPurchaseDraft((current) => ({ ...current, sellingPrice: event.target.value }))
+                    }
+                  />
+                </FormField>
+              )}
+
+              <FormField label="Quantity" name="quantity" required>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPurchaseDraft((current) => ({
+                        ...current,
+                        quantity: String(Math.max(1, (Number(current.quantity) || 1) - 1)),
+                      }))
+                    }
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 font-bold transition flex-shrink-0"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <Input
+                    type="number"
+                    min="1"
+                    className="text-center font-bold"
+                    value={purchaseDraft.quantity}
+                    onChange={(event) =>
+                      setPurchaseDraft((current) => ({ ...current, quantity: event.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPurchaseDraft((current) => ({
+                        ...current,
+                        quantity: String((Number(current.quantity) || 0) + 1),
+                      }))
+                    }
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 font-bold transition flex-shrink-0"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </FormField>
+
+              <FormField label="Low Stock Alert Level" name="minThreshold">
+                <Input
+                  type="number"
+                  min="0"
+                  value={purchaseDraft.minThreshold}
+                  onChange={(event) =>
+                    setPurchaseDraft((current) => ({ ...current, minThreshold: event.target.value }))
+                  }
+                  placeholder="e.g. 5"
+                />
+                <span className="text-[11px] text-gray-500 mt-0.5 block">
+                  Alerts when stock falls below level.
+                </span>
+              </FormField>
+            </div>
+
+            {/* Row 4: Notes */}
             <FormField label="Notes" name="notes">
               <Input
                 value={purchaseDraft.notes}
                 onChange={(event) =>
                   setPurchaseDraft((current) => ({ ...current, notes: event.target.value }))
                 }
+                placeholder="Optional notes about this purchase..."
               />
             </FormField>
           </div>
@@ -735,7 +964,10 @@ const ProductsInventory: React.FC = () => {
               <span className="font-semibold text-[var(--color-text-primary)]">
                 {purchaseDraft.productName.trim()}
                 {purchaseDraft.brandName.trim() ? ` (${purchaseDraft.brandName.trim()})` : ''} -{' '}
-                {formatCurrency(Number(purchaseDraft.buyingPrice || 0))}
+                {formatCurrency(Number(purchaseDraft.buyingPrice || 0))}{' '}
+                <span className="text-xs font-medium text-gray-500">
+                  ({purchaseDraft.productType === 'SELLING' ? 'Selling Product' : 'Service Product'})
+                </span>
               </span>
             </p>
           )}
@@ -751,6 +983,9 @@ const ProductsInventory: React.FC = () => {
         <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-900">Usage & Sales</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Quickly record product deduction (-) or stock addition (+).
+            </p>
             <div className="mt-5 space-y-4">
               <FormField label="Product" name="usageProduct" required>
                 <CommonDropdown
@@ -765,8 +1000,8 @@ const ProductsInventory: React.FC = () => {
               <FormField label="Type" name="usageType" required>
                 <CommonDropdown
                   options={[
-                    { value: 'USAGE', label: 'Product used in service' },
-                    { value: 'SALE', label: 'Product sold' },
+                    { value: 'USAGE', label: 'Product used in service (-)' },
+                    { value: 'SALE', label: 'Product sold (-)' },
                   ]}
                   value={usageDraft.type}
                   onChange={(value) =>
@@ -776,17 +1011,68 @@ const ProductsInventory: React.FC = () => {
                   clearable={false}
                 />
               </FormField>
-              <FormField label="Quantity" name="usageQuantity" required>
-                <Input
-                  type="number"
-                  min="1"
-                  value={usageDraft.quantity}
-                  onChange={(event) =>
-                    setUsageDraft((current) => ({ ...current, quantity: event.target.value }))
-                  }
-                  placeholder="Enter quantity"
-                />
+              
+              <FormField label="Quantity (+ / -)" name="usageQuantity" required>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setUsageDraft((current) => ({
+                          ...current,
+                          quantity: String(Math.max(1, (Number(current.quantity) || 1) - 1)),
+                        }))
+                      }
+                      className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 font-bold transition flex-shrink-0"
+                      title="Decrease by 1"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <Input
+                      type="number"
+                      min="1"
+                      className="text-center text-lg font-bold"
+                      value={usageDraft.quantity}
+                      onChange={(event) =>
+                        setUsageDraft((current) => ({ ...current, quantity: event.target.value }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setUsageDraft((current) => ({
+                          ...current,
+                          quantity: String((Number(current.quantity) || 0) + 1),
+                        }))
+                      }
+                      className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold transition flex-shrink-0"
+                      title="Increase by 1"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {/* Preset Quick Buttons */}
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <span className="text-xs text-gray-500 mr-1">Quick Qty:</span>
+                    {[1, 2, 5, 10].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setUsageDraft((current) => ({ ...current, quantity: String(num) }))}
+                        className={cn(
+                          'rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
+                          Number(usageDraft.quantity) === num
+                            ? 'border-[var(--color-brand-gold)] bg-[var(--color-brand-gold)] text-white'
+                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100'
+                        )}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </FormField>
+
               <FormField label="Appointment / customer reference" name="referenceId">
                 <Input
                   value={usageDraft.referenceId}
@@ -805,9 +1091,12 @@ const ProductsInventory: React.FC = () => {
                   placeholder="Optional additional notes"
                 />
               </FormField>
-              <Button fullWidth onClick={handleUse} isLoading={isCreatingUse}>
-                {usageDraft.type === 'SALE' ? 'Record Sale' : 'Record Usage'}
-              </Button>
+              
+              <div className="pt-2">
+                <Button fullWidth onClick={handleUse} isLoading={isCreatingUse}>
+                  {usageDraft.type === 'SALE' ? 'Record Sale (-)' : 'Record Usage (-)'}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -949,6 +1238,105 @@ const ProductsInventory: React.FC = () => {
         </div>
       )}
 
+      {/* Quick Quantity Adjust Modal (+ / -) */}
+      <Modal open={!!adjustItem} onClose={() => setAdjustItem(null)}>
+        <ModalHeader>Adjust Stock Quantity: {adjustItem?.display_name}</ModalHeader>
+        <ModalBody>
+          <div className="space-y-5 py-2">
+            <div className="flex items-center justify-between rounded-2xl bg-gray-50 p-4 border border-gray-200">
+              <div>
+                <p className="text-xs text-gray-500">Current Stock</p>
+                <p className="text-xl font-bold text-gray-900">{adjustItem?.stock_quantity}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-500">Product Type</p>
+                {productTypeBadge(adjustItem?.product_type)}
+              </div>
+            </div>
+
+            <FormField label="Adjustment Direction" name="adjustDirection" required>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAdjustMode('DEDUCT')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-semibold transition',
+                    adjustMode === 'DEDUCT'
+                      ? 'border-red-500 bg-red-50 text-red-800'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  )}
+                >
+                  <Minus className="h-4 w-4 text-red-600" />
+                  Deduct / Use (-)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdjustMode('ADD')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-semibold transition',
+                    adjustMode === 'ADD'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  )}
+                >
+                  <Plus className="h-4 w-4 text-emerald-600" />
+                  Add Stock (+)
+                </button>
+              </div>
+            </FormField>
+
+            <FormField label="Quantity to Adjust" name="adjustQty" required>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAdjustQty((q) => Math.max(1, q - 1))}
+                  className="flex h-12 w-12 items-center justify-center rounded-xl border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 font-bold transition text-lg flex-shrink-0"
+                >
+                  <Minus className="h-5 w-5" />
+                </button>
+                <Input
+                  type="number"
+                  min="1"
+                  className="text-center text-xl font-bold h-12"
+                  value={adjustQty}
+                  onChange={(e) => setAdjustQty(Math.max(1, Number(e.target.value) || 1))}
+                />
+                <button
+                  type="button"
+                  onClick={() => setAdjustQty((q) => q + 1)}
+                  className="flex h-12 w-12 items-center justify-center rounded-xl border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 font-bold transition text-lg flex-shrink-0"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </div>
+            </FormField>
+
+            <div className="rounded-xl border border-gray-200 p-3 bg-gray-50 text-xs text-gray-600 flex justify-between items-center">
+              <span>New Projected Stock:</span>
+              <span className="font-bold text-sm text-gray-900">
+                {adjustMode === 'ADD'
+                  ? (adjustItem?.stock_quantity ?? 0) + adjustQty
+                  : (adjustItem?.stock_quantity ?? 0) - adjustQty}
+              </span>
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" type="button" onClick={() => setAdjustItem(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAdjustSubmit}
+              isLoading={isCreatingPurchase || isCreatingUse}
+              variant={adjustMode === 'ADD' ? 'primary' : 'secondary'}
+            >
+              {adjustMode === 'ADD' ? `Add +${adjustQty} Stock` : `Deduct -${adjustQty} Units`}
+            </Button>
+          </div>
+        </ModalFooter>
+      </Modal>
+
       {/* Add Stock Modal */}
       <Modal open={isAddStockModalOpen} onClose={() => {
         setIsAddStockModalOpen(false);
@@ -958,8 +1346,43 @@ const ProductsInventory: React.FC = () => {
         <ModalBody>
           <div className="space-y-4 py-2">
             <p className="text-sm text-gray-500">
-              Fill in the purchase details for the salon product. Only configured products are available.
+              Fill in the purchase details for the salon product. Specify whether this product is for retail selling or in-salon service.
             </p>
+
+            {/* Row 1: Product Type & Category */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Product Type" name="modalProductType" required>
+                <CommonDropdown
+                  options={[
+                    { value: 'SELLING', label: 'Selling Product' },
+                    { value: 'SERVICE', label: 'Service Product' },
+                  ]}
+                  value={purchaseDraft.productType}
+                  onChange={(value) =>
+                    setPurchaseDraft((current) => ({
+                      ...current,
+                      productType: String(value) as ProductTypeFilter,
+                    }))
+                  }
+                  searchable={false}
+                  clearable={false}
+                />
+              </FormField>
+
+              <FormField label="Category" name="category" required>
+                <CommonDropdown
+                  options={categories.map((category) => ({ value: category, label: category }))}
+                  value={purchaseDraft.category}
+                  onChange={(value) =>
+                    setPurchaseDraft((current) => ({ ...current, category: String(value) }))
+                  }
+                  searchable={false}
+                  clearable={false}
+                />
+              </FormField>
+            </div>
+
+            {/* Row 2: Product & Brand */}
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField label="Product" name="purchaseProduct" required>
                 <CommonDropdown
@@ -982,7 +1405,7 @@ const ProductsInventory: React.FC = () => {
                   }
                 />
               </FormField>
-              
+
               <FormField label="Brand" name="purchaseBrand">
                 <div className="space-y-2">
                   <CommonDropdown
@@ -1016,7 +1439,10 @@ const ProductsInventory: React.FC = () => {
                     )}
                 </div>
               </FormField>
+            </div>
 
+            {/* Row 3: Buying Price, Selling Price (if new selling product), Quantity & Low Stock Alert Level */}
+            <div className={cn('grid gap-4', showSellingPrice ? 'sm:grid-cols-2 md:grid-cols-4' : 'sm:grid-cols-3')}>
               <FormField label="Buying Price" name="buyingPrice" required>
                 <Input
                   type="number"
@@ -1029,27 +1455,57 @@ const ProductsInventory: React.FC = () => {
                 />
               </FormField>
 
-              <FormField label="Quantity" name="quantity" required>
-                <Input
-                  type="number"
-                  min="1"
-                  value={purchaseDraft.quantity}
-                  onChange={(event) =>
-                    setPurchaseDraft((current) => ({ ...current, quantity: event.target.value }))
-                  }
-                />
-              </FormField>
+              {showSellingPrice && (
+                <FormField label="Selling Price" name="sellingPrice" required>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 25.00"
+                    value={purchaseDraft.sellingPrice}
+                    onChange={(event) =>
+                      setPurchaseDraft((current) => ({ ...current, sellingPrice: event.target.value }))
+                    }
+                  />
+                </FormField>
+              )}
 
-              <FormField label="Category" name="category" required>
-                <CommonDropdown
-                  options={categories.map((category) => ({ value: category, label: category }))}
-                  value={purchaseDraft.category}
-                  onChange={(value) =>
-                    setPurchaseDraft((current) => ({ ...current, category: String(value) }))
-                  }
-                  searchable={false}
-                  clearable={false}
-                />
+              <FormField label="Quantity" name="quantity" required>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPurchaseDraft((current) => ({
+                        ...current,
+                        quantity: String(Math.max(1, (Number(current.quantity) || 1) - 1)),
+                      }))
+                    }
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 font-bold transition flex-shrink-0"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <Input
+                    type="number"
+                    min="1"
+                    className="text-center font-bold"
+                    value={purchaseDraft.quantity}
+                    onChange={(event) =>
+                      setPurchaseDraft((current) => ({ ...current, quantity: event.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPurchaseDraft((current) => ({
+                        ...current,
+                        quantity: String((Number(current.quantity) || 0) + 1),
+                      }))
+                    }
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 font-bold transition flex-shrink-0"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
               </FormField>
 
               <FormField label="Low Stock Alert Level" name="minThreshold">
@@ -1063,7 +1519,7 @@ const ProductsInventory: React.FC = () => {
                   placeholder="e.g. 5"
                 />
                 <span className="text-[11px] text-gray-500 mt-0.5 block">
-                  Alerts you when stock falls below this quantity.
+                  Alerts when stock falls below level.
                 </span>
               </FormField>
             </div>
@@ -1126,7 +1582,10 @@ const ProductsInventory: React.FC = () => {
                 <span className="font-semibold text-[var(--color-text-primary)]">
                   {purchaseDraft.productName.trim()}
                   {purchaseDraft.brandName.trim() ? ` (${purchaseDraft.brandName.trim()})` : ''} -{' '}
-                  {formatCurrency(Number(purchaseDraft.buyingPrice || 0))}
+                  {formatCurrency(Number(purchaseDraft.buyingPrice || 0))}{' '}
+                  <span className="text-xs font-medium text-gray-500">
+                    ({purchaseDraft.productType === 'SELLING' ? 'Selling Product' : 'Service Product'})
+                  </span>
                 </span>
               </p>
             )}

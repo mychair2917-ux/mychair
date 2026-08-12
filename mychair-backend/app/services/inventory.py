@@ -54,6 +54,7 @@ class InventoryService:
                 item.brand_name_snapshot,
             ),
             category=item.category,
+            product_type=getattr(item, "product_type", "SELLING") or "SELLING",
             stock_quantity=item.stock_quantity,
             min_threshold=item.min_threshold,
             buying_price=item.buying_price,
@@ -288,18 +289,22 @@ class InventoryService:
         search: str | None = None,
         category: str | None = None,
         brand: str | None = None,
+        product_type: str | None = None,
     ) -> list[InventoryStockItem]:
         # Ensure all active salon products have inventory entries
         await self._ensure_salon_products_inventory(salon_id)
 
         # Load active, non-deleted SalonProducts to get selling price and check presence
         from app.models.salon_product import SalonProduct
-        salon_products = await SalonProduct.find(
-            {"salon_id": salon_id, "is_deleted": False, "status": "ACTIVE"}
-        ).to_list()
+        sp_query: dict[str, Any] = {"salon_id": salon_id, "is_deleted": False, "status": "ACTIVE"}
+        if product_type:
+            sp_query["product_type"] = product_type.strip().upper()
+
+        salon_products = await SalonProduct.find(sp_query).to_list()
         
         configured_keys = {(sp.product_id, sp.brand_id) for sp in salon_products}
         price_map = {(sp.product_id, sp.brand_id): sp.price for sp in salon_products}
+        type_map = {(sp.product_id, sp.brand_id): getattr(sp, "product_type", "SELLING") for sp in salon_products}
 
         query: dict[str, Any] = {"salon_id": salon_id, "is_deleted": False}
         active_tenant = tenant_context.get_tenant_id()
@@ -309,6 +314,8 @@ class InventoryService:
             query["category"] = {"$regex": category.strip(), "$options": "i"}
         if brand:
             query["brand_name_snapshot"] = {"$regex": brand.strip(), "$options": "i"}
+        if product_type:
+            query["product_type"] = product_type.strip().upper()
         if search:
             term = search.strip()
             query["$or"] = [
@@ -326,6 +333,8 @@ class InventoryService:
             key = (item.product_id, item.brand_id)
             if key in configured_keys and key not in seen_filtered_keys:
                 seen_filtered_keys.add(key)
+                if key in type_map:
+                    item.product_type = type_map[key]
                 filtered_items.append(item)
 
         return [
@@ -349,13 +358,17 @@ class InventoryService:
         category: str,
         min_threshold: int,
         notes: str | None = None,
+        product_type: str | None = "SELLING",
+        selling_price: float | None = None,
     ) -> InventoryStockItem:
+        resolved_product_type = (product_type or "SELLING").strip().upper()
+        product_retail_price = selling_price if (selling_price is not None and selling_price > 0) else buying_price
         resolved_product_id, product_name = await self._resolve_product_for_inventory(
             actor,
             salon_id,
             product_id,
             custom_product_name,
-            buying_price,
+            product_retail_price,
         )
         resolved_brand_id, brand_name = await self.brand_service.resolve_brand(
             actor,
@@ -382,6 +395,7 @@ class InventoryService:
                 product_name_snapshot=product_name,
                 brand_name_snapshot=brand_name,
                 category=(category or "General").strip() or "General",
+                product_type=resolved_product_type,
                 stock_quantity=0,
                 min_threshold=min_threshold,
                 buying_price=buying_price,
@@ -393,6 +407,7 @@ class InventoryService:
             inventory.product_name_snapshot = product_name
             inventory.brand_name_snapshot = brand_name
             inventory.category = (category or inventory.category or "General").strip() or "General"
+            inventory.product_type = resolved_product_type
             inventory.min_threshold = min_threshold
             inventory.buying_price = buying_price
             inventory.updated_by = str(actor.id)
@@ -439,9 +454,14 @@ class InventoryService:
                     product_id=resolved_product_id,
                     brand_id=resolved_brand_id,
                     price=buying_price,
+                    product_type=resolved_product_type,
                 ),
                 salon_id=salon_id,
             )
+        elif getattr(salon_product, "product_type", None) != resolved_product_type:
+            salon_product.product_type = resolved_product_type
+            await salon_product.save()
+
 
         selling_price = salon_product.price if salon_product else buying_price
         return self._inventory_to_item(inventory, selling_price)
@@ -689,6 +709,7 @@ class InventoryService:
         end_date: str | None = None,
         category: str | None = None,
         brand: str | None = None,
+        product_type: str | None = None,
     ) -> InventoryReports:
         query: dict[str, Any] = {"salon_id": salon_id, "is_deleted": False}
         if start_date or end_date:
@@ -706,7 +727,7 @@ class InventoryService:
                     tzinfo=timezone.utc,
                 )
         transactions = await InventoryTransaction.find(query).sort("-created_at").limit(200).to_list()
-        stocks = await self.list_stocks(salon_id, category=category, brand=brand)
+        stocks = await self.list_stocks(salon_id, category=category, brand=brand, product_type=product_type)
         product_lookup = {(item.product_id, item.brand_id): item for item in stocks}
 
         # Build name lookup for all inventory items (including inactive/deleted ones for logs)
@@ -723,7 +744,7 @@ class InventoryService:
         filtered_transactions = []
         for tx in transactions:
             item = product_lookup.get((tx.product_id, tx.brand_id))
-            if (category or brand) and not item:
+            if (category or brand or product_type) and not item:
                 continue
             filtered_transactions.append(tx)
             quantity = tx.quantity or abs(tx.quantity_change or 0)

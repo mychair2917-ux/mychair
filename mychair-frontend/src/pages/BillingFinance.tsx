@@ -254,8 +254,27 @@ const StatusBadge: React.FC<{ status: StatusTone; label?: string }> = ({ status,
 // }
 
 
+import { useLazyGenerateCustomerIdQuery } from '../redux/slices/customerAnalytics/customerAnalyticsApi';
+import { generateLocalClientId } from '../utils/clientId';
+
 const SideDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [triggerGenerateId, { isLoading: isGenerating }] = useLazyGenerateCustomerIdQuery();
+
   if (!open) return null;
+
+  const handleGenerateId = async () => {
+    try {
+      const res = await triggerGenerateId().unwrap();
+      if (res.data?.client_id) {
+        setCustomerPhone(res.data.client_id);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    setCustomerPhone(generateLocalClientId());
+  };
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-sm">
@@ -272,7 +291,42 @@ const SideDrawer: React.FC<{ open: boolean; onClose: () => void }> = ({ open, on
           </button>
         </div>
         <div className="mt-6 space-y-4">
-          <FormInput label="Customer" placeholder="Search or add customer" />
+          <FormInput label="Customer Name" placeholder="Search or add customer" />
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="block text-xs font-bold uppercase tracking-wide text-gray-500">
+                Customer Mobile / Client ID
+              </span>
+              <button
+                type="button"
+                onClick={handleGenerateId}
+                disabled={isGenerating}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-brand-gold-dark)] hover:underline focus:outline-none"
+              >
+                <Sparkles className="h-3 w-3" />
+                Generate ID
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="Mobile No. or CL-XXXXXX"
+                className="!h-11 flex-1 rounded-2xl border-[var(--color-border-strong)] bg-white"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateId}
+                disabled={isGenerating}
+                className="whitespace-nowrap px-3 text-xs font-semibold"
+              >
+                Generate ID
+              </Button>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormInput label="Appointment" placeholder="Select appointment" />
             <FormInput label="Staff" placeholder="Assign staff" />

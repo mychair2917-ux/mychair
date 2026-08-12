@@ -217,6 +217,7 @@ class SalonProductService:
             custom_brand_name=brand_name if not resolved_brand_id else None,
             price=payload.price,
             status="ACTIVE",
+            product_type=payload.product_type or "SELLING",
             created_by=str(actor.id),
         )
         await item.insert()
@@ -232,19 +233,24 @@ class SalonProductService:
             brand_name=brand_name,
             price=item.price,
             status=item.status,
+            product_type=item.product_type,
             created_by=item.created_by,
             created_at=item.created_at,
             updated_at=item.updated_at,
         )
 
     async def list_salon_products(
-        self, actor: User, salon_id: str | None = None
+        self, actor: User, salon_id: str | None = None, product_type: str | None = None
     ) -> list[SalonProductListItem]:
         resolved_salon_id = await self._resolve_actor_salon_scope(actor, salon_id)
-        items = await SalonProduct.find(
-            SalonProduct.salon_id == resolved_salon_id,
-            SalonProduct.is_deleted == False,
-        ).sort("-created_at").to_list()
+        query: dict = {
+            "salon_id": resolved_salon_id,
+            "is_deleted": False,
+        }
+        if product_type:
+            query["product_type"] = product_type.strip().upper()
+
+        items = await SalonProduct.find(query).sort("-created_at").to_list()
 
         master_product_ids = [
             PydanticObjectId(item.product_id) for item in items if item.product_id
@@ -293,6 +299,7 @@ class SalonProductService:
                     brand_name=brand_name,
                     price=item.price,
                     status=item.status,
+                    product_type=getattr(item, "product_type", "SELLING"),
                     created_by=item.created_by,
                     created_at=item.created_at,
                     updated_at=item.updated_at,
@@ -344,6 +351,7 @@ class SalonProductService:
         item.custom_brand_name = brand_name if not resolved_brand_id else None
         item.price = payload.price
         item.status = payload.status
+        item.product_type = payload.product_type or getattr(item, "product_type", "SELLING")
         item.updated_by = str(actor.id)
         await item.save()
 
@@ -372,6 +380,7 @@ class SalonProductService:
                 existing_new_inventory.product_name_snapshot = product_name
                 existing_new_inventory.brand_name_snapshot = brand_name
                 existing_new_inventory.buying_price = payload.price
+                existing_new_inventory.product_type = item.product_type
                 existing_new_inventory.total_value = round(existing_new_inventory.stock_quantity * payload.price, 2)
                 await existing_new_inventory.save()
                 
@@ -385,6 +394,7 @@ class SalonProductService:
                 old_inventory.product_name_snapshot = product_name
                 old_inventory.brand_name_snapshot = brand_name
                 old_inventory.buying_price = payload.price
+                old_inventory.product_type = item.product_type
                 old_inventory.total_value = round(old_inventory.stock_quantity * payload.price, 2)
                 await old_inventory.save()
 
@@ -400,6 +410,7 @@ class SalonProductService:
             brand_name=brand_name,
             price=item.price,
             status=item.status,
+            product_type=item.product_type,
             created_by=item.created_by,
             created_at=item.created_at,
             updated_at=item.updated_at,

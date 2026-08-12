@@ -25,9 +25,14 @@ async def list_master_products(
 @router.get("/salon-products")
 async def list_salon_products(
     salon_id: str | None = Query(default=None),
+    product_type: str | None = Query(default=None),
+    type: str | None = Query(default=None),
     current_user: User = Depends(require_module(Module.PRODUCTS_INVENTORY)),
 ):
-    items = await salon_product_service.list_salon_products(current_user, salon_id=salon_id)
+    resolved_type = product_type or type
+    items = await salon_product_service.list_salon_products(
+        current_user, salon_id=salon_id, product_type=resolved_type
+    )
     return success_response(
         "Salon products retrieved successfully",
         data=[item.model_dump(mode="json") for item in items],

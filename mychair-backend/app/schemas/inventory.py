@@ -31,8 +31,10 @@ class InventoryPurchaseRequest(BaseModel):
     brand_id: Optional[str] = None
     custom_brand_name: Optional[str] = Field(default=None, max_length=100)
     buying_price: float = Field(..., ge=0)
+    selling_price: Optional[float] = Field(default=None, ge=0)
     quantity: int = Field(..., gt=0)
     category: str = Field(default="General", max_length=80)
+    product_type: Optional[str] = Field(default="SELLING", max_length=20)
     min_threshold: int = Field(default=5, ge=0)
     notes: Optional[str] = Field(default=None, max_length=500)
 
@@ -56,6 +58,7 @@ class InventoryStockItem(BaseModel):
     brand_name: Optional[str] = None
     display_name: str
     category: str
+    product_type: str = "SELLING"
     stock_quantity: int
     min_threshold: int
     buying_price: float

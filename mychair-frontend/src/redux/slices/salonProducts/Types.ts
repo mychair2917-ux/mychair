@@ -18,6 +18,7 @@ export interface SalonProductItem {
   brand_name?: string | null;
   price: number;
   status: string;
+  product_type?: 'SELLING' | 'SERVICE' | string;
   created_by?: string | null;
   created_at: string;
   updated_at: string;
@@ -25,6 +26,8 @@ export interface SalonProductItem {
 
 export interface SalonProductsQueryParams {
   salon_id?: string;
+  product_type?: string;
+  type?: string;
 }
 
 export interface CreateSalonProductRequest {
@@ -33,6 +36,7 @@ export interface CreateSalonProductRequest {
   custom_product_name?: string;
   custom_brand_name?: string;
   price: number;
+  product_type?: 'SELLING' | 'SERVICE' | string;
 }
 
 export interface UpdateSalonProductRequest extends CreateSalonProductRequest {

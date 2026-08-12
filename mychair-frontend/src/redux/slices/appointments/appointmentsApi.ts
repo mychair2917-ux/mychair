@@ -189,6 +189,12 @@ export const appointmentsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Appointments'],
     }),
+    generateAppointmentClientId: builder.query<ApiResponse<{ client_id: string }>, void>({
+      query: () => ({
+        url: API_PATHS.APPOINTMENTS.CLIENTS_GENERATE_ID,
+        method: HTTP_METHODS.GET,
+      }),
+    }),
   }),
 });
 
@@ -198,6 +204,7 @@ export const {
   useGetTodayAppointmentsQuery,
   useLazySearchAppointmentClientsQuery,
   useLazyCheckAppointmentClientPhoneQuery,
+  useLazyGenerateAppointmentClientIdQuery,
   useCreateAppointmentClientMutation,
   useGetAppointmentClientHistoryQuery,
   useGetAppointmentSalonServicesQuery,

@@ -38,6 +38,21 @@ class TestPhoneNormalizeShared:
         assert err is None
         assert phone == "9876543210"
 
+    def test_normalize_alphanumeric_client_id(self):
+        from app.utils.phone import is_client_reference_id
+
+        assert is_client_reference_id("CL-A8K9P2") is True
+        assert is_client_reference_id("cl-7x9b4m") is True
+        assert is_client_reference_id("CL-123456") is True
+        assert is_client_reference_id("9876543210") is False
+
+        phone, err = normalize_mobile("cl-a8k9p2")
+        assert err is None
+        assert phone == "CL-A8K9P2"
+
+        variants = phone_lookup_variants("CL-A8K9P2")
+        assert variants == ["CL-A8K9P2"]
+
 
 class FakeCustomer:
     def __init__(self, first_name: str, last_name: str = ""):
@@ -55,3 +70,23 @@ class TestDisplayName:
 
     def test_blank_falls_back(self):
         assert customer_display_name(FakeCustomer("", "")) == "Unknown"
+
+
+class TestCustomerQuickCreateSchema:
+    def test_customer_quick_create_genders(self):
+        from app.schemas.appointment import CustomerQuickCreate
+
+        c1 = CustomerQuickCreate(name="Test", phone="9876543210", gender="MALE")
+        assert c1.gender == "MALE"
+
+        c2 = CustomerQuickCreate(name="Test", phone="9876543210", gender="female")
+        assert c2.gender == "FEMALE"
+
+        c3 = CustomerQuickCreate(name="Test", phone="9876543210", gender="OTHER")
+        assert c3.gender == "OTHER"
+
+        c4 = CustomerQuickCreate(name="Test", phone="9876543210", gender="prefer_not_to_say")
+        assert c4.gender == "PREFER_NOT_TO_SAY"
+
+        c5 = CustomerQuickCreate(name="Test", phone="9876543210", gender=None)
+        assert c5.gender is None

@@ -13,10 +13,21 @@ PHONE_MISSING = "missing"
 PHONE_INVALID = "invalid"
 
 
+CLIENT_ID_REGEX = re.compile(r"^CL-[A-Z0-9]{6}$", re.IGNORECASE)
+
+
+def is_client_reference_id(raw: Any) -> bool:
+    if not raw:
+        return False
+    text = str(raw).strip()
+    return bool(CLIENT_ID_REGEX.fullmatch(text))
+
+
 def normalize_mobile(raw: Any) -> Tuple[Optional[str], Optional[str]]:
     """
     Strip spaces/dashes/brackets and optional +91 / 91 / leading 0.
-    Returns (normalized_digits, error_code) where error_code is
+    Also accepts generated alphanumeric Client Reference IDs (e.g. CL-A8K9P2).
+    Returns (normalized_digits_or_id, error_code) where error_code is
     PHONE_MISSING, PHONE_INVALID, or None on success.
     """
     if raw is None:
@@ -24,6 +35,9 @@ def normalize_mobile(raw: Any) -> Tuple[Optional[str], Optional[str]]:
     text = str(raw).strip()
     if not text:
         return None, PHONE_MISSING
+
+    if is_client_reference_id(text):
+        return text.upper(), None
 
     # Excel may give floats like 9876543210.0
     if isinstance(raw, float) and raw == int(raw):
@@ -47,7 +61,10 @@ def normalize_mobile(raw: Any) -> Tuple[Optional[str], Optional[str]]:
 
 
 def phone_lookup_variants(normalized: str) -> List[str]:
-    """Common stored formats that should match a normalised mobile."""
+    """Common stored formats that should match a normalised mobile or client ID."""
+    if is_client_reference_id(normalized):
+        return [normalized.upper()]
+
     variants = {normalized}
     if len(normalized) == 10:
         variants.update(
@@ -60,3 +77,4 @@ def phone_lookup_variants(normalized: str) -> List[str]:
             }
         )
     return list(variants)
+

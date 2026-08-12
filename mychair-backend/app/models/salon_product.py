@@ -11,6 +11,7 @@ class SalonProduct(BaseTenantDocument):
     custom_brand_name: str | None = Field(default=None, max_length=100)
     price: float = Field(..., ge=0.0)
     status: str = Field(default="ACTIVE", max_length=20)
+    product_type: str = Field(default="SELLING", max_length=20)
 
     class Settings:
         name = "salon_products"

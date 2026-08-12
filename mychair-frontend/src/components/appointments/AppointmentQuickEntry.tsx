@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, FileText, X } from 'lucide-react';
+import { Plus, FileText, X, Sparkles } from 'lucide-react';
 import { Button, Input, Select } from '../common';
 import {
   useCreateQuickAppointmentMutation,
   useLazySearchAppointmentClientsQuery,
   useLazyCheckAppointmentClientPhoneQuery,
+  useLazyGenerateAppointmentClientIdQuery,
   useCreateAppointmentClientMutation,
 } from '../../redux/slices/appointments/appointmentsApi';
 import { AppointmentClient } from '../../redux/slices/appointments/Types';
 import { showToast } from '../common/Toast/toastService';
 import { getApiErrorMessage } from '../../utils/apiErrors';
+import { generateLocalClientId } from '../../utils/clientId';
 import { useAppSelector } from '../../redux/hooks';
 import { normalizeRole } from '../../config/rbac';
 import { ROLES } from '../../constants';
@@ -46,8 +48,6 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
   const allowMembership = [
     ROLES.SUPER_ADMIN,
     ROLES.SALON_OWNER,
-    ROLES.SALON_MANAGER,
-    ROLES.SALON_ADMIN,
   ].includes(normalizedRole as any);
 
   const now = new Date();
@@ -73,7 +73,38 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
   // Client search & quick add state
   const [searchClients, { isFetching: isSearchingClients }] = useLazySearchAppointmentClientsQuery();
   const [checkClientPhone] = useLazyCheckAppointmentClientPhoneQuery();
+  const [triggerGenerateId, { isLoading: isGeneratingId }] = useLazyGenerateAppointmentClientIdQuery();
   const [createClient, { isLoading: isCreatingClient }] = useCreateAppointmentClientMutation();
+
+  const handleGenerateClientFormId = async () => {
+    try {
+      const res = await triggerGenerateId().unwrap();
+      if (res.data?.client_id) {
+        setClientPhoneError('');
+        setClientForm((prev) => ({ ...prev, phone: res.data.client_id }));
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    const fallbackId = generateLocalClientId();
+    setClientPhoneError('');
+    setClientForm((prev) => ({ ...prev, phone: fallbackId }));
+  };
+
+  const handleGenerateDirectId = async () => {
+    try {
+      const res = await triggerGenerateId().unwrap();
+      if (res.data?.client_id) {
+        setPhone(res.data.client_id);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    const fallbackId = generateLocalClientId();
+    setPhone(fallbackId);
+  };
 
   const [clientSearchResults, setClientSearchResults] = useState<AppointmentClient[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -220,6 +251,11 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
         showToast('error', phoneCheck.data.message);
         return;
       }
+      if (phoneCheck.data?.valid === false && phoneCheck.data?.message) {
+        setClientPhoneError(phoneCheck.data.message);
+        showToast('error', phoneCheck.data.message);
+        return;
+      }
       const response = await createClient({
         name: clientForm.name.trim(),
         phone: clientForm.phone.trim(),
@@ -359,19 +395,31 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
               required
             />
             <div>
-              <Input
-                placeholder="Phone *"
-                value={clientForm.phone}
-                onChange={(event) => {
-                  setClientPhoneError('');
-                  setClientForm({ ...clientForm, phone: event.target.value });
-                }}
-                onBlur={() => {
-                  void handleClientPhoneBlur();
-                }}
-                className={clientPhoneError ? 'border-red-400' : undefined}
-                required
-              />
+              <div className="flex gap-1.5">
+                <Input
+                  placeholder="Phone / Mobile *"
+                  value={clientForm.phone}
+                  onChange={(event) => {
+                    setClientPhoneError('');
+                    setClientForm({ ...clientForm, phone: event.target.value });
+                  }}
+                  onBlur={() => {
+                    void handleClientPhoneBlur();
+                  }}
+                  className={cn('flex-1', clientPhoneError ? 'border-red-400' : undefined)}
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateClientFormId}
+                  disabled={isGeneratingId}
+                  className="whitespace-nowrap px-2 text-xs font-semibold"
+                >
+                  Generate ID
+                </Button>
+              </div>
               {clientPhoneError && (
                 <p className="mt-1 text-xs text-red-500">{clientPhoneError}</p>
               )}
@@ -501,13 +549,25 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
         </div>
 
         <div className="lg:col-span-1">
-          <label className="mb-1 block font-semibold text-xs text-[var(--color-text-secondary)] uppercase tracking-wide">
-            Mobile Number <span className="text-red-500">*</span>
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block font-semibold text-xs text-[var(--color-text-secondary)] uppercase tracking-wide">
+              Mobile No. <span className="text-red-500">*</span>
+            </label>
+            <button
+              type="button"
+              onClick={handleGenerateDirectId}
+              disabled={isGeneratingId}
+              className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[var(--color-brand-gold-dark)] hover:underline focus:outline-none"
+              title="Generate Client ID"
+            >
+              <Sparkles className="h-2.5 w-2.5" />
+              Gen ID
+            </button>
+          </div>
           <Input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="Mobile No."
+            placeholder="Mobile or CL-XXXXXX"
             required
             className="w-full"
           />

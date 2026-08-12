@@ -15,6 +15,7 @@ class ProductInventory(BaseTenantDocument):
     product_name_snapshot: str = Field(..., max_length=150)
     brand_name_snapshot: Optional[str] = Field(default=None, max_length=100)
     category: str = Field(default="General", max_length=80, index=True)
+    product_type: str = Field(default="SELLING", max_length=20, index=True)
     stock_quantity: int = Field(default=0)
     min_threshold: int = Field(default=5, ge=0)
     buying_price: float = Field(default=0.0, ge=0.0)

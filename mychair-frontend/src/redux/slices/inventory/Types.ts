@@ -22,6 +22,7 @@ export interface InventoryStockItem {
   brand_name?: string | null;
   display_name: string;
   category: string;
+  product_type?: 'SELLING' | 'SERVICE' | string;
   stock_quantity: number;
   min_threshold: number;
   buying_price: number;
@@ -63,6 +64,8 @@ export interface InventoryQueryParams {
   search?: string;
   category?: string;
   brand?: string;
+  product_type?: string;
+  type?: string;
   start_date?: string;
   end_date?: string;
 }
@@ -73,8 +76,10 @@ export interface InventoryPurchaseRequest {
   brand_id?: string;
   custom_brand_name?: string;
   buying_price: number;
+  selling_price?: number;
   quantity: number;
   category: string;
+  product_type?: 'SELLING' | 'SERVICE' | string;
   min_threshold: number;
   notes?: string;
 }
