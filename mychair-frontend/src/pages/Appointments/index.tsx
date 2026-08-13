@@ -11,6 +11,7 @@ import {
   Search,
   Sparkles,
   Trash2,
+  UserPlus,
 } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
@@ -125,8 +126,8 @@ function nextPaymentStatusOptions(current: string): { value: string; label: stri
 }
 
 /* ─── helpers ────────────────────────────────────────────── */
-function createRow(): ServiceRow {
-  return { id: crypto.randomUUID(), salon_service_id: '', service_id: '', staff_id: '', price: '' };
+function createRow(staffId: string = ''): ServiceRow {
+  return { id: crypto.randomUUID(), salon_service_id: '', service_id: '', staff_id: staffId, price: '' };
 }
 
 function createProductRow(): ProductRow {
@@ -592,6 +593,27 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     );
   };
 
+  const lastAddSameStaffTimeRef = useRef<number>(0);
+
+  const handleAddSameStaffService = (currentRow: ServiceRow) => {
+    const now = Date.now();
+    if (now - lastAddSameStaffTimeRef.current < 300) return;
+    lastAddSameStaffTimeRef.current = now;
+
+    const staffToCarry = currentRow.staff_id || '';
+    const newRow = createRow(staffToCarry);
+
+    setServiceRows((rows) => {
+      const index = rows.findIndex((r) => r.id === currentRow.id);
+      if (index !== -1) {
+        const updated = [...rows];
+        updated.splice(index + 1, 0, newRow);
+        return updated;
+      }
+      return [...rows, newRow];
+    });
+  };
+
   const removeServiceRow = (rowId: string) => {
     setServiceRows((rows) => rows.filter((row) => row.id !== rowId));
     setInvalidServiceRowIds((ids) => ids.filter((id) => id !== rowId));
@@ -726,7 +748,7 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
                   <div
                     key={row.id}
                     className={cn(
-                      'grid gap-2 rounded-xl border p-2.5 md:grid-cols-[1fr_1fr_110px_36px]',
+                      'grid gap-2 rounded-xl border p-2.5 md:grid-cols-[1fr_1fr_110px_auto]',
                       isInvalid ? 'border-red-300 bg-red-50/70' : 'border-gray-100 bg-gray-50'
                     )}
                   >
@@ -751,14 +773,28 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
                       value={row.price}
                       onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="!px-1.5 text-red-500 hover:text-red-700"
-                      onClick={() => removeServiceRow(row.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="!px-1.5 text-[var(--color-brand-gold-dark)] hover:bg-[var(--color-brand-gold-light)]/20 hover:text-[var(--color-brand-gold-dark)]"
+                        title="Add another service for this staff"
+                        aria-label="Add another service for this staff"
+                        onClick={() => handleAddSameStaffService(row)}
+                      >
+                        <UserPlus className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="!px-1.5 text-red-500 hover:text-red-700"
+                        title="Remove service"
+                        aria-label="Remove service"
+                        onClick={() => removeServiceRow(row.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 );
               })
@@ -1395,8 +1431,8 @@ const Appointments: React.FC = () => {
   const [productRows, setProductRows] = useState<ProductRow[]>([]);
   const [invalidServiceRowIds, setInvalidServiceRowIds] = useState<string[]>([]);
   const [invalidProductRowIds, setInvalidProductRowIds] = useState<string[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
-  const [paymentStatus, setPaymentStatus] = useState('PAID');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState('');
   const [paidAmount, setPaidAmount] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [startDateTime, setStartDateTime] = useState(defaultStart);
@@ -1753,6 +1789,27 @@ const Appointments: React.FC = () => {
     );
   };
 
+  const lastAddSameStaffTimeRefMain = useRef<number>(0);
+
+  const handleAddSameStaffServiceMain = (currentRow: ServiceRow) => {
+    const now = Date.now();
+    if (now - lastAddSameStaffTimeRefMain.current < 300) return;
+    lastAddSameStaffTimeRefMain.current = now;
+
+    const staffToCarry = currentRow.staff_id || '';
+    const newRow = createRow(staffToCarry);
+
+    setServiceRows((rows) => {
+      const index = rows.findIndex((r) => r.id === currentRow.id);
+      if (index !== -1) {
+        const updated = [...rows];
+        updated.splice(index + 1, 0, newRow);
+        return updated;
+      }
+      return [...rows, newRow];
+    });
+  };
+
   const removeServiceRow = (rowId: string) => {
     setServiceRows((rows) => rows.filter((row) => row.id !== rowId));
     setInvalidServiceRowIds((ids) => ids.filter((id) => id !== rowId));
@@ -1776,8 +1833,8 @@ const Appointments: React.FC = () => {
     setProductRows([]);
     setTotalAmount('');
     setPaidAmount('');
-    setPaymentStatus('PAID');
-    setPaymentMethod('CASH');
+    setPaymentStatus('');
+    setPaymentMethod('');
     setNotes('');
     setClientSearch('');
     setQuickAddOpen(false);
@@ -1826,6 +1883,16 @@ const Appointments: React.FC = () => {
 
     if (!serviceRowsToSubmit.length && !productRowsToSubmit.length) {
       showToast('warning', 'Add at least one service or product');
+      return;
+    }
+
+    if (!paymentMethod) {
+      showToast('warning', 'Please select a payment method');
+      return;
+    }
+
+    if (!paymentStatus) {
+      showToast('warning', 'Please select a payment status');
       return;
     }
 
@@ -2284,7 +2351,7 @@ const Appointments: React.FC = () => {
                         <div
                           key={row.id}
                           className={cn(
-                            'grid gap-3 rounded-2xl border p-3 md:grid-cols-[1fr_1fr_120px_40px]',
+                            'grid gap-3 rounded-2xl border p-3 md:grid-cols-[1fr_1fr_120px_auto]',
                             isInvalid
                               ? 'border-red-300 bg-red-50/70 ring-1 ring-red-200'
                               : 'border-[var(--color-border-soft)] bg-[var(--color-surface-bg)]/50'
@@ -2311,14 +2378,28 @@ const Appointments: React.FC = () => {
                             value={row.price}
                             onChange={(event) => updateServiceRow(row.id, 'price', event.target.value)}
                           />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className="!px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
-                            onClick={() => removeServiceRow(row.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="!px-2 text-[var(--color-brand-gold-dark)] hover:bg-[var(--color-brand-gold-light)]/20 hover:text-[var(--color-brand-gold-dark)]"
+                              title="Add another service for this staff"
+                              aria-label="Add another service for this staff"
+                              onClick={() => handleAddSameStaffServiceMain(row)}
+                            >
+                              <UserPlus className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="!px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              title="Remove service"
+                              aria-label="Remove service"
+                              onClick={() => removeServiceRow(row.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                           {isMemberApplied && (
                             <div className="md:col-span-4 mt-0.5 flex items-center gap-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5">
                               <Sparkles className="h-4 w-4 text-emerald-600 flex-shrink-0" />
@@ -2503,16 +2584,20 @@ const Appointments: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Payment method</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+                    Payment method <span className="text-red-500">*</span>
+                  </label>
                   <Select
                     value={paymentMethod}
                     onChange={(event) => setPaymentMethod(event.target.value)}
                     options={paymentMethodOptions}
-                    placeholder="Payment method"
+                    placeholder="Select payment method"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Payment status</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+                    Payment status <span className="text-red-500">*</span>
+                  </label>
                   <Select
                     value={paymentStatus}
                     onChange={(event) => {
@@ -2520,7 +2605,7 @@ const Appointments: React.FC = () => {
                       if (event.target.value !== 'PARTIALLY_PAID') setPaidAmount('');
                     }}
                     options={paymentStatusOptions}
-                    placeholder="Payment status"
+                    placeholder="Select payment status"
                   />
                 </div>
                 <div>
