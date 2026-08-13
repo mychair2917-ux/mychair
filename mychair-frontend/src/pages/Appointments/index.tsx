@@ -143,7 +143,13 @@ function createProductRow(): ProductRow {
 
 function canManageMembership(role: string | undefined): boolean {
   const normalized = normalizeRole(role);
-  return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
+  return (
+    normalized === ROLES.SUPER_ADMIN ||
+    normalized === ROLES.SALON_OWNER ||
+    normalized === ROLES.SALON_ADMIN ||
+    normalized === ROLES.ADMIN ||
+    normalized === ROLES.SALON_MANAGER
+  );
 }
 
 function canEditAppointment(role: string | undefined): boolean {

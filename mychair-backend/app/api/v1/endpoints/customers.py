@@ -57,7 +57,12 @@ def _effective_tenant(current_user: User) -> Optional[str]:
 
 
 def _can_manage_membership(current_user: User) -> bool:
-    return normalize_role(current_user.role) in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER}
+    return normalize_role(current_user.role) in {
+        ROLE_SUPER_ADMIN,
+        ROLE_SALON_OWNER,
+        ROLE_SALON_ADMIN,
+        ROLE_SALON_MANAGER,
+    }
 
 
 def _normalize_customer_phone(raw: str):

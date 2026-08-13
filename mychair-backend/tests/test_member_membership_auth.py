@@ -11,12 +11,12 @@ def test_salon_owner_can_manage_membership():
     assert _can_manage_membership(make_user("salon_owner")) is True
 
 
-def test_salon_admin_cannot_manage_membership():
-    assert _can_manage_membership(make_user("salon_admin")) is False
+def test_salon_admin_can_manage_membership():
+    assert _can_manage_membership(make_user("salon_admin")) is True
 
 
-def test_manager_cannot_manage_membership():
-    assert _can_manage_membership(make_user("salon_manager")) is False
+def test_manager_can_manage_membership():
+    assert _can_manage_membership(make_user("salon_manager")) is True
 
 
 def test_employee_cannot_manage_membership():

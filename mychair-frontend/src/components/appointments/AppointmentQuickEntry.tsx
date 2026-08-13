@@ -48,6 +48,9 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
   const allowMembership = [
     ROLES.SUPER_ADMIN,
     ROLES.SALON_OWNER,
+    ROLES.SALON_ADMIN,
+    ROLES.ADMIN,
+    ROLES.SALON_MANAGER,
   ].includes(normalizedRole as any);
 
   const now = new Date();
