@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     appointments,
     whatsapp_webhook,
+    whatsapp,
     attendance,
     auth,
     billing,
@@ -51,6 +52,7 @@ api_router.include_router(payroll.router, prefix="/payroll", tags=["Payroll"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 api_router.include_router(leave.router, prefix="/leave", tags=["Leave Management"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications & Communication"])
+api_router.include_router(whatsapp.router, prefix="/whatsapp", tags=["WhatsApp Integration"])
 api_router.include_router(expenses.router, prefix="/expenses", tags=["Expenses"])
 api_router.include_router(my_earnings.router, prefix="/my-earnings", tags=["My Earnings"])
 api_router.include_router(profile.router, prefix="/profile", tags=["Profile"])

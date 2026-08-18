@@ -19,6 +19,7 @@ export interface AuthUser {
   employee_code?: string;
   branch_name?: string;
   branch_id?: string;
+  salon_id?: string;
   salon_name?: string;
   department?: string;
   designation?: string;

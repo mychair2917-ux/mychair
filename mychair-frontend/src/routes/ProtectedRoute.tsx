@@ -4,6 +4,7 @@ import { Navigate, useParams } from 'react-router';
 import { MODULES, ModuleKey, canAccessModule, canAccessTenant, isSuperAdmin } from '../config/rbac';
 import { ROUTE_PATHS } from '../constants';
 import { useAppSelector } from '../redux/hooks';
+import { useGetSubscriptionStatusQuery } from '../redux/slices/subscriptions/subscriptionsApi';
 
 interface ProtectedRouteProps {
   children: React.ReactElement;
@@ -39,9 +40,13 @@ const ProtectedRoute = ({
     return <Navigate to={`/${ROUTE_PATHS.NOT_FOUND}`} replace />;
   }
 
-  if (module && !canAccessModule(role, module, permissions)) {
+  const { data: subStatus } = useGetSubscriptionStatusQuery(undefined, {
+    skip: isSuperAdmin(role),
+  });
+
+  if (module && !canAccessModule(role, module, permissions, subStatus?.enabled_features)) {
     const fallbackOrg = routeOrgId || orgId;
-    if (fallbackOrg && canAccessModule(role, MODULES.DASHBOARD, permissions)) {
+    if (fallbackOrg && canAccessModule(role, MODULES.DASHBOARD, permissions, subStatus?.enabled_features)) {
       return <Navigate to={`/orgs/${fallbackOrg}/${ROUTE_PATHS.DASHBOARD}`} replace />;
     }
     if (isSuperAdmin(role)) {

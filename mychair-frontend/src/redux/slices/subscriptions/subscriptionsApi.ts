@@ -1,6 +1,8 @@
 import { baseApi } from '../api/baseApi';
 import { API_PATHS } from '../api/apiPaths';
 import type {
+  AdminPlanConfig,
+  FeatureItem,
   OwnerSubscriptionView,
   SubscriptionDashboardStats,
   SubscriptionPlan,
@@ -51,7 +53,7 @@ export const subscriptionsApi = baseApi.injectEndpoints({
         body,
       }),
       transformResponse: (response: { data: SubscriptionRecord }) => response.data,
-      invalidatesTags: ['Subscriptions', 'SubscriptionStatus'],
+      invalidatesTags: ['Subscriptions', 'SubscriptionStatus', 'AdminPlans'],
     }),
     getMySubscription: builder.query<OwnerSubscriptionView, void>({
       query: () => API_PATHS.SUBSCRIPTIONS.ME,
@@ -67,6 +69,27 @@ export const subscriptionsApi = baseApi.injectEndpoints({
       query: () => API_PATHS.SUBSCRIPTIONS.PLANS,
       transformResponse: (response: { data: SubscriptionPlan[] }) => response.data,
     }),
+    getFeatureCatalog: builder.query<FeatureItem[], void>({
+      query: () => API_PATHS.SUBSCRIPTIONS.ADMIN_FEATURES,
+      transformResponse: (response: { data: FeatureItem[] }) => response.data,
+    }),
+    getAdminPlans: builder.query<AdminPlanConfig[], void>({
+      query: () => API_PATHS.SUBSCRIPTIONS.ADMIN_PLANS,
+      transformResponse: (response: { data: AdminPlanConfig[] }) => response.data,
+      providesTags: ['AdminPlans'],
+    }),
+    updatePlanFeatures: builder.mutation<
+      AdminPlanConfig,
+      { plan_key: string; features: string[] }
+    >({
+      query: ({ plan_key, features }) => ({
+        url: API_PATHS.SUBSCRIPTIONS.ADMIN_PLAN_FEATURES(plan_key),
+        method: 'PUT',
+        body: { features },
+      }),
+      transformResponse: (response: { data: AdminPlanConfig }) => response.data,
+      invalidatesTags: ['AdminPlans', 'SubscriptionStatus'],
+    }),
   }),
 });
 
@@ -79,4 +102,7 @@ export const {
   useGetMySubscriptionQuery,
   useGetSubscriptionStatusQuery,
   useGetSubscriptionPlansQuery,
+  useGetFeatureCatalogQuery,
+  useGetAdminPlansQuery,
+  useUpdatePlanFeaturesMutation,
 } = subscriptionsApi;

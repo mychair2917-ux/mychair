@@ -1371,6 +1371,7 @@ const Appointments: React.FC = () => {
   }, [todayRegisterData]);
 
   const handleSelectAppointmentForBilling = (appt: TodayAppointmentItem) => {
+    isProgrammaticChange.current = true;
     setSelectedAppointmentForBilling(appt);
     const clientObj: AppointmentClient = {
       id: appt.customer_id,
@@ -1399,9 +1400,13 @@ const Appointments: React.FC = () => {
   }, [location.state, selectedAppointmentForBilling]);
 
   const handleClearAppointmentSelection = () => {
+    isProgrammaticChange.current = true;
     setSelectedAppointmentForBilling(null);
     setSelectedClient(null);
     setClientSearch('');
+    setClientSearchResults([]);
+    setHasClientSearched(false);
+    setShowDropdown(false);
   };
 
   const [activeTab, setActiveTab] = useState<Tab>('entry');
@@ -1742,7 +1747,12 @@ const Appointments: React.FC = () => {
   const applyClientSelection = (client: AppointmentClient) => {
     isProgrammaticChange.current = true;
     setSelectedClient(client);
-    setClientSearch(client.name || '');
+    const displayName = client.name
+      ? client.phone
+        ? `${client.name} (${client.phone})`
+        : client.name
+      : client.phone || '';
+    setClientSearch(displayName);
     setShowDropdown(false);
     setClientSearchResults([]);
     setHasClientSearched(false);
@@ -2081,8 +2091,17 @@ const Appointments: React.FC = () => {
                       placeholder="Phone number or client name"
                       value={clientSearch}
                       onChange={(event) => {
-                        setClientSearch(event.target.value);
+                        const val = event.target.value;
+                        setClientSearch(val);
                         setIsFullSearch(false);
+                        if (
+                          selectedClient &&
+                          val !== selectedClient.name &&
+                          val !== `${selectedClient.name} (${selectedClient.phone})` &&
+                          val !== selectedClient.phone
+                        ) {
+                          setSelectedClient(null);
+                        }
                         if (hasClientSearched) {
                           setHasClientSearched(false);
                           setClientSearchResults([]);

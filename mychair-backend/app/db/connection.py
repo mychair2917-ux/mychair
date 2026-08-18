@@ -51,7 +51,9 @@ from app.models.membership_settings import MembershipSettings
 from app.models.customer_reward_transaction import CustomerRewardTransaction
 from app.models.expense import Expense
 from app.models.user_permission import PermissionRecord
+from app.models.plan_config import PlanConfig
 from app.models.whatsapp_message import WhatsAppMessageLog
+from app.models.salon_whatsapp_account import SalonWhatsAppAccount
 
 logger = logging.getLogger("db")
 
@@ -62,6 +64,7 @@ MONGO_SERVER_SELECTION_TIMEOUT_MS = 5000
 BEANIE_MODELS = [
     Tenant,
     Salon,
+    SalonWhatsAppAccount,
     User,
     Employee,
     Staff,
@@ -84,6 +87,7 @@ BEANIE_MODELS = [
     LeaveRequest,
     LeaveLog,
     Subscription,
+    PlanConfig,
     SystemSettings,
     SubscriptionEmailLog,
     Notification,

@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { ChevronDown, LogOut, Menu, PanelLeftClose } from 'lucide-react';
 
-import { canApproveLeave, getSidebarNavItems } from '../../../config/rbac';
+import { canApproveLeave, getSidebarNavItems, isSuperAdmin } from '../../../config/rbac';
 import { resolveMediaUrl } from '../../../utils/media';
 import { useAuthActions } from '../../../hooks/useAuthActions';
 import { useAppSelector } from '../../../redux/hooks';
 import { getUserDisplayName } from '../../../redux/slices/auth/authSlice';
 import { useListPendingLeaveQuery } from '../../../redux/slices/leave/leaveApi';
+import { useGetSubscriptionStatusQuery } from '../../../redux/slices/subscriptions/subscriptionsApi';
 import { cn } from '../../../utils/cn';
 import {
   SIDEBAR_WIDTH_COLLAPSED,
@@ -59,8 +60,17 @@ const Sidebar: React.FC = () => {
   );
   const pendingCount = pendingLeaveData?.data?.total ?? 0;
 
+  const { data: subStatus } = useGetSubscriptionStatusQuery(undefined, {
+    skip: isSuperAdmin(user?.role),
+  });
+
   const navItems = useMemo(() => {
-    const items = getSidebarNavItems(user?.role, effectiveOrgId, permissions);
+    const items = getSidebarNavItems(
+      user?.role,
+      effectiveOrgId,
+      permissions,
+      subStatus?.enabled_features
+    );
     if (pendingCount > 0) {
       return items.map((item) => {
         if (item.name === 'Leave') {
@@ -73,7 +83,7 @@ const Sidebar: React.FC = () => {
       });
     }
     return items;
-  }, [user?.role, effectiveOrgId, permissions, pendingCount]);
+  }, [user?.role, effectiveOrgId, permissions, pendingCount, subStatus?.enabled_features]);
 
   const isPathActive = useCallback(
     (path: string) =>

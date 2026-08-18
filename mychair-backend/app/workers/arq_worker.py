@@ -4,7 +4,13 @@ from arq.connections import RedisSettings
 from arq.cron import cron
 
 from app.core.config import Settings, settings
-from app.workers.tasks import process_appointment_booked_workflow, process_scheduled_campaigns, send_notification_task
+from app.workers.tasks import (
+    process_appointment_booked_workflow,
+    process_birthday_whatsapp_automation,
+    process_scheduled_campaigns,
+    process_whatsapp_message_job,
+    send_notification_task,
+)
 
 logger = logging.getLogger("worker")
 
@@ -42,10 +48,13 @@ class WorkerSettings:
         send_notification_task,
         process_appointment_booked_workflow,
         process_scheduled_campaigns,
+        process_whatsapp_message_job,
+        process_birthday_whatsapp_automation,
     ]
 
     cron_jobs = [
         cron(process_scheduled_campaigns, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
+        cron(process_birthday_whatsapp_automation, hour={9}, minute={0}),
     ]
 
     on_startup = startup

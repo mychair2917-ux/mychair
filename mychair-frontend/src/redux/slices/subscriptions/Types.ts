@@ -1,3 +1,26 @@
+export interface FeatureItem {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  active: boolean;
+}
+
+export interface AdminPlanConfig {
+  id: string;
+  plan_key: string;
+  display_name: string;
+  status: string;
+  price: number;
+  currency: string;
+  features: string[];
+  enabled_feature_count: number;
+  total_catalog_features: number;
+  active_subscribers: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SubscriptionPlan {
   value: string;
   label: string;
@@ -54,6 +77,7 @@ export interface SubscriptionStatus {
   is_valid: boolean;
   show_reminder_banner: boolean;
   reminder_message: string | null;
+  enabled_features?: string[];
 }
 
 export interface UpdateSubscriptionPayload {

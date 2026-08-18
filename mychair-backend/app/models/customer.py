@@ -43,6 +43,11 @@ class Customer(BaseTenantDocument):
     membership_created_at: Optional[datetime] = Field(default=None)
     membership_updated_at: Optional[datetime] = Field(default=None)
 
+    # WhatsApp communication preferences
+    whatsapp_opt_in: bool = Field(default=True)
+    whatsapp_opt_out: bool = Field(default=False)
+    whatsapp_opt_out_at: Optional[datetime] = Field(default=None)
+
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Settings:

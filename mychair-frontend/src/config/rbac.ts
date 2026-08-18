@@ -103,11 +103,43 @@ export function canShowRolesPermissionsSidebar(role: string | undefined): boolea
   return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
 }
 
+export const MODULE_TO_FEATURE_KEY: Record<string, string> = {
+  [MODULES.DASHBOARD]: 'DASHBOARD',
+  [MODULES.INVITE]: 'INVITE',
+  [MODULES.APPOINTMENTS]: 'BILLING',
+  [MODULES.APPOINTMENT_REGISTER]: 'APPOINTMENTS',
+  [MODULES.MY_EARNINGS]: 'MY_EARNINGS',
+  [MODULES.SALON_MANAGEMENT]: 'SALON_MANAGEMENT',
+  [MODULES.EMPLOYEES]: 'SALON_MANAGEMENT',
+  [MODULES.SERVICES]: 'SALON_MANAGEMENT',
+  [MODULES.USER_MANAGEMENT]: 'SALON_MANAGEMENT',
+  [MODULES.ROLES_PERMISSIONS]: 'ROLE_PERMISSIONS',
+  [MODULES.SUBSCRIPTION_MANAGEMENT]: 'SUBSCRIPTION_MANAGEMENT',
+  [MODULES.BILLING_FINANCE]: 'BILLING_FINANCE',
+  [MODULES.PRODUCTS_INVENTORY]: 'SALON_MANAGEMENT',
+  [MODULES.STAFF_MONITORING]: 'ATTENDANCE',
+  [MODULES.ATTENDANCE]: 'ATTENDANCE',
+  [MODULES.LEAVE]: 'LEAVE',
+  [MODULES.CUSTOMER_ANALYTICS]: 'CUSTOMER_ANALYTICS',
+  [MODULES.NOTIFICATIONS_COMMUNICATION]: 'NOTIFICATIONS',
+  [MODULES.PROFILE]: 'PROFILE',
+  [MODULES.SETTINGS]: 'SALON_MANAGEMENT',
+};
+
 export function canAccessModule(
   role: string | undefined,
   module: ModuleKey,
-  permissions?: PermissionMap | null
+  permissions?: PermissionMap | null,
+  enabledFeatures?: string[] | null
 ): boolean {
+  // Super Admin bypasses subscription feature restrictions
+  if (!isSuperAdmin(role) && enabledFeatures && Array.isArray(enabledFeatures)) {
+    const featureKey = MODULE_TO_FEATURE_KEY[module];
+    if (featureKey && featureKey !== 'SUBSCRIPTION_MANAGEMENT' && !enabledFeatures.includes(featureKey)) {
+      return false;
+    }
+  }
+
   if (module === MODULES.ROLES_PERMISSIONS) {
     return canShowRolesPermissionsSidebar(role);
   }
@@ -206,16 +238,17 @@ function salonManagementChildren(
   employeesPath: string,
   servicesPath: string,
   productsInventoryPath: string,
-  permissions?: PermissionMap | null
+  permissions?: PermissionMap | null,
+  enabledFeatures?: string[] | null
 ): SidebarNavChild[] {
   const children: SidebarNavChild[] = [];
-  if (canAccessModule(role, MODULES.EMPLOYEES, permissions)) {
+  if (canAccessModule(role, MODULES.EMPLOYEES, permissions, enabledFeatures)) {
     children.push({ name: 'Employees', module: MODULES.EMPLOYEES, path: employeesPath });
   }
-  if (canAccessModule(role, MODULES.SERVICES, permissions)) {
+  if (canAccessModule(role, MODULES.SERVICES, permissions, enabledFeatures)) {
     children.push({ name: 'Manage Salon', module: MODULES.SERVICES, path: servicesPath });
   }
-  if (canAccessModule(role, MODULES.PRODUCTS_INVENTORY, permissions)) {
+  if (canAccessModule(role, MODULES.PRODUCTS_INVENTORY, permissions, enabledFeatures)) {
     children.push({
       name: 'Products & Inventory',
       module: MODULES.PRODUCTS_INVENTORY,
@@ -228,7 +261,8 @@ function salonManagementChildren(
 function financeChildren(
   basePath: string,
   role: string | undefined,
-  permissions?: PermissionMap | null
+  permissions?: PermissionMap | null,
+  enabledFeatures?: string[] | null
 ): SidebarNavChild[] {
   const items: { name: string; key: string; segment: string }[] = [
     { name: 'Bills', key: BILLING_PERMISSION_KEYS.BILLS, segment: 'bills' },
@@ -241,7 +275,7 @@ function financeChildren(
       if (permissions) {
         return Boolean(permissions[item.key]);
       }
-      return canAccessModule(role, MODULES.BILLING_FINANCE);
+      return canAccessModule(role, MODULES.BILLING_FINANCE, permissions, enabledFeatures);
     })
     .map((item) => ({
       name: item.name,
@@ -271,7 +305,8 @@ export function resolveEmployeeListTenantId(
 export function getSidebarNavItems(
   role: string | undefined,
   orgId: string | undefined,
-  permissions?: PermissionMap | null
+  permissions?: PermissionMap | null,
+  enabledFeatures?: string[] | null
 ): SidebarNavItem[] {
   const normalized = normalizeRole(role);
   if (!normalized) return [];
@@ -329,7 +364,8 @@ export function getSidebarNavItems(
             `/${ROUTE_PATHS.ADMIN_SALON_EMPLOYEES}`,
             `/${ROUTE_PATHS.ADMIN_SALON_SERVICES}`,
             `/${ROUTE_PATHS.ADMIN_PRODUCTS_INVENTORY}`,
-            permissions
+            permissions,
+            enabledFeatures
           ),
         },
         ...(canShowRolesPermissionsSidebar(role)
@@ -353,7 +389,7 @@ export function getSidebarNavItems(
           module: MODULES.BILLING_FINANCE,
           path: `/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`,
           icon: Wallet,
-          children: financeChildren(`/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`, role, permissions),
+          children: financeChildren(`/${ROUTE_PATHS.ADMIN_BILLING_FINANCE}`, role, permissions, enabledFeatures),
         },
         {
           name: 'Customer Analytics',
@@ -431,7 +467,8 @@ export function getSidebarNavItems(
               orgPath(orgId, ROUTE_PATHS.SALON_EMPLOYEES),
               orgPath(orgId, ROUTE_PATHS.SALON_SERVICES),
               orgPath(orgId, ROUTE_PATHS.PRODUCTS_INVENTORY),
-              permissions
+              permissions,
+              enabledFeatures
             ),
           },
 
@@ -449,7 +486,8 @@ export function getSidebarNavItems(
             children: financeChildren(
               orgPath(orgId, ROUTE_PATHS.BILLING_FINANCE),
               role,
-              permissions
+              permissions,
+              enabledFeatures
             ),
           },
           {
@@ -480,7 +518,7 @@ export function getSidebarNavItems(
           if (child.permissionKey && permissions) {
             return Boolean(permissions[child.permissionKey]);
           }
-          return canAccessModule(role, child.module, permissions);
+          return canAccessModule(role, child.module, permissions, enabledFeatures);
         });
         if (!visibleChildren.length) return null;
         return { ...item, children: visibleChildren };
@@ -491,7 +529,7 @@ export function getSidebarNavItems(
     .filter((item): item is SidebarNavItem => {
       if (item === null) return false;
       if (item.children?.length) return true;
-      return canAccessModule(role, item.module, permissions);
+      return canAccessModule(role, item.module, permissions, enabledFeatures);
     });
 }
 

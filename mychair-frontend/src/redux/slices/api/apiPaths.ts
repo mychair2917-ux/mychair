@@ -138,6 +138,9 @@ export const API_PATHS = {
     ME: '/subscriptions/me',
     ME_STATUS: '/subscriptions/me/status',
     DETAIL: (id: string) => `/subscriptions/${id}`,
+    ADMIN_FEATURES: '/subscriptions/admin/features',
+    ADMIN_PLANS: '/subscriptions/admin/plans',
+    ADMIN_PLAN_FEATURES: (planKey: string) => `/subscriptions/admin/plans/${planKey}/features`,
   },
   AUTH_REFRESH: '/auth/refresh',
   CUSTOMER_ANALYTICS: {
@@ -173,5 +176,14 @@ export const API_PATHS = {
     LOGS: '/notifications/logs',
     BUSINESS_ALERTS: '/notifications/business-alerts',
     SUBSCRIPTION_NOTIFICATIONS: '/notifications/subscription-notifications',
+  },
+  WHATSAPP: {
+    STATUS: '/whatsapp/status',
+    CONNECT: '/whatsapp/connect',
+    DISCONNECT: '/whatsapp/disconnect',
+    SETTINGS: '/whatsapp/settings',
+    TEST: '/whatsapp/test',
+    MESSAGES: '/whatsapp/messages',
+    ADMIN_SALONS: '/whatsapp/admin/salons',
   },
 };

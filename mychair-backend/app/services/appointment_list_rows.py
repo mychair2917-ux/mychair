@@ -10,6 +10,7 @@ The underlying appointment/bill identity is never duplicated in storage.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
@@ -288,6 +289,13 @@ def row_matches_search(row: Dict[str, Any], term: str) -> bool:
     ]
     for value in haystacks:
         if value is not None and needle in str(value).lower():
+            return True
+
+    digits_needle = re.sub(r"\D", "", needle)
+    if len(digits_needle) >= 4:
+        cust_phone = str(row.get("customer_phone") or "")
+        cust_phone_digits = re.sub(r"\D", "", cust_phone)
+        if cust_phone_digits and digits_needle in cust_phone_digits:
             return True
 
     if row.get("quantity") is not None and needle in str(row.get("quantity")):

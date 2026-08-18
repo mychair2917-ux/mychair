@@ -97,6 +97,7 @@ export const baseApi = createApi({
     'Subscriptions',
     'SubscriptionSettings',
     'SubscriptionStatus',
+    'AdminPlans',
     'Dashboard',
     'Notifications',
     'NotificationPreferences',
@@ -104,6 +105,9 @@ export const baseApi = createApi({
     'CommunicationCampaigns',
     'CommunicationLogs',
     'BusinessAlerts',
+    'WhatsAppStatus',
+    'WhatsAppLogs',
+    'WhatsAppAdmin',
   ],
   baseQuery: baseQueryWithAuthHandling,
   endpoints: (builder) => ({

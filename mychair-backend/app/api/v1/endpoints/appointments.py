@@ -946,12 +946,19 @@ async def get_today_appointments(
     
     if search and search.strip():
         term = search.strip().lower()
-        active_items = [
-            a for a in active_items
-            if term in (a.customer_name or "").lower()
-            or term in (a.customer_phone or "").lower()
-            or term in (a.appointment_date or "").lower()
-        ]
+        digits_term = re.sub(r"\D", "", term)
+        def _item_matches(a: Appointment) -> bool:
+            c_name = (a.customer_name or "").lower()
+            c_phone = (a.customer_phone or "").lower()
+            c_date = (a.appointment_date or "").lower()
+            if term in c_name or term in c_phone or term in c_date:
+                return True
+            if len(digits_term) >= 4:
+                phone_digits = re.sub(r"\D", "", c_phone)
+                if phone_digits and digits_term in phone_digits:
+                    return True
+            return False
+        active_items = [a for a in active_items if _item_matches(a)]
         
     res_items = []
     for appt in active_items:

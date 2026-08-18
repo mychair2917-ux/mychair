@@ -52,6 +52,8 @@ async def lifespan(app: FastAPI):
     await salon_product_service.seed_master_products()
     await SystemSettingsService().get_or_create()
     await SubscriptionService().ensure_salon_link_for_legacy_records()
+    from app.services.plan_service import PlanService
+    await PlanService().seed_default_plans()
 
     logger.info("Connecting to Redis...")
     await redis_client.init_redis()
