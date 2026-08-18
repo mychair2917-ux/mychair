@@ -37,8 +37,11 @@ from app.services.customer_import import (
 )
 from app.services.customer_membership import (
     calculate_membership_dates,
+    calculate_membership_dates_v2,
     calculate_renewal_dates,
+    calculate_renewal_dates_v2,
     get_effective_membership_status,
+    get_salon_membership_settings,
     is_membership_active,
     serialize_membership_info,
     STATUS_ACTIVE,
@@ -53,7 +56,7 @@ from app.services.customer_phone import (
 from app.services.notifications import notification_service
 from app.utils.api_response import error_response, success_response
 from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile
-from app.utils.timezone import now_utc
+from app.utils.timezone import now_utc, timezone
 
 router = APIRouter()
 
@@ -124,6 +127,8 @@ def _membership_record_dict(rec: CustomerMembership) -> dict:
         "membership_type": rec.membership_type,
         "membership_start_date": rec.membership_start_date.isoformat() if rec.membership_start_date else None,
         "membership_end_date": rec.membership_end_date.isoformat() if rec.membership_end_date else None,
+        "duration_number": rec.duration_number,
+        "duration_unit": rec.duration_unit,
         "status": rec_status,
         "created_by": rec.created_by,
         "created_by_name": rec.created_by_name or "—",
@@ -144,6 +149,9 @@ class CustomerCreate(BaseModel):
     address: Optional[str] = None
     notes: Optional[str] = None
     is_member: bool = False
+    membership_duration_number: Optional[int] = Field(default=None, ge=1)
+    membership_duration_unit: Optional[str] = None
+    membership_start_date: Optional[str] = None
     membership_end_date: Optional[str] = None
 
 
@@ -158,17 +166,24 @@ class CustomerUpdate(BaseModel):
     address: Optional[str] = None
     notes: Optional[str] = None
     is_member: Optional[bool] = None
+    membership_duration_number: Optional[int] = Field(default=None, ge=1)
+    membership_duration_unit: Optional[str] = None
+    membership_start_date: Optional[str] = None
     membership_end_date: Optional[str] = None
 
 
 class CustomerMembershipCreate(BaseModel):
-    duration_years: int = Field(default=1, ge=1, le=10)
+    duration_years: Optional[int] = Field(default=None, ge=1, le=10)
+    duration_number: Optional[int] = Field(default=None, ge=1)
+    duration_unit: Optional[str] = Field(default=None)
     membership_type: Optional[str] = Field(default="Standard Membership")
     start_date: Optional[str] = Field(default=None)  # YYYY-MM-DD or ISO format
 
 
 class CustomerMembershipRenew(BaseModel):
-    duration_years: int = Field(default=1, ge=1, le=10)
+    duration_years: Optional[int] = Field(default=None, ge=1, le=10)
+    duration_number: Optional[int] = Field(default=None, ge=1)
+    duration_unit: Optional[str] = Field(default=None)
     membership_type: Optional[str] = Field(default=None)
 
 
@@ -572,21 +587,46 @@ async def create_customer(
 
     if payload.is_member and not _can_manage_membership(current_user):
         raise PermissionDeniedException(
-            detail="Only Super Admin or Salon Owner can mark a client as a member"
+            detail="Only Super Admin, Salon Owner, or Salon Manager can mark a client as a member"
         )
 
     is_mem = bool(payload.is_member)
     start_date, end_date = (None, None)
+    duration_num = None
+    duration_unit = None
+
     if is_mem:
+        if payload.membership_duration_number and payload.membership_duration_unit:
+            duration_num = payload.membership_duration_number
+            duration_unit = payload.membership_duration_unit.strip().capitalize()
+            if not duration_unit.endswith("s"):
+                duration_unit += "s"
+            if duration_unit not in {"Days", "Months", "Years"}:
+                return error_response("Invalid membership duration unit.", status_code=422)
+        else:
+            settings = await get_salon_membership_settings(tenant_id)
+            duration_num = settings.default_duration_number
+            duration_unit = settings.default_duration_unit
+
+        start_dt = None
+        if payload.membership_start_date:
+            try:
+                start_dt = datetime.fromisoformat(payload.membership_start_date.strip())
+            except ValueError:
+                return error_response("Invalid membership start date format.", status_code=422)
+
+        start_date, end_date = calculate_membership_dates_v2(
+            start_date=start_dt,
+            duration_number=duration_num,
+            duration_unit=duration_unit,
+        )
+
         if payload.membership_end_date and payload.membership_end_date.strip():
             try:
                 raw_dt = datetime.fromisoformat(payload.membership_end_date.strip())
                 end_date = raw_dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
-                start_date = now_utc()
             except ValueError:
                 return error_response("Invalid membership expiry date format.", status_code=422)
-        else:
-            start_date, end_date = calculate_membership_dates(years=1)
 
     customer = Customer(
         first_name=payload.first_name.strip(),
@@ -602,6 +642,8 @@ async def create_customer(
         membership_status="ACTIVE" if is_mem else "NON_MEMBER",
         membership_start_date=start_date,
         membership_end_date=end_date,
+        membership_duration=duration_num,
+        membership_duration_unit=duration_unit,
         membership_type="Standard Membership" if is_mem else None,
         membership_created_by=str(current_user.id) if is_mem else None,
         membership_created_at=now_utc() if is_mem else None,
@@ -616,6 +658,8 @@ async def create_customer(
             membership_type="Standard Membership",
             membership_start_date=start_date,
             membership_end_date=end_date,
+            duration_number=duration_num,
+            duration_unit=duration_unit,
             status="ACTIVE",
             tenant_id=customer.tenant_id,
             created_by_name=user_display_name(current_user),
@@ -728,22 +772,64 @@ async def update_customer(
         target_member = bool(payload.is_member)
         if target_member != current_member and not _can_manage_membership(current_user):
             raise PermissionDeniedException(
-                detail="Only Super Admin or Salon Owner can change client membership"
+                detail="Only Super Admin, Salon Owner, or Salon Manager can change client membership"
             )
         customer.is_member = target_member
         if target_member:
-            if customer.membership_end_date is None:
-                s_dt, e_dt = calculate_membership_dates(years=1)
+            duration_changed = (
+                payload.membership_duration_number is not None
+                or payload.membership_duration_unit is not None
+            )
+            if not current_member or duration_changed or customer.membership_end_date is None:
+                duration_num = payload.membership_duration_number or getattr(customer, "membership_duration", None)
+                duration_unit = payload.membership_duration_unit or getattr(customer, "membership_duration_unit", None)
+                if not duration_num or not duration_unit:
+                    settings = await get_salon_membership_settings(tenant_id)
+                    duration_num = duration_num or settings.default_duration_number
+                    duration_unit = duration_unit or settings.default_duration_unit
+
+                norm_unit = duration_unit.strip().capitalize()
+                if not norm_unit.endswith("s"):
+                    norm_unit += "s"
+
+                start_dt = None
+                if payload.membership_start_date:
+                    try:
+                        start_dt = datetime.fromisoformat(payload.membership_start_date.strip())
+                    except ValueError:
+                        return error_response("Invalid membership start date format.", status_code=422)
+                else:
+                    start_dt = customer.membership_start_date or now_utc()
+
+                s_dt, e_dt = calculate_membership_dates_v2(
+                    start_date=start_dt,
+                    duration_number=duration_num,
+                    duration_unit=norm_unit,
+                )
+
+                if payload.membership_end_date and payload.membership_end_date.strip():
+                    try:
+                        raw_dt = datetime.fromisoformat(payload.membership_end_date.strip())
+                        e_dt = raw_dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+                    except ValueError:
+                        return error_response("Invalid membership expiry date format.", status_code=422)
+
                 customer.membership_start_date = s_dt
                 customer.membership_end_date = e_dt
+                customer.membership_duration = duration_num
+                customer.membership_duration_unit = norm_unit
                 customer.membership_type = customer.membership_type or "Standard Membership"
                 customer.membership_created_by = customer.membership_created_by or str(current_user.id)
                 customer.membership_updated_at = now_utc()
+                customer.membership_status = "ACTIVE" if e_dt >= now_utc() else "EXPIRED"
+
                 membership_record = CustomerMembership(
                     customer_id=str(customer.id),
                     membership_type=customer.membership_type,
                     membership_start_date=s_dt,
                     membership_end_date=e_dt,
+                    duration_number=duration_num,
+                    duration_unit=norm_unit,
                     status="ACTIVE",
                     tenant_id=customer.tenant_id,
                     created_by_name=user_display_name(current_user),
@@ -821,7 +907,26 @@ async def add_customer_membership(
         except ValueError:
             return error_response("Invalid start date format. Use YYYY-MM-DD.", status_code=422)
 
-    start_date, end_date = calculate_membership_dates(start_dt, years=payload.duration_years)
+    duration_num = payload.duration_number
+    duration_unit = payload.duration_unit
+    if not duration_num or not duration_unit:
+        if payload.duration_years:
+            duration_num = payload.duration_years
+            duration_unit = "Years"
+        else:
+            settings = await get_salon_membership_settings(tenant_id)
+            duration_num = settings.default_duration_number
+            duration_unit = settings.default_duration_unit
+
+    norm_unit = duration_unit.strip().capitalize()
+    if not norm_unit.endswith("s"):
+        norm_unit += "s"
+
+    start_date, end_date = calculate_membership_dates_v2(
+        start_date=start_dt,
+        duration_number=duration_num,
+        duration_unit=norm_unit,
+    )
     m_type = (payload.membership_type or "Standard Membership").strip()
     creator_name = user_display_name(current_user)
 
@@ -830,6 +935,8 @@ async def add_customer_membership(
         membership_type=m_type,
         membership_start_date=start_date,
         membership_end_date=end_date,
+        duration_number=duration_num,
+        duration_unit=norm_unit,
         status="ACTIVE",
         tenant_id=customer.tenant_id,
         created_by_name=creator_name,
@@ -840,6 +947,8 @@ async def add_customer_membership(
     customer.membership_status = "ACTIVE"
     customer.membership_start_date = start_date
     customer.membership_end_date = end_date
+    customer.membership_duration = duration_num
+    customer.membership_duration_unit = norm_unit
     customer.membership_type = m_type
     customer.membership_created_by = str(current_user.id)
     customer.membership_created_at = now_utc()
@@ -888,7 +997,26 @@ async def renew_customer_membership(
             rec.status = "EXPIRED"
             await rec.save()
 
-    start_date, end_date = calculate_renewal_dates(customer, years=payload.duration_years)
+    duration_num = payload.duration_number
+    duration_unit = payload.duration_unit
+    if not duration_num or not duration_unit:
+        if payload.duration_years:
+            duration_num = payload.duration_years
+            duration_unit = "Years"
+        else:
+            settings = await get_salon_membership_settings(tenant_id)
+            duration_num = settings.default_duration_number
+            duration_unit = settings.default_duration_unit
+
+    norm_unit = duration_unit.strip().capitalize()
+    if not norm_unit.endswith("s"):
+        norm_unit += "s"
+
+    start_date, end_date = calculate_renewal_dates_v2(
+        customer,
+        duration_number=duration_num,
+        duration_unit=norm_unit,
+    )
     m_type = (payload.membership_type or customer.membership_type or "Standard Membership").strip()
     creator_name = user_display_name(current_user)
 
@@ -897,6 +1025,8 @@ async def renew_customer_membership(
         membership_type=m_type,
         membership_start_date=start_date,
         membership_end_date=end_date,
+        duration_number=duration_num,
+        duration_unit=norm_unit,
         status="ACTIVE",
         tenant_id=customer.tenant_id,
         created_by_name=creator_name,
@@ -907,6 +1037,8 @@ async def renew_customer_membership(
     customer.membership_status = "ACTIVE"
     customer.membership_start_date = start_date
     customer.membership_end_date = end_date
+    customer.membership_duration = duration_num
+    customer.membership_duration_unit = norm_unit
     customer.membership_type = m_type
     customer.membership_created_by = str(current_user.id)
     customer.membership_updated_at = now_utc()

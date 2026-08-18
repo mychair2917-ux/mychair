@@ -47,6 +47,7 @@ from app.models.invite import Invite
 from app.models.payroll import Payroll
 from app.models.bill import Bill
 from app.models.reward_settings import RewardSettings, RewardSegment
+from app.models.membership_settings import MembershipSettings
 from app.models.customer_reward_transaction import CustomerRewardTransaction
 from app.models.expense import Expense
 from app.models.user_permission import PermissionRecord
@@ -103,6 +104,7 @@ BEANIE_MODELS = [
     Bill,
     RewardSettings,
     RewardSegment,
+    MembershipSettings,
     CustomerRewardTransaction,
     Expense,
     PermissionRecord,

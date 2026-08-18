@@ -36,6 +36,8 @@ class Customer(BaseTenantDocument):
     membership_status: Optional[str] = Field(default="NON_MEMBER")
     membership_start_date: Optional[datetime] = Field(default=None)
     membership_end_date: Optional[datetime] = Field(default=None)
+    membership_duration: Optional[int] = Field(default=None)
+    membership_duration_unit: Optional[str] = Field(default=None)
     membership_type: Optional[str] = Field(default=None)
     membership_created_by: Optional[str] = Field(default=None)
     membership_created_at: Optional[datetime] = Field(default=None)

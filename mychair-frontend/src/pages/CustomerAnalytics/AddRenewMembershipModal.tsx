@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Crown, Calendar, Sparkles, ShieldCheck, X } from 'lucide-react';
 import { Customer } from '../../redux/slices/customerAnalytics/Types';
 import {
   useAddCustomerMembershipMutation,
   useRenewCustomerMembershipMutation,
+  useGetMembershipSettingsQuery,
 } from '../../redux/slices/customerAnalytics/customerAnalyticsApi';
-import { showToast } from '../../components/common';
+import { showToast, Button } from '../../components/common';
 
 interface AddRenewMembershipModalProps {
   isOpen: boolean;
@@ -14,13 +15,46 @@ interface AddRenewMembershipModalProps {
   mode: 'add' | 'renew';
 }
 
+const PRESET_OPTIONS = [
+  { label: '1 Month', number: 1, unit: 'Months' },
+  { label: '3 Months', number: 3, unit: 'Months' },
+  { label: '6 Months', number: 6, unit: 'Months' },
+  { label: '1 Year', number: 1, unit: 'Years' },
+  { label: '2 Years', number: 2, unit: 'Years' },
+  { label: 'Custom', number: 0, unit: 'Months', is_custom: true },
+];
+
+function calculateExpiryDate(startDate: Date, num: number, unit: string): Date {
+  const result = new Date(startDate);
+  const normalizedUnit = unit.toLowerCase();
+
+  if (normalizedUnit.includes('day')) {
+    result.setDate(result.getDate() + num);
+  } else if (normalizedUnit.includes('month')) {
+    result.setMonth(result.getMonth() + num);
+  } else if (normalizedUnit.includes('year')) {
+    result.setFullYear(result.getFullYear() + num);
+  } else {
+    result.setFullYear(result.getFullYear() + num);
+  }
+
+  // Subtract 1 day for end of cycle (inclusive date calculation)
+  result.setDate(result.getDate() - 1);
+  return result;
+}
+
 export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = ({
   isOpen,
   onClose,
   customer,
   mode,
 }) => {
-  const [durationYears, setDurationYears] = useState<number>(1);
+  const { data: settingsRes } = useGetMembershipSettingsQuery(undefined, { skip: !isOpen });
+  const settings = settingsRes?.data;
+
+  const [selectedPreset, setSelectedPreset] = useState<string>('1 Year');
+  const [durationNum, setDurationNum] = useState<number>(1);
+  const [durationUnit, setDurationUnit] = useState<string>('Years');
   const [membershipType, setMembershipType] = useState<string>(
     customer.membership_type || 'Standard Membership'
   );
@@ -29,6 +63,34 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
   const [renewMembership, { isLoading: isRenewing }] = useRenewCustomerMembershipMutation();
 
   const isSubmitting = isAdding || isRenewing;
+
+  // Initialize duration from salon default settings when modal opens
+  useEffect(() => {
+    if (isOpen && settings) {
+      const defaultNum = settings.default_duration_number || 1;
+      const defaultUnit = settings.default_duration_unit || 'Years';
+      const match = PRESET_OPTIONS.find(
+        (p) => !p.is_custom && p.number === defaultNum && p.unit === defaultUnit
+      );
+      if (match) {
+        setSelectedPreset(match.label);
+        setDurationNum(match.number);
+        setDurationUnit(match.unit);
+      } else {
+        setSelectedPreset('Custom');
+        setDurationNum(defaultNum);
+        setDurationUnit(defaultUnit);
+      }
+    }
+  }, [isOpen, settings]);
+
+  const handlePresetSelect = (preset: (typeof PRESET_OPTIONS)[0]) => {
+    setSelectedPreset(preset.label);
+    if (!preset.is_custom) {
+      setDurationNum(preset.number);
+      setDurationUnit(preset.unit);
+    }
+  };
 
   // Calculate dynamic start and end dates for visual preview
   const datePreview = useMemo(() => {
@@ -43,9 +105,7 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
       }
     }
 
-    const endDate = new Date(startDate);
-    endDate.setFullYear(endDate.getFullYear() + durationYears);
-    endDate.setDate(endDate.getDate() - 1);
+    const endDate = calculateExpiryDate(startDate, durationNum, durationUnit);
 
     const formatDate = (d: Date) =>
       d.toLocaleDateString('en-US', {
@@ -58,18 +118,24 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
       startFormatted: formatDate(startDate),
       endFormatted: formatDate(endDate),
     };
-  }, [mode, customer.membership_end_date, durationYears]);
+  }, [mode, customer.membership_end_date, durationNum, durationUnit]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (durationNum < 1) {
+      showToast('error', 'Please select or enter a valid duration greater than 0.');
+      return;
+    }
+
     try {
       if (mode === 'add') {
         const res = await addMembership({
           customerId: customer.id,
-          duration_years: durationYears,
+          duration_number: durationNum,
+          duration_unit: durationUnit,
           membership_type: membershipType.trim() || 'Standard Membership',
         }).unwrap();
 
@@ -77,7 +143,8 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
       } else {
         const res = await renewMembership({
           customerId: customer.id,
-          duration_years: durationYears,
+          duration_number: durationNum,
+          duration_unit: durationUnit,
           membership_type: membershipType.trim() || undefined,
         }).unwrap();
 
@@ -126,11 +193,11 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
             <div>
               {mode === 'add' ? (
                 <>
-                  Enrolling this client creates a <strong>1-year default membership</strong> validity period. Members enjoy special pricing & reward rates across services.
+                  Enrolling this client applies a <strong>{durationNum} {durationUnit}</strong> membership validity period. Members enjoy special pricing & reward rates across services.
                 </>
               ) : (
                 <>
-                  Renewing will append <strong>{durationYears} year(s)</strong> to the client's current membership timeline without losing remaining active days.
+                  Renewing will append <strong>{durationNum} {durationUnit}</strong> to the client's current membership timeline without losing remaining active days.
                 </>
               )}
             </div>
@@ -156,23 +223,63 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
               Membership Duration
             </label>
-            <div className="grid grid-cols-3 gap-2.5">
-              {[1, 2, 3].map((years) => (
-                <button
-                  type="button"
-                  key={years}
-                  onClick={() => setDurationYears(years)}
-                  className={`py-2.5 px-3 rounded-xl text-sm font-semibold border text-center transition-all ${
-                    durationYears === years
-                      ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/25 ring-2 ring-amber-500/20'
-                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  {years} {years === 1 ? 'Year (Default)' : 'Years'}
-                </button>
-              ))}
+            <div className="grid grid-cols-3 gap-2">
+              {PRESET_OPTIONS.map((preset) => {
+                const isSelected = selectedPreset === preset.label;
+                return (
+                  <button
+                    type="button"
+                    key={preset.label}
+                    onClick={() => handlePresetSelect(preset)}
+                    className={`relative py-2 px-2.5 rounded-xl text-xs font-semibold border text-center transition-all ${
+                      isSelected
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/25 ring-2 ring-amber-500/20'
+                        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {/* Custom Duration Inputs */}
+          {selectedPreset === 'Custom' && (
+            <div className="p-3.5 bg-amber-50/50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl space-y-2 animate-fadeIn">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                Custom Duration Details
+              </label>
+              <div className="flex items-center gap-3">
+                <div className="w-1/2">
+                  <label className="block text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Number
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={durationNum}
+                    onChange={(e) => setDurationNum(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full px-3 py-1.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div className="w-1/2">
+                  <label className="block text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Unit
+                  </label>
+                  <select
+                    value={durationUnit}
+                    onChange={(e) => setDurationUnit(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                  >
+                    <option value="Days">Days</option>
+                    <option value="Months">Months</option>
+                    <option value="Years">Years</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Date Calculation Card */}
           <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-xl space-y-3">
@@ -181,7 +288,7 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
                 <Calendar className="w-3.5 h-3.5 text-slate-400" /> Dynamic Timeline Preview
               </span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold tracking-wide uppercase">
-                {durationYears * 12} Months Valid
+                {durationNum} {durationUnit} Valid
               </span>
             </div>
 
@@ -203,26 +310,23 @@ export const AddRenewMembershipModal: React.FC<AddRenewMembershipModalProps> = (
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <button
+            <Button
+              variant="secondary"
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               type="submit"
-              disabled={isSubmitting}
-              className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 rounded-xl shadow-lg shadow-amber-500/25 transition disabled:opacity-50"
+              isLoading={isSubmitting}
+              loadingText="Processing..."
+              icon={<ShieldCheck className="w-4 h-4" />}
             >
-              <ShieldCheck className="w-4 h-4" />
-              {isSubmitting
-                ? 'Processing...'
-                : mode === 'add'
-                ? 'Confirm Enrollment'
-                : 'Confirm Renewal'}
-            </button>
+              {mode === 'add' ? 'Confirm Enrollment' : 'Confirm Renewal'}
+            </Button>
           </div>
         </form>
       </div>

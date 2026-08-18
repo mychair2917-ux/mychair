@@ -14,6 +14,9 @@ export interface Customer {
   membership_status?: 'ACTIVE' | 'EXPIRED' | 'NON_MEMBER';
   membership_start_date?: string | null;
   membership_end_date?: string | null;
+  membership_expiry_date?: string | null;
+  membership_duration?: number | null;
+  membership_duration_unit?: string | null;
   membership_type?: string | null;
   membership_created_by?: string | null;
   is_expiring_soon?: boolean;
@@ -32,6 +35,8 @@ export interface CustomerMembershipRecord {
   membership_type: string;
   membership_start_date: string;
   membership_end_date: string;
+  duration_number?: number | null;
+  duration_unit?: string | null;
   status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | string;
   created_by?: string | null;
   created_by_name?: string | null;
@@ -45,6 +50,9 @@ export interface CustomerMembershipDetail {
   membership_status: 'ACTIVE' | 'EXPIRED' | 'NON_MEMBER';
   membership_start_date?: string | null;
   membership_end_date?: string | null;
+  membership_expiry_date?: string | null;
+  membership_duration?: number | null;
+  membership_duration_unit?: string | null;
   membership_type?: string | null;
   membership_created_by?: string | null;
   is_expiring_soon?: boolean;
@@ -52,9 +60,32 @@ export interface CustomerMembershipDetail {
   history: CustomerMembershipRecord[];
 }
 
+export interface PredefinedDurationOption {
+  label: string;
+  number?: number;
+  unit?: string;
+  is_custom?: boolean;
+}
+
+export interface MembershipSettings {
+  id: string;
+  default_membership_duration: string;
+  default_duration_number: number;
+  default_duration_unit: string;
+  options: PredefinedDurationOption[];
+}
+
+export interface MembershipSettingsUpdatePayload {
+  default_membership_duration?: string;
+  default_duration_number?: number;
+  default_duration_unit?: string;
+}
+
 export interface AddMembershipPayload {
   customerId: string;
   duration_years?: number;
+  duration_number?: number;
+  duration_unit?: string;
   membership_type?: string;
   start_date?: string;
 }
@@ -62,6 +93,8 @@ export interface AddMembershipPayload {
 export interface RenewMembershipPayload {
   customerId: string;
   duration_years?: number;
+  duration_number?: number;
+  duration_unit?: string;
   membership_type?: string;
 }
 
@@ -151,6 +184,9 @@ export interface CustomerCreatePayload {
   address?: string;
   notes?: string;
   is_member?: boolean;
+  membership_duration_number?: number;
+  membership_duration_unit?: string;
+  membership_start_date?: string;
   membership_end_date?: string;
 }
 

@@ -14,6 +14,8 @@ class CustomerMembership(BaseTenantDocument):
     membership_type: str = Field(default="Standard Membership")
     membership_start_date: datetime
     membership_end_date: datetime
+    duration_number: Optional[int] = Field(default=None)
+    duration_unit: Optional[str] = Field(default=None)
     status: str = Field(default="ACTIVE", index=True)  # ACTIVE, EXPIRED, CANCELLED
     created_by_name: Optional[str] = Field(default=None)
 

@@ -45,12 +45,17 @@ from app.services.customer_phone import (
     find_client_by_phone,
     generate_client_reference_id,
 )
+from app.models.customer_membership import CustomerMembership
+from app.services.customer_membership import (
+    calculate_membership_dates_v2,
+    get_salon_membership_settings,
+)
 from app.services.notifications import notification_service
 from app.services.websocket import manager
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import error_response, success_response
 from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile, phone_lookup_variants
-from app.utils.timezone import make_aware, to_utc_iso
+from app.utils.timezone import make_aware, now_utc, to_utc_iso, timezone
 
 router = APIRouter()
 appointment_service = AppointmentService()
@@ -395,6 +400,41 @@ async def create_client(
         except ValueError:
             pass
 
+    is_mem = bool(payload.is_member)
+    start_date, end_date = None, None
+    duration_num, duration_unit = None, None
+
+    if is_mem:
+        if payload.membership_duration_number and payload.membership_duration_unit:
+            duration_num = payload.membership_duration_number
+            duration_unit = payload.membership_duration_unit.strip().capitalize()
+            if not duration_unit.endswith("s"):
+                duration_unit += "s"
+        else:
+            settings = await get_salon_membership_settings(tenant_id)
+            duration_num = settings.default_duration_number
+            duration_unit = settings.default_duration_unit
+
+        start_dt = None
+        if payload.membership_start_date:
+            try:
+                start_dt = datetime.fromisoformat(payload.membership_start_date.strip())
+            except ValueError:
+                pass
+
+        start_date, end_date = calculate_membership_dates_v2(
+            start_date=start_dt,
+            duration_number=duration_num,
+            duration_unit=duration_unit,
+        )
+
+        if payload.membership_end_date and payload.membership_end_date.strip():
+            try:
+                raw_dt = datetime.fromisoformat(payload.membership_end_date.strip())
+                end_date = raw_dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+            except ValueError:
+                pass
+
     name_parts = payload.name.strip().split(maxsplit=1)
     customer = Customer(
         first_name=name_parts[0],
@@ -404,10 +444,34 @@ async def create_client(
         gender=payload.gender,
         dob=dob_dt,
         anniversary_date=anniversary_dt,
-        is_member=bool(payload.is_member),
+        is_member=is_mem,
+        membership_status="ACTIVE" if is_mem else "NON_MEMBER",
+        membership_start_date=start_date,
+        membership_end_date=end_date,
+        membership_duration=duration_num,
+        membership_duration_unit=duration_unit,
+        membership_type="Standard Membership" if is_mem else None,
+        membership_created_by=str(current_user.id) if is_mem else None,
+        membership_created_at=now_utc() if is_mem else None,
+        membership_updated_at=now_utc() if is_mem else None,
         tenant_id=tenant_id,
     )
     await customer.insert()
+
+    if is_mem:
+        membership_record = CustomerMembership(
+            customer_id=str(customer.id),
+            membership_type="Standard Membership",
+            membership_start_date=start_date,
+            membership_end_date=end_date,
+            duration_number=duration_num,
+            duration_unit=duration_unit,
+            status="ACTIVE",
+            tenant_id=customer.tenant_id,
+            created_by_name=user_display_name(current_user),
+        )
+        await membership_record.insert()
+
     return success_response("Client created successfully", data=_customer_response(customer), status_code=201)
 
 

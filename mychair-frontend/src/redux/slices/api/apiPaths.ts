@@ -151,6 +151,7 @@ export const API_PATHS = {
     MEMBERSHIP: (id: string) => `/customers/${id}/membership`,
     MEMBERSHIP_RENEW: (id: string) => `/customers/${id}/membership/renew`,
     MEMBERSHIP_HISTORY: (id: string) => `/customers/${id}/membership/history`,
+    MEMBERSHIP_SETTINGS: '/membership-settings',
     REWARD_SETTINGS: '/reward-settings',
     REWARD_SEGMENTS: '/reward-settings/segments',
     REWARD_SEGMENT_DETAIL: (id: string) => `/reward-settings/segments/${id}`,

@@ -87,6 +87,10 @@ class CustomerQuickCreate(BaseModel):
     dob: Optional[str] = Field(default=None, description="ISO date string YYYY-MM-DD")
     anniversary_date: Optional[str] = Field(default=None, description="ISO date string YYYY-MM-DD")
     is_member: bool = False
+    membership_duration_number: Optional[int] = Field(default=None, ge=1)
+    membership_duration_unit: Optional[str] = Field(default=None)
+    membership_start_date: Optional[str] = Field(default=None)
+    membership_end_date: Optional[str] = Field(default=None)
 
     @field_validator("gender")
     @classmethod

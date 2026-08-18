@@ -86,6 +86,7 @@ export const baseApi = createApi({
     'MyEarnings',
     'CustomerAnalytics',
     'Customers',
+    'MembershipSettings',
     'RewardSettings',
     'Profile',
     'Expenses',

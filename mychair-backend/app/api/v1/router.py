@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     invitations,
     inventory,
     leave,
+    membership_settings,
     my_earnings,
     notifications,
     payroll,
@@ -59,5 +60,6 @@ api_router.include_router(customers.router, prefix="/customers", tags=["Customer
 api_router.include_router(customers.router, prefix="/clients", tags=["Client Management (alias)"])
 api_router.include_router(customer_analytics.router, prefix="/customer-analytics", tags=["Customer Analytics"])
 api_router.include_router(reward_settings.router, prefix="/reward-settings", tags=["Reward Settings"])
+api_router.include_router(membership_settings.router, prefix="/membership-settings", tags=["Membership Settings"])
 api_router.include_router(subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
 api_router.include_router(whatsapp_webhook.router, prefix="/webhooks", tags=["Webhooks"])

@@ -52,16 +52,19 @@ import {
   useCreateRewardSegmentMutation,
   useUpdateRewardSegmentMutation,
   useDeleteRewardSegmentMutation,
+  useGetMembershipSettingsQuery,
 } from '../../redux/slices/customerAnalytics/customerAnalyticsApi';
 import type { Customer, RewardSegment } from '../../redux/slices/customerAnalytics/Types';
+import { MembershipSettingsComponent } from '../../components/membership/MembershipSettingsComponent';
 
 // ─────────────────────────── shared primitives ───────────────────────────────
 
-type AnalyticsTab = 'overview' | 'customers' | 'reward-settings';
+type AnalyticsTab = 'overview' | 'customers' | 'membership-settings' | 'reward-settings';
 
 const TABS: Array<{ id: AnalyticsTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'customers', label: 'Customers' },
+  { id: 'membership-settings', label: 'Membership Settings' },
   { id: 'reward-settings', label: 'Reward Settings' },
 ];
 
@@ -388,6 +391,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
 }) => {
   const userRole = useAppSelector((state) => state.auth.user?.role);
   const allowMembership = canManageMembership(userRole);
+  const { data: memSettingsRes } = useGetMembershipSettingsQuery(undefined, { skip: !open });
   const [createCustomer, { isLoading: creating }] = useCreateCustomerMutation();
   const [updateCustomer, { isLoading: updating }] = useUpdateCustomerMutation();
   const [checkCustomerPhone] = useLazyCheckCustomerPhoneQuery();
@@ -622,9 +626,18 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                     onChange={(e) => {
                       formik.handleChange(e);
                       if (e.target.checked && !formik.values.membership_end_date) {
+                        const num = memSettingsRes?.data?.default_duration_number || 1;
+                        const unit = (memSettingsRes?.data?.default_duration_unit || 'Years').toLowerCase();
                         const defaultExpiry = new Date();
-                        defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
-                        defaultExpiry.setDate(defaultExpiry.getDate() - 1);
+                        if (unit.includes('day')) {
+                          defaultExpiry.setDate(defaultExpiry.getDate() + num - 1);
+                        } else if (unit.includes('month')) {
+                          defaultExpiry.setMonth(defaultExpiry.getMonth() + num);
+                          defaultExpiry.setDate(defaultExpiry.getDate() - 1);
+                        } else {
+                          defaultExpiry.setFullYear(defaultExpiry.getFullYear() + num);
+                          defaultExpiry.setDate(defaultExpiry.getDate() - 1);
+                        }
                         formik.setFieldValue('membership_end_date', toDateInputValue(defaultExpiry));
                       }
                     }}
@@ -1782,6 +1795,7 @@ const CustomerAnalyticsPage: React.FC = () => {
         {/* Tab Content */}
         {activeTab === 'overview' && <OverviewTab />}
         {activeTab === 'customers' && <CustomersTab />}
+        {activeTab === 'membership-settings' && <MembershipSettingsComponent />}
         {activeTab === 'reward-settings' && <RewardSettingsTab />}
       </div>
     </div>

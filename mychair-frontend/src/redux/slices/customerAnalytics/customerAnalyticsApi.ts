@@ -21,6 +21,8 @@ import type {
   RenewMembershipPayload,
   CustomerMembershipDetail,
   CustomerMembershipRecord,
+  MembershipSettings,
+  MembershipSettingsUpdatePayload,
 } from './Types';
 
 export const customerAnalyticsApi = baseApi.injectEndpoints({
@@ -179,6 +181,27 @@ export const customerAnalyticsApi = baseApi.injectEndpoints({
       providesTags: (_result, _error, customerId) => [{ type: 'Customers', id: customerId }],
     }),
 
+    // ── Membership Settings ─────────────────────────────────────────────
+    getMembershipSettings: builder.query<ApiResponse<MembershipSettings>, void>({
+      query: () => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.MEMBERSHIP_SETTINGS,
+        method: HTTP_METHODS.GET,
+      }),
+      providesTags: ['MembershipSettings'],
+    }),
+
+    updateMembershipSettings: builder.mutation<
+      ApiResponse<MembershipSettings>,
+      MembershipSettingsUpdatePayload
+    >({
+      query: (payload) => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.MEMBERSHIP_SETTINGS,
+        method: HTTP_METHODS.PUT,
+        body: payload,
+      }),
+      invalidatesTags: ['MembershipSettings'],
+    }),
+
     // ── Reward Settings ───────────────────────────────────────────────────
     getRewardSettings: builder.query<ApiResponse<RewardSettings>, void>({
       query: () => ({
@@ -250,6 +273,8 @@ export const {
   useRenewCustomerMembershipMutation,
   useGetCustomerMembershipQuery,
   useGetCustomerMembershipHistoryQuery,
+  useGetMembershipSettingsQuery,
+  useUpdateMembershipSettingsMutation,
   useGetRewardSettingsQuery,
   useUpdateRewardSettingsMutation,
   useCreateRewardSegmentMutation,

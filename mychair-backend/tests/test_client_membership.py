@@ -3,7 +3,9 @@ from types import SimpleNamespace
 import pytest
 from app.services.customer_membership import (
     calculate_membership_dates,
+    calculate_membership_dates_v2,
     calculate_renewal_dates,
+    calculate_renewal_dates_v2,
     get_effective_membership_status,
     is_membership_active,
     serialize_membership_info,
@@ -155,3 +157,33 @@ def test_serialize_membership_info_expiring_soon():
     assert info["membership_status"] == "ACTIVE"
     assert info["is_expiring_soon"] is True
     assert info["days_until_expiry"] <= 30
+
+
+def test_calculate_membership_dates_v2_days():
+    start = datetime(2026, 8, 18, 10, 0, 0, tzinfo=timezone.utc)
+    s_date, e_date = calculate_membership_dates_v2(start_date=start, duration_number=30, duration_unit="Days")
+    assert s_date.year == 2026 and s_date.month == 8 and s_date.day == 18
+    assert e_date.hour == 23 and e_date.minute == 59 and e_date.second == 59
+
+
+def test_calculate_membership_dates_v2_months():
+    start = datetime(2026, 8, 18, 10, 0, 0, tzinfo=timezone.utc)
+    s_date, e_date = calculate_membership_dates_v2(start_date=start, duration_number=3, duration_unit="Months")
+    assert s_date.year == 2026 and s_date.month == 8 and s_date.day == 18
+    assert e_date.month == 11 and e_date.day == 17
+
+
+def test_calculate_renewal_dates_v2_months():
+    now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
+    cust = SimpleNamespace(
+        first_name="Jane",
+        last_name="Doe",
+        is_member=True,
+        membership_status="ACTIVE",
+        membership_start_date=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        membership_end_date=datetime(2026, 12, 31, 23, 59, 59, tzinfo=timezone.utc),
+    )
+    r_start, r_end = calculate_renewal_dates_v2(cust, duration_number=6, duration_unit="Months", current_time=now)
+    assert r_start.year == 2027 and r_start.month == 1 and r_start.day == 1
+    assert r_end.month == 6 and r_end.day == 30
+
