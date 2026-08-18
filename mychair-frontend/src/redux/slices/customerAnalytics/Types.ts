@@ -7,15 +7,62 @@ export interface Customer {
   email?: string;
   gender?: string;
   dob?: string;
+  anniversary_date?: string;
   address?: string;
   notes?: string;
   is_member: boolean;
+  membership_status?: 'ACTIVE' | 'EXPIRED' | 'NON_MEMBER';
+  membership_start_date?: string | null;
+  membership_end_date?: string | null;
+  membership_type?: string | null;
+  membership_created_by?: string | null;
+  is_expiring_soon?: boolean;
+  days_until_expiry?: number | null;
   reward_points: number;
   total_visits: number;
   total_spent: number;
   last_visit_at?: string;
   created_at: string;
   is_deleted: boolean;
+}
+
+export interface CustomerMembershipRecord {
+  id: string;
+  customer_id: string;
+  membership_type: string;
+  membership_start_date: string;
+  membership_end_date: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | string;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
+}
+
+export interface CustomerMembershipDetail {
+  customer_id: string;
+  customer_name?: string;
+  is_member: boolean;
+  membership_status: 'ACTIVE' | 'EXPIRED' | 'NON_MEMBER';
+  membership_start_date?: string | null;
+  membership_end_date?: string | null;
+  membership_type?: string | null;
+  membership_created_by?: string | null;
+  is_expiring_soon?: boolean;
+  days_until_expiry?: number | null;
+  history: CustomerMembershipRecord[];
+}
+
+export interface AddMembershipPayload {
+  customerId: string;
+  duration_years?: number;
+  membership_type?: string;
+  start_date?: string;
+}
+
+export interface RenewMembershipPayload {
+  customerId: string;
+  duration_years?: number;
+  membership_type?: string;
 }
 
 export interface AppointmentHistoryItem {
@@ -45,6 +92,7 @@ export interface CustomerDetail extends Customer {
   appointment_history: AppointmentHistoryItem[];
   billing_history: BillingHistoryItem[];
   reward_transactions: RewardTransaction[];
+  membership_history?: CustomerMembershipRecord[];
 }
 
 export interface OverviewKPIs {
@@ -52,6 +100,10 @@ export interface OverviewKPIs {
   active_customers: number;
   new_customers: number;
   repeat_customers: number;
+  total_members?: number;
+  active_members?: number;
+  expiring_soon_members?: number;
+  expired_members?: number;
   total_reward_points_issued: number;
   top_reward_customer: { id: string; name: string; points: number } | null;
   monthly_new_customers: Array<{ month: string; count: number }>;
@@ -95,9 +147,11 @@ export interface CustomerCreatePayload {
   email?: string;
   gender?: string;
   dob?: string;
+  anniversary_date?: string;
   address?: string;
   notes?: string;
   is_member?: boolean;
+  membership_end_date?: string;
 }
 
 export interface CustomerUpdatePayload extends Partial<CustomerCreatePayload> {

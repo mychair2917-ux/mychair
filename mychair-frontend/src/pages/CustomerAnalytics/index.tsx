@@ -16,6 +16,10 @@ import {
   Users,
   Sparkles,
   X,
+  Crown,
+  AlertCircle,
+  Calendar,
+  ShieldCheck,
 } from 'lucide-react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -24,6 +28,7 @@ import '../../utils/echarts-init';
 import { Button, Input, Select, showToast } from '../../components/common';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../../components/common/Modal';
 import BulkClientUploadModal from '../../components/customerAnalytics/BulkClientUploadModal';
+import { AddRenewMembershipModal } from './AddRenewMembershipModal';
 import { cn } from '../../utils/cn';
 import { formatCurrency } from '../../utils/currency';
 import { formatDateDMY, toDateInputValue } from '../../utils/utilities';
@@ -71,16 +76,34 @@ const canManageMembership = (role: string | undefined): boolean => {
   );
 };
 
-const MembershipBadge: React.FC<{ isMember?: boolean }> = ({ isMember }) => (
-  <span
-    className={cn(
-      'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
-      isMember ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-600'
-    )}
-  >
-    {isMember ? 'Member' : 'Non-member'}
-  </span>
-);
+const MembershipBadge: React.FC<{ customer?: Customer; isMember?: boolean }> = ({
+  customer,
+  isMember,
+}) => {
+  const status =
+    customer?.membership_status ||
+    (customer?.is_member || isMember ? 'ACTIVE' : 'NON_MEMBER');
+
+  if (status === 'ACTIVE') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">
+        <Crown className="w-3.5 h-3.5 text-amber-500" /> Active Member
+      </span>
+    );
+  }
+  if (status === 'EXPIRED') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">
+        <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Expired Member
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+      Non-member
+    </span>
+  );
+};
 
 const SectionCard: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -164,6 +187,7 @@ const CustomerSchema = Yup.object({
   email: Yup.string().email('Enter a valid email').optional(),
   gender: Yup.string().optional(),
   dob: Yup.string().optional(),
+  anniversary_date: Yup.string().optional(),
   address: Yup.string().optional(),
   notes: Yup.string().optional(),
 });
@@ -260,6 +284,20 @@ const OverviewTab: React.FC = () => {
       value: overview?.total_customers ?? 0,
       icon: Users,
       tone: 'bg-blue-50 text-blue-700',
+    },
+    {
+      label: 'Active Members',
+      value: overview?.active_members ?? 0,
+      icon: Crown,
+      tone: 'bg-emerald-50 text-emerald-700',
+      sub: 'Valid 1-yr membership',
+    },
+    {
+      label: 'Expiring Soon',
+      value: overview?.expiring_soon_members ?? 0,
+      icon: AlertCircle,
+      tone: 'bg-amber-50 text-amber-700',
+      sub: 'Expires in next 30 days',
     },
     {
       label: 'Active Customers',
@@ -381,9 +419,11 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
       email: editCustomer?.email ?? '',
       gender: editCustomer?.gender ?? '',
       dob: editCustomer?.dob ? toDateInputValue(editCustomer.dob) : '',
+      anniversary_date: editCustomer?.anniversary_date ? toDateInputValue(editCustomer.anniversary_date) : '',
       address: editCustomer?.address ?? '',
       notes: editCustomer?.notes ?? '',
       is_member: Boolean(editCustomer?.is_member),
+      membership_end_date: editCustomer?.membership_end_date ? toDateInputValue(editCustomer.membership_end_date) : '',
     },
     validationSchema: CustomerSchema,
     onSubmit: async (values, helpers) => {
@@ -395,9 +435,15 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           email: values.email || undefined,
           gender: values.gender || undefined,
           dob: values.dob || undefined,
+          anniversary_date: values.anniversary_date || undefined,
           address: values.address || undefined,
           notes: values.notes || undefined,
-          ...(allowMembership ? { is_member: Boolean(values.is_member) } : {}),
+          ...(allowMembership
+            ? {
+                is_member: Boolean(values.is_member),
+                membership_end_date: values.is_member && values.membership_end_date ? values.membership_end_date : undefined,
+              }
+            : {}),
         };
 
         const phoneCheck = await checkCustomerPhone({
@@ -452,7 +498,7 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   if (!open) return null;
 
   const field = (
-    name: Exclude<keyof typeof formik.values, 'is_member'>,
+    name: Exclude<keyof typeof formik.values, 'is_member' | 'membership_end_date'>,
     label: string,
     type = 'text',
     required = false
@@ -560,20 +606,55 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                   ]}
                 />
               </div>
-              {field('dob', 'Date of Birth', 'date')}
+              {field('dob', 'Date of Birth (Birthday)', 'date')}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {field('anniversary_date', 'Anniversary Date', 'date')}
             </div>
             {field('address', 'Address')}
             {allowMembership && (
-              <label className="flex items-center gap-2 text-sm text-[var(--color-text-primary)]">
-                <input
-                  type="checkbox"
-                  name="is_member"
-                  checked={formik.values.is_member}
-                  onChange={formik.handleChange}
-                  className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
-                />
-                Member
-              </label>
+              <div className="space-y-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 p-3.5 border border-amber-200/70 dark:border-amber-800/40">
+                <label className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
+                  <input
+                    type="checkbox"
+                    name="is_member"
+                    checked={formik.values.is_member}
+                    onChange={(e) => {
+                      formik.handleChange(e);
+                      if (e.target.checked && !formik.values.membership_end_date) {
+                        const defaultExpiry = new Date();
+                        defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
+                        defaultExpiry.setDate(defaultExpiry.getDate() - 1);
+                        formik.setFieldValue('membership_end_date', toDateInputValue(defaultExpiry));
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
+                  />
+                  Member
+                </label>
+                {formik.values.is_member && (
+                  <div className="pt-1">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Membership Expiry Date
+                    </label>
+                    <Input
+                      type="date"
+                      name="membership_end_date"
+                      value={formik.values.membership_end_date}
+                      onChange={formik.handleChange}
+                      onBlur={formik.handleBlur}
+                      className={cn(
+                        formik.touched.membership_end_date && formik.errors.membership_end_date ? 'border-red-400' : ''
+                      )}
+                    />
+                    {formik.values.membership_end_date && (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 font-medium">
+                        Expires on {formatDateDMY(formik.values.membership_end_date)}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
             {!allowMembership && isEdit && (
               <div className="flex items-center gap-2 text-sm">
@@ -623,12 +704,22 @@ interface CustomerProfileProps {
 }
 
 const CustomerProfile: React.FC<CustomerProfileProps> = ({ customerId, onClose }) => {
+  const { user } = useAppSelector((state) => state.auth);
+  const allowManageMembership = canManageMembership(user?.role);
+  const [membershipModal, setMembershipModal] = useState<{
+    isOpen: boolean;
+    mode: 'add' | 'renew';
+  }>({ isOpen: false, mode: 'add' });
+
   const { data: res, isLoading } = useGetCustomerByIdQuery(customerId ?? '', {
     skip: !customerId,
   });
   const detail = res?.data;
 
   if (!customerId) return null;
+
+  const isMemberActive = detail?.membership_status === 'ACTIVE';
+  const isMemberExpired = detail?.membership_status === 'EXPIRED';
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -662,6 +753,86 @@ const CustomerProfile: React.FC<CustomerProfileProps> = ({ customerId, onClose }
 
           {detail && (
             <>
+              {/* Membership Card */}
+              <SectionCard className="border-amber-200/80 bg-gradient-to-br from-white via-amber-50/20 to-yellow-50/30">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-gradient-to-tr from-amber-500 to-yellow-400 text-white rounded-xl shadow-sm">
+                      <Crown className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900">
+                        Client Membership
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {detail.membership_type || 'Standard Membership'}
+                      </p>
+                    </div>
+                  </div>
+                  <MembershipBadge customer={detail} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 p-3 bg-white/80 rounded-xl border border-slate-100 text-xs mb-3">
+                  <div>
+                    <span className="block text-slate-400 font-medium">Valid From</span>
+                    <span className="font-semibold text-slate-800">
+                      {detail.membership_start_date
+                        ? formatDateDMY(detail.membership_start_date)
+                        : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-slate-400 font-medium">Expiry Date</span>
+                    <span className="font-semibold text-amber-600">
+                      {detail.membership_end_date
+                        ? formatDateDMY(detail.membership_end_date)
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+
+                {detail.membership_end_date && (
+                  <div className="mb-4">
+                    {isMemberActive && (
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50 p-2 rounded-lg border border-emerald-200/50">
+                        <Sparkles className="w-4 h-4 shrink-0 text-emerald-500" />
+                        {detail.days_until_expiry !== null && detail.days_until_expiry !== undefined
+                          ? `${detail.days_until_expiry} days remaining in active subscription`
+                          : 'Active membership status'}
+                      </div>
+                    )}
+                    {isMemberExpired && (
+                      <div className="flex items-center gap-1.5 text-xs text-amber-700 font-medium bg-amber-50 p-2 rounded-lg border border-amber-200/50">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                        Membership expired. Renew to re-activate member discounts.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {allowManageMembership && (
+                  <div className="flex justify-end pt-1">
+                    {isMemberActive || isMemberExpired ? (
+                      <button
+                        type="button"
+                        onClick={() => setMembershipModal({ isOpen: true, mode: 'renew' })}
+                        className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-amber-900 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 rounded-xl shadow-md shadow-amber-500/20 transition"
+                      >
+                        <ShieldCheck className="w-4 h-4" /> Renew Membership
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setMembershipModal({ isOpen: true, mode: 'add' })}
+                        className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-yellow-600 rounded-xl shadow-md shadow-amber-500/20 transition"
+                      >
+                        <Crown className="w-4 h-4" /> Enroll Membership (1 Year)
+                      </button>
+                    )}
+                  </div>
+                )}
+              </SectionCard>
+
               {/* Basic Info */}
               <SectionCard>
                 <h3 className="mb-3 font-bold text-[var(--color-text-primary)]">Basic Info</h3>
@@ -671,7 +842,8 @@ const CustomerProfile: React.FC<CustomerProfileProps> = ({ customerId, onClose }
                     ['Mobile', detail.phone],
                     ['Email', detail.email ?? '—'],
                     ['Gender', detail.gender ?? '—'],
-                    ['DOB', detail.dob ? formatDateDMY(detail.dob) : '—'],
+                    ['DOB (Birthday)', detail.dob ? formatDateDMY(detail.dob) : '—'],
+                    ['Anniversary', detail.anniversary_date ? formatDateDMY(detail.anniversary_date) : '—'],
                     ['Address', detail.address ?? '—'],
                     ['Membership', detail.is_member ? 'Member' : 'Non-member'],
                   ].map(([k, v]) => (
@@ -682,6 +854,51 @@ const CustomerProfile: React.FC<CustomerProfileProps> = ({ customerId, onClose }
                   ))}
                 </dl>
               </SectionCard>
+
+              {/* Membership History Table */}
+              {detail.membership_history && detail.membership_history.length > 0 && (
+                <SectionCard>
+                  <h3 className="mb-3 font-bold text-[var(--color-text-primary)]">
+                    Membership History
+                  </h3>
+                  <TableShell>
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
+                        <tr>
+                          <th className="whitespace-nowrap px-3 py-2 text-left font-bold">Start Date</th>
+                          <th className="whitespace-nowrap px-3 py-2 text-left font-bold">Expiry Date</th>
+                          <th className="whitespace-nowrap px-3 py-2 text-left font-bold">Type</th>
+                          <th className="whitespace-nowrap px-3 py-2 text-left font-bold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--color-border-soft)]">
+                        {detail.membership_history.map((rec) => (
+                          <tr key={rec.id} className="hover:bg-[var(--color-surface-bg)]/70">
+                            <td className="whitespace-nowrap px-3 py-2 text-xs">
+                              {formatDateDMY(rec.membership_start_date)}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold text-amber-700">
+                              {formatDateDMY(rec.membership_end_date)}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-xs">{rec.membership_type}</td>
+                            <td className="whitespace-nowrap px-3 py-2">
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                  rec.status === 'ACTIVE'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {rec.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableShell>
+                </SectionCard>
+              )}
 
               {/* Analytics */}
               <SectionCard>
@@ -820,6 +1037,15 @@ const CustomerProfile: React.FC<CustomerProfileProps> = ({ customerId, onClose }
             </>
           )}
         </div>
+
+        {detail && (
+          <AddRenewMembershipModal
+            isOpen={membershipModal.isOpen}
+            onClose={() => setMembershipModal({ isOpen: false, mode: 'add' })}
+            customer={detail}
+            mode={membershipModal.mode}
+          />
+        )}
       </div>
     </div>
   );
@@ -841,8 +1067,10 @@ const STATUS_OPTIONS = [
 ];
 
 const MEMBERSHIP_OPTIONS = [
-  { value: '', label: 'All' },
-  { value: 'members', label: 'Members' },
+  { value: '', label: 'All Memberships' },
+  { value: 'active', label: 'Active Members' },
+  { value: 'expired', label: 'Expired Members' },
+  { value: 'expiring_soon', label: 'Expiring Soon' },
   { value: 'non_members', label: 'Non-members' },
 ];
 
@@ -919,29 +1147,32 @@ const CustomersTab: React.FC = () => {
       <SectionCard>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
                 value={search}
                 onChange={handleSearchChange}
                 placeholder="Search by name, mobile, email…"
-                className="pl-9"
+                className="pl-9 w-full"
               />
             </div>
             <Select
               value={gender}
               onChange={(e) => { setGender(e.target.value); setPage(1); }}
               options={GENDER_OPTIONS}
+              className="w-full sm:w-28 md:w-32"
             />
             <Select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
               options={STATUS_OPTIONS}
+              className="w-full sm:w-28 md:w-32"
             />
             <Select
               value={membershipFilter}
               onChange={(e) => { setMembershipFilter(e.target.value); setPage(1); }}
               options={MEMBERSHIP_OPTIONS}
+              className="w-full sm:w-36 md:w-40"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -980,6 +1211,7 @@ const CustomersTab: React.FC = () => {
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Mobile</th>
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Gender</th>
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Membership</th>
+              <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Membership Expiry</th>
               <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Visits</th>
               <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Points</th>
               <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Last Visit</th>
@@ -990,12 +1222,12 @@ const CustomersTab: React.FC = () => {
           <tbody className="divide-y divide-[var(--color-border-soft)]">
             {isLoading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-500">
+                <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-500">
                   Loading customers…
                 </td>
               </tr>
             ) : customers.length === 0 ? (
-              <EmptyRow cols={9} message="No customers found. Add your first customer." />
+              <EmptyRow cols={10} message="No customers found. Add your first customer." />
             ) : (
               customers.map((c) => (
                 <tr
@@ -1017,7 +1249,38 @@ const CustomersTab: React.FC = () => {
                     {c.gender ? c.gender.charAt(0) + c.gender.slice(1).toLowerCase() : '—'}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
-                    <MembershipBadge isMember={c.is_member} />
+                    <MembershipBadge customer={c} isMember={c.is_member} />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-xs">
+                    {c.membership_end_date ? (
+                      c.membership_status === 'ACTIVE' || c.is_member ? (
+                        c.is_expiring_soon ? (
+                          <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+                            <Calendar className="h-3 w-3 text-amber-500" />
+                            {formatDateDMY(c.membership_end_date)} ({c.days_until_expiry}d left)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 font-medium text-slate-700">
+                            <Calendar className="h-3 w-3 text-slate-400" />
+                            {formatDateDMY(c.membership_end_date)}
+                          </span>
+                        )
+                      ) : c.membership_status === 'EXPIRED' ? (
+                        <span className="inline-flex items-center gap-1 font-medium text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/60">
+                          <Calendar className="h-3 w-3 text-rose-400" />
+                          Expired {formatDateDMY(c.membership_end_date)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )
+                    ) : c.is_member || c.membership_status === 'ACTIVE' ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                        <Calendar className="h-3 w-3 text-emerald-500" />
+                        Active Member
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold">
                     {c.total_visits}

@@ -118,6 +118,29 @@ async def get_analytics_overview(
             "points": pts,
         })
 
+    # Membership KPIs
+    from app.services.customer_membership import (
+        get_effective_membership_status,
+        STATUS_ACTIVE,
+        STATUS_EXPIRED,
+    )
+
+    total_members = sum(
+        1 for c in all_customers if get_effective_membership_status(c, now) in {STATUS_ACTIVE, STATUS_EXPIRED}
+    )
+    active_members = sum(
+        1 for c in all_customers if get_effective_membership_status(c, now) == STATUS_ACTIVE
+    )
+    expired_members = sum(
+        1 for c in all_customers if get_effective_membership_status(c, now) == STATUS_EXPIRED
+    )
+    expiring_soon_members = sum(
+        1 for c in all_customers
+        if get_effective_membership_status(c, now) == STATUS_ACTIVE
+        and c.membership_end_date is not None
+        and 0 <= ((_to_utc(c.membership_end_date) - now).total_seconds() // 86400) <= 30
+    )
+
     return success_response(
         "Analytics overview retrieved successfully",
         data={
@@ -125,6 +148,10 @@ async def get_analytics_overview(
             "active_customers": active_customers,
             "new_customers": new_customers,
             "repeat_customers": repeat_customers,
+            "total_members": total_members,
+            "active_members": active_members,
+            "expiring_soon_members": expiring_soon_members,
+            "expired_members": expired_members,
             "total_reward_points_issued": total_reward_points_issued,
             "top_reward_customer": top_reward_customer,
             "monthly_new_customers": monthly_new_customers,

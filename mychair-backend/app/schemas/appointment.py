@@ -84,6 +84,8 @@ class CustomerQuickCreate(BaseModel):
     phone: str = Field(..., min_length=5, max_length=20)
     email: Optional[str] = Field(default=None, max_length=120)
     gender: Optional[str] = Field(default=None, max_length=30)
+    dob: Optional[str] = Field(default=None, description="ISO date string YYYY-MM-DD")
+    anniversary_date: Optional[str] = Field(default=None, description="ISO date string YYYY-MM-DD")
     is_member: bool = False
 
     @field_validator("gender")

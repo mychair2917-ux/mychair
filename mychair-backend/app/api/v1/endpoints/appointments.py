@@ -159,6 +159,8 @@ def _customer_response(customer: Customer) -> dict:
         "phone": customer.phone,
         "email": customer.email,
         "gender": customer.gender,
+        "dob": customer.dob.isoformat() if customer.dob else None,
+        "anniversary_date": customer.anniversary_date.isoformat() if getattr(customer, "anniversary_date", None) else None,
         "is_member": bool(getattr(customer, "is_member", False)),
     }
 
@@ -379,6 +381,20 @@ async def create_client(
             status_code=409,
         )
 
+    dob_dt: Optional[datetime] = None
+    if payload.dob:
+        try:
+            dob_dt = datetime.fromisoformat(payload.dob)
+        except ValueError:
+            pass
+
+    anniversary_dt: Optional[datetime] = None
+    if payload.anniversary_date:
+        try:
+            anniversary_dt = datetime.fromisoformat(payload.anniversary_date)
+        except ValueError:
+            pass
+
     name_parts = payload.name.strip().split(maxsplit=1)
     customer = Customer(
         first_name=name_parts[0],
@@ -386,6 +402,8 @@ async def create_client(
         phone=normalized_phone,
         email=payload.email.strip() if payload.email else None,
         gender=payload.gender,
+        dob=dob_dt,
+        anniversary_date=anniversary_dt,
         is_member=bool(payload.is_member),
         tenant_id=tenant_id,
     )

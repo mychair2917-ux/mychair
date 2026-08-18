@@ -1430,6 +1430,8 @@ const Appointments: React.FC = () => {
     phone: '',
     email: '',
     gender: '',
+    dob: '',
+    anniversary_date: '',
     is_member: false,
   });
   const [clientPhoneError, setClientPhoneError] = useState('');
@@ -1715,12 +1717,14 @@ const Appointments: React.FC = () => {
         phone: clientForm.phone.trim(),
         email: clientForm.email.trim() || undefined,
         gender: clientForm.gender,
+        dob: clientForm.dob || undefined,
+        anniversary_date: clientForm.anniversary_date || undefined,
         ...(allowMembership ? { is_member: Boolean(clientForm.is_member) } : {}),
       }).unwrap();
       if (response.data) {
         isProgrammaticChange.current = true;
         setSelectedClient(response.data);
-        setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
+        setClientForm({ name: '', phone: '', email: '', gender: '', dob: '', anniversary_date: '', is_member: false });
         setClientPhoneError('');
         setQuickAddOpen(false);
         setClientSearchResults([response.data]);
@@ -1844,7 +1848,7 @@ const Appointments: React.FC = () => {
     setNotes('');
     setClientSearch('');
     setQuickAddOpen(false);
-    setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
+    setClientForm({ name: '', phone: '', email: '', gender: '', dob: '', anniversary_date: '', is_member: false });
     setInvalidServiceRowIds([]);
     setInvalidProductRowIds([]);
   };
@@ -2309,6 +2313,22 @@ const Appointments: React.FC = () => {
                             Member
                           </label>
                         )}
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Birthday (DOB)</label>
+                        <Input
+                          type="date"
+                          value={clientForm.dob}
+                          onChange={(event) => setClientForm({ ...clientForm, dob: event.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Anniversary Date</label>
+                        <Input
+                          type="date"
+                          value={clientForm.anniversary_date}
+                          onChange={(event) => setClientForm({ ...clientForm, anniversary_date: event.target.value })}
+                        />
                       </div>
                     </div>
                     <Button type="submit" className="mt-3" isLoading={isCreatingClient}>

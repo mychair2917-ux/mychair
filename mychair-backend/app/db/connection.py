@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.employee import Employee
 from app.models.staff import Staff, StaffSchedule
 from app.models.customer import Customer
+from app.models.customer_membership import CustomerMembership
 from app.models.brand import Brand
 from app.models.product import Product
 from app.models.service import Service
@@ -65,6 +66,7 @@ BEANIE_MODELS = [
     Staff,
     StaffSchedule,
     Customer,
+    CustomerMembership,
     Brand,
     Product,
     Service,

@@ -17,6 +17,10 @@ import type {
   RewardSettingsUpdatePayload,
   SegmentCreatePayload,
   SegmentUpdatePayload,
+  AddMembershipPayload,
+  RenewMembershipPayload,
+  CustomerMembershipDetail,
+  CustomerMembershipRecord,
 } from './Types';
 
 export const customerAnalyticsApi = baseApi.injectEndpoints({
@@ -120,6 +124,61 @@ export const customerAnalyticsApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // ── Client Membership Management ─────────────────────────────────────
+    addCustomerMembership: builder.mutation<
+      ApiResponse<{ membership: CustomerMembershipRecord; customer: Customer }>,
+      AddMembershipPayload
+    >({
+      query: ({ customerId, ...body }) => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.MEMBERSHIP(customerId),
+        method: HTTP_METHODS.POST,
+        body,
+      }),
+      invalidatesTags: (_result, _error, { customerId }) => [
+        'Customers',
+        'CustomerAnalytics',
+        { type: 'Customers', id: customerId },
+      ],
+    }),
+
+    renewCustomerMembership: builder.mutation<
+      ApiResponse<{ membership: CustomerMembershipRecord; customer: Customer }>,
+      RenewMembershipPayload
+    >({
+      query: ({ customerId, ...body }) => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.MEMBERSHIP_RENEW(customerId),
+        method: HTTP_METHODS.POST,
+        body,
+      }),
+      invalidatesTags: (_result, _error, { customerId }) => [
+        'Customers',
+        'CustomerAnalytics',
+        { type: 'Customers', id: customerId },
+      ],
+    }),
+
+    getCustomerMembership: builder.query<
+      ApiResponse<CustomerMembershipDetail>,
+      string
+    >({
+      query: (customerId) => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.MEMBERSHIP(customerId),
+        method: HTTP_METHODS.GET,
+      }),
+      providesTags: (_result, _error, customerId) => [{ type: 'Customers', id: customerId }],
+    }),
+
+    getCustomerMembershipHistory: builder.query<
+      ApiResponse<{ customer_id: string; history: CustomerMembershipRecord[] }>,
+      string
+    >({
+      query: (customerId) => ({
+        url: API_PATHS.CUSTOMER_ANALYTICS.MEMBERSHIP_HISTORY(customerId),
+        method: HTTP_METHODS.GET,
+      }),
+      providesTags: (_result, _error, customerId) => [{ type: 'Customers', id: customerId }],
+    }),
+
     // ── Reward Settings ───────────────────────────────────────────────────
     getRewardSettings: builder.query<ApiResponse<RewardSettings>, void>({
       query: () => ({
@@ -187,6 +246,10 @@ export const {
   useDeleteCustomerMutation,
   useImportCustomersMutation,
   useLazyDownloadCustomerImportTemplateQuery,
+  useAddCustomerMembershipMutation,
+  useRenewCustomerMembershipMutation,
+  useGetCustomerMembershipQuery,
+  useGetCustomerMembershipHistoryQuery,
   useGetRewardSettingsQuery,
   useUpdateRewardSettingsMutation,
   useCreateRewardSegmentMutation,

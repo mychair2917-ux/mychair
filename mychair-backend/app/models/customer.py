@@ -16,6 +16,7 @@ class Customer(BaseTenantDocument):
     # Extended profile
     gender: Optional[str] = Field(default=None)   # MALE / FEMALE / OTHER
     dob: Optional[datetime] = Field(default=None)
+    anniversary_date: Optional[datetime] = Field(default=None)
     address: Optional[str] = Field(default=None)
 
     # CRM details
@@ -30,8 +31,15 @@ class Customer(BaseTenantDocument):
     total_spent: float = Field(default=0.0)
     last_visit_at: Optional[datetime] = Field(default=None)
 
-    # Membership — optional member pricing at the salon (not a subscription plan)
+    # Membership fields
     is_member: bool = Field(default=False)
+    membership_status: Optional[str] = Field(default="NON_MEMBER")
+    membership_start_date: Optional[datetime] = Field(default=None)
+    membership_end_date: Optional[datetime] = Field(default=None)
+    membership_type: Optional[str] = Field(default=None)
+    membership_created_by: Optional[str] = Field(default=None)
+    membership_created_at: Optional[datetime] = Field(default=None)
+    membership_updated_at: Optional[datetime] = Field(default=None)
 
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
@@ -42,6 +50,9 @@ class Customer(BaseTenantDocument):
             "phone",
             "email",
             "is_deleted",
+            "is_member",
+            "membership_status",
+            "membership_end_date",
         ]
 
     @property

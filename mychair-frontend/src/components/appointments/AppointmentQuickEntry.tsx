@@ -120,6 +120,8 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
     phone: '',
     email: '',
     gender: '',
+    dob: '',
+    anniversary_date: '',
     is_member: false,
   });
   const [clientPhoneError, setClientPhoneError] = useState('');
@@ -264,6 +266,8 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
         phone: clientForm.phone.trim(),
         email: clientForm.email.trim() || undefined,
         gender: clientForm.gender,
+        dob: clientForm.dob || undefined,
+        anniversary_date: clientForm.anniversary_date || undefined,
         ...(allowMembership ? { is_member: Boolean(clientForm.is_member) } : {}),
       }).unwrap();
 
@@ -271,7 +275,7 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
         isProgrammaticChange.current = true;
         setCustomerName(response.data.name || '');
         setPhone(response.data.phone || '');
-        setClientForm({ name: '', phone: '', email: '', gender: '', is_member: false });
+        setClientForm({ name: '', phone: '', email: '', gender: '', dob: '', anniversary_date: '', is_member: false });
         setClientPhoneError('');
         setQuickAddOpen(false);
         setShowDropdown(false);
@@ -458,6 +462,22 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
                   Member
                 </label>
               )}
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Birthday (DOB)</label>
+              <Input
+                type="date"
+                value={clientForm.dob}
+                onChange={(event) => setClientForm({ ...clientForm, dob: event.target.value })}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Anniversary Date</label>
+              <Input
+                type="date"
+                value={clientForm.anniversary_date}
+                onChange={(event) => setClientForm({ ...clientForm, anniversary_date: event.target.value })}
+              />
             </div>
           </div>
           <div className="mt-3 flex gap-2 justify-end">

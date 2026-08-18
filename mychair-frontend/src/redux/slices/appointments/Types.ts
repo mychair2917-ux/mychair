@@ -4,6 +4,8 @@ export interface AppointmentClient {
   phone: string;
   email?: string | null;
   gender?: string | null;
+  dob?: string | null;
+  anniversary_date?: string | null;
   is_member?: boolean;
 }
 
@@ -201,6 +203,8 @@ export interface CreateAppointmentClientRequest {
   phone: string;
   email?: string;
   gender: string;
+  dob?: string;
+  anniversary_date?: string;
   is_member?: boolean;
 }
 

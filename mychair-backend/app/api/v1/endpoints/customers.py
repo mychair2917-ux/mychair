@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr, Field
 
-from app.api.dependencies.auth import PermissionChecker
+from app.api.dependencies.auth import PermissionChecker, get_current_user
 from app.auth.rbac_config import (
     ROLE_SALON_ADMIN,
     ROLE_SALON_MANAGER,
@@ -24,6 +24,7 @@ from app.core.exceptions import PermissionDeniedException, ResourceNotFoundExcep
 from app.models.appointment import Appointment
 from app.models.billing import Invoice
 from app.models.customer import Customer
+from app.models.customer_membership import CustomerMembership
 from app.utils.user_name import user_display_name
 from app.models.customer_reward_transaction import CustomerRewardTransaction
 from app.models.user import User
@@ -33,6 +34,15 @@ from app.services.customer_import import (
     build_error_report_csv,
     build_xlsx_template,
     import_customers_from_file,
+)
+from app.services.customer_membership import (
+    calculate_membership_dates,
+    calculate_renewal_dates,
+    get_effective_membership_status,
+    is_membership_active,
+    serialize_membership_info,
+    STATUS_ACTIVE,
+    STATUS_EXPIRED,
 )
 from app.services.customer_phone import (
     customer_display_name,
@@ -79,6 +89,7 @@ def _normalize_customer_phone(raw: str):
 
 
 def _customer_dict(c: Customer) -> dict:
+    membership_info = serialize_membership_info(c)
     return {
         "id": str(c.id),
         "first_name": c.first_name,
@@ -88,15 +99,35 @@ def _customer_dict(c: Customer) -> dict:
         "email": c.email,
         "gender": c.gender,
         "dob": c.dob.isoformat() if c.dob else None,
+        "anniversary_date": c.anniversary_date.isoformat() if getattr(c, "anniversary_date", None) else None,
         "address": c.address,
         "notes": c.notes,
-        "is_member": bool(getattr(c, "is_member", False)),
         "reward_points": c.reward_points or 0,
         "total_visits": c.total_visits or 0,
         "total_spent": c.total_spent or 0.0,
         "last_visit_at": c.last_visit_at.isoformat() if c.last_visit_at else None,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "is_deleted": c.is_deleted,
+        **membership_info,
+    }
+
+
+def _membership_record_dict(rec: CustomerMembership) -> dict:
+    now = now_utc()
+    rec_status = rec.status
+    if rec_status == "ACTIVE" and rec.membership_end_date and now > rec.membership_end_date:
+        rec_status = "EXPIRED"
+
+    return {
+        "id": str(rec.id),
+        "customer_id": rec.customer_id,
+        "membership_type": rec.membership_type,
+        "membership_start_date": rec.membership_start_date.isoformat() if rec.membership_start_date else None,
+        "membership_end_date": rec.membership_end_date.isoformat() if rec.membership_end_date else None,
+        "status": rec_status,
+        "created_by": rec.created_by,
+        "created_by_name": rec.created_by_name or "—",
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
     }
 
 
@@ -109,9 +140,11 @@ class CustomerCreate(BaseModel):
     email: Optional[EmailStr] = None
     gender: Optional[str] = None
     dob: Optional[str] = None          # ISO date string YYYY-MM-DD
+    anniversary_date: Optional[str] = None # ISO date string YYYY-MM-DD
     address: Optional[str] = None
     notes: Optional[str] = None
     is_member: bool = False
+    membership_end_date: Optional[str] = None
 
 
 class CustomerUpdate(BaseModel):
@@ -121,9 +154,22 @@ class CustomerUpdate(BaseModel):
     email: Optional[EmailStr] = None
     gender: Optional[str] = None
     dob: Optional[str] = None
+    anniversary_date: Optional[str] = None
     address: Optional[str] = None
     notes: Optional[str] = None
     is_member: Optional[bool] = None
+    membership_end_date: Optional[str] = None
+
+
+class CustomerMembershipCreate(BaseModel):
+    duration_years: int = Field(default=1, ge=1, le=10)
+    membership_type: Optional[str] = Field(default="Standard Membership")
+    start_date: Optional[str] = Field(default=None)  # YYYY-MM-DD or ISO format
+
+
+class CustomerMembershipRenew(BaseModel):
+    duration_years: int = Field(default=1, ge=1, le=10)
+    membership_type: Optional[str] = Field(default=None)
 
 
 # ─────────────────────────────── import / utilities ─────────────────────────────
@@ -285,14 +331,59 @@ async def list_customers(
 
     if membership:
         membership_key = membership.strip().lower().replace("-", "_")
-        if membership_key in {"members", "member"}:
-            query["is_member"] = True
+        now = now_utc()
+        if membership_key in {"active", "active_members", "members", "member"}:
+            and_clauses.append(
+                {
+                    "$or": [
+                        {"membership_end_date": {"$gte": now}},
+                        {
+                            "$and": [
+                                {"is_member": True},
+                                {
+                                    "$or": [
+                                        {"membership_end_date": None},
+                                        {"membership_end_date": {"$exists": False}},
+                                    ]
+                                },
+                            ]
+                        },
+                    ]
+                }
+            )
+        elif membership_key in {"expired", "expired_members"}:
+            query["membership_end_date"] = {"$lt": now}
+        elif membership_key in {"expiring_soon", "expiring"}:
+            from datetime import timedelta
+            in_30_days = now + timedelta(days=30)
+            query["membership_end_date"] = {"$gte": now, "$lte": in_30_days}
         elif membership_key in {"non_members", "non_member", "nonmembers"}:
             and_clauses.append(
                 {
                     "$or": [
-                        {"is_member": False},
-                        {"is_member": {"$exists": False}},
+                        {"membership_end_date": {"$lt": now}},
+                        {
+                            "$and": [
+                                {"is_member": False},
+                                {
+                                    "$or": [
+                                        {"membership_end_date": None},
+                                        {"membership_end_date": {"$exists": False}},
+                                    ]
+                                },
+                            ]
+                        },
+                        {
+                            "$and": [
+                                {"membership_status": "NON_MEMBER"},
+                                {
+                                    "$or": [
+                                        {"membership_end_date": None},
+                                        {"membership_end_date": {"$exists": False}},
+                                    ]
+                                },
+                            ]
+                        },
                     ]
                 }
             )
@@ -417,6 +508,16 @@ async def get_customer(
         for t in txns
     ]
 
+    # Membership history
+    membership_records = (
+        await CustomerMembership.find(
+            {"customer_id": str(customer.id), "is_deleted": False}
+        )
+        .sort("-created_at")
+        .to_list()
+    )
+    membership_history = [_membership_record_dict(r) for r in membership_records]
+
     return success_response(
         "Customer retrieved successfully",
         data={
@@ -424,6 +525,7 @@ async def get_customer(
             "appointment_history": appointment_history,
             "billing_history": billing_history,
             "reward_transactions": reward_transactions,
+            "membership_history": membership_history,
         },
     )
 
@@ -461,10 +563,30 @@ async def create_customer(
         except ValueError:
             return error_response("Invalid date of birth format.", status_code=422)
 
+    anniversary_dt: Optional[datetime] = None
+    if payload.anniversary_date:
+        try:
+            anniversary_dt = datetime.fromisoformat(payload.anniversary_date)
+        except ValueError:
+            return error_response("Invalid anniversary date format.", status_code=422)
+
     if payload.is_member and not _can_manage_membership(current_user):
         raise PermissionDeniedException(
             detail="Only Super Admin or Salon Owner can mark a client as a member"
         )
+
+    is_mem = bool(payload.is_member)
+    start_date, end_date = (None, None)
+    if is_mem:
+        if payload.membership_end_date and payload.membership_end_date.strip():
+            try:
+                raw_dt = datetime.fromisoformat(payload.membership_end_date.strip())
+                end_date = raw_dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+                start_date = now_utc()
+            except ValueError:
+                return error_response("Invalid membership expiry date format.", status_code=422)
+        else:
+            start_date, end_date = calculate_membership_dates(years=1)
 
     customer = Customer(
         first_name=payload.first_name.strip(),
@@ -473,12 +595,33 @@ async def create_customer(
         email=payload.email,
         gender=payload.gender.upper() if payload.gender else None,
         dob=dob_dt,
+        anniversary_date=anniversary_dt,
         address=payload.address,
         notes=payload.notes,
-        is_member=bool(payload.is_member),
+        is_member=is_mem,
+        membership_status="ACTIVE" if is_mem else "NON_MEMBER",
+        membership_start_date=start_date,
+        membership_end_date=end_date,
+        membership_type="Standard Membership" if is_mem else None,
+        membership_created_by=str(current_user.id) if is_mem else None,
+        membership_created_at=now_utc() if is_mem else None,
+        membership_updated_at=now_utc() if is_mem else None,
         tenant_id=tenant_id,
     )
     await customer.insert()
+
+    if is_mem:
+        membership_record = CustomerMembership(
+            customer_id=str(customer.id),
+            membership_type="Standard Membership",
+            membership_start_date=start_date,
+            membership_end_date=end_date,
+            status="ACTIVE",
+            tenant_id=customer.tenant_id,
+            created_by_name=user_display_name(current_user),
+        )
+        await membership_record.insert()
+
     recipients = await notification_service._tenant_users_for_roles(
         tenant_id,
         tenant_id,
@@ -553,17 +696,63 @@ async def update_customer(
             customer.dob = datetime.fromisoformat(payload.dob)
         except ValueError:
             return error_response("Invalid date of birth format.", status_code=422)
+    if payload.anniversary_date is not None:
+        if payload.anniversary_date.strip():
+            try:
+                customer.anniversary_date = datetime.fromisoformat(payload.anniversary_date.strip())
+            except ValueError:
+                return error_response("Invalid anniversary date format.", status_code=422)
+        else:
+            customer.anniversary_date = None
     if payload.address is not None:
         customer.address = payload.address
     if payload.notes is not None:
         customer.notes = payload.notes
+
+    if payload.membership_end_date is not None:
+        if payload.membership_end_date.strip():
+            try:
+                raw_dt = datetime.fromisoformat(payload.membership_end_date.strip())
+                end_date = raw_dt.replace(hour=23, minute=59, second=59, microsecond=999999, tzinfo=timezone.utc)
+                customer.membership_end_date = end_date
+                customer.is_member = True
+                customer.membership_status = "ACTIVE" if end_date >= now_utc() else "EXPIRED"
+                customer.membership_updated_at = now_utc()
+            except ValueError:
+                return error_response("Invalid membership expiry date format.", status_code=422)
+        else:
+            customer.membership_end_date = None
+
     if payload.is_member is not None:
         current_member = bool(getattr(customer, "is_member", False))
-        if bool(payload.is_member) != current_member and not _can_manage_membership(current_user):
+        target_member = bool(payload.is_member)
+        if target_member != current_member and not _can_manage_membership(current_user):
             raise PermissionDeniedException(
                 detail="Only Super Admin or Salon Owner can change client membership"
             )
-        customer.is_member = bool(payload.is_member)
+        customer.is_member = target_member
+        if target_member:
+            if customer.membership_end_date is None:
+                s_dt, e_dt = calculate_membership_dates(years=1)
+                customer.membership_start_date = s_dt
+                customer.membership_end_date = e_dt
+                customer.membership_type = customer.membership_type or "Standard Membership"
+                customer.membership_created_by = customer.membership_created_by or str(current_user.id)
+                customer.membership_updated_at = now_utc()
+                membership_record = CustomerMembership(
+                    customer_id=str(customer.id),
+                    membership_type=customer.membership_type,
+                    membership_start_date=s_dt,
+                    membership_end_date=e_dt,
+                    status="ACTIVE",
+                    tenant_id=customer.tenant_id,
+                    created_by_name=user_display_name(current_user),
+                )
+                await membership_record.insert()
+            else:
+                customer.membership_status = "ACTIVE" if customer.membership_end_date >= now_utc() else "EXPIRED"
+        else:
+            customer.membership_status = "NON_MEMBER"
 
     await customer.save()
     return success_response("Customer updated successfully", data=_customer_dict(customer))
@@ -592,3 +781,214 @@ async def delete_customer(
     customer.deleted_at = now_utc()
     await customer.save()
     return success_response("Customer deleted successfully")
+
+
+# ─────────────────────────────── membership management ─────────────────────────
+
+@router.post("/{customer_id}/membership", status_code=status.HTTP_201_CREATED)
+async def add_customer_membership(
+    customer_id: str,
+    payload: CustomerMembershipCreate = CustomerMembershipCreate(),
+    current_user: User = Depends(get_current_user),
+):
+    if not _can_manage_membership(current_user):
+        raise PermissionDeniedException("Only Super Admin, Salon Owner, or Manager can manage memberships")
+
+    tenant_id = _effective_tenant(current_user)
+    try:
+        cust_oid = PydanticObjectId(customer_id)
+    except Exception as exc:
+        raise ResourceNotFoundException("Customer not found") from exc
+
+    query: dict = {"_id": cust_oid, "is_deleted": False}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+
+    customer = await Customer.find_one(query)
+    if not customer:
+        raise ResourceNotFoundException("Customer not found")
+
+    if is_membership_active(customer):
+        return error_response(
+            "Client already has an active membership. Use renewal/extension instead.",
+            status_code=409,
+        )
+
+    start_dt: Optional[datetime] = None
+    if payload.start_date:
+        try:
+            start_dt = datetime.fromisoformat(payload.start_date)
+        except ValueError:
+            return error_response("Invalid start date format. Use YYYY-MM-DD.", status_code=422)
+
+    start_date, end_date = calculate_membership_dates(start_dt, years=payload.duration_years)
+    m_type = (payload.membership_type or "Standard Membership").strip()
+    creator_name = user_display_name(current_user)
+
+    membership_record = CustomerMembership(
+        customer_id=str(customer.id),
+        membership_type=m_type,
+        membership_start_date=start_date,
+        membership_end_date=end_date,
+        status="ACTIVE",
+        tenant_id=customer.tenant_id,
+        created_by_name=creator_name,
+    )
+    await membership_record.insert()
+
+    customer.is_member = True
+    customer.membership_status = "ACTIVE"
+    customer.membership_start_date = start_date
+    customer.membership_end_date = end_date
+    customer.membership_type = m_type
+    customer.membership_created_by = str(current_user.id)
+    customer.membership_created_at = now_utc()
+    customer.membership_updated_at = now_utc()
+    await customer.save()
+
+    return success_response(
+        "Membership enrolled successfully",
+        data={
+            "membership": _membership_record_dict(membership_record),
+            "customer": _customer_dict(customer),
+        },
+        status_code=201,
+    )
+
+
+@router.post("/{customer_id}/membership/renew")
+async def renew_customer_membership(
+    customer_id: str,
+    payload: CustomerMembershipRenew = CustomerMembershipRenew(),
+    current_user: User = Depends(get_current_user),
+):
+    if not _can_manage_membership(current_user):
+        raise PermissionDeniedException("Only Super Admin, Salon Owner, or Manager can manage memberships")
+
+    tenant_id = _effective_tenant(current_user)
+    try:
+        cust_oid = PydanticObjectId(customer_id)
+    except Exception as exc:
+        raise ResourceNotFoundException("Customer not found") from exc
+
+    query: dict = {"_id": cust_oid, "is_deleted": False}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+
+    customer = await Customer.find_one(query)
+    if not customer:
+        raise ResourceNotFoundException("Customer not found")
+
+    prev_records = await CustomerMembership.find(
+        {"customer_id": str(customer.id), "status": "ACTIVE", "is_deleted": False}
+    ).to_list()
+    now = now_utc()
+    for rec in prev_records:
+        if rec.membership_end_date and now > rec.membership_end_date:
+            rec.status = "EXPIRED"
+            await rec.save()
+
+    start_date, end_date = calculate_renewal_dates(customer, years=payload.duration_years)
+    m_type = (payload.membership_type or customer.membership_type or "Standard Membership").strip()
+    creator_name = user_display_name(current_user)
+
+    membership_record = CustomerMembership(
+        customer_id=str(customer.id),
+        membership_type=m_type,
+        membership_start_date=start_date,
+        membership_end_date=end_date,
+        status="ACTIVE",
+        tenant_id=customer.tenant_id,
+        created_by_name=creator_name,
+    )
+    await membership_record.insert()
+
+    customer.is_member = True
+    customer.membership_status = "ACTIVE"
+    customer.membership_start_date = start_date
+    customer.membership_end_date = end_date
+    customer.membership_type = m_type
+    customer.membership_created_by = str(current_user.id)
+    customer.membership_updated_at = now_utc()
+    if not customer.membership_created_at:
+        customer.membership_created_at = now_utc()
+    await customer.save()
+
+    return success_response(
+        "Membership renewed successfully",
+        data={
+            "membership": _membership_record_dict(membership_record),
+            "customer": _customer_dict(customer),
+        },
+    )
+
+
+@router.get("/{customer_id}/membership")
+async def get_customer_membership(
+    customer_id: str,
+    current_user: User = Depends(PermissionChecker("customer_analytics.view")),
+):
+    tenant_id = _effective_tenant(current_user)
+    try:
+        cust_oid = PydanticObjectId(customer_id)
+    except Exception as exc:
+        raise ResourceNotFoundException("Customer not found") from exc
+
+    query: dict = {"_id": cust_oid, "is_deleted": False}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+
+    customer = await Customer.find_one(query)
+    if not customer:
+        raise ResourceNotFoundException("Customer not found")
+
+    membership_records = await CustomerMembership.find(
+        {"customer_id": str(customer.id), "is_deleted": False}
+    ).sort("-created_at").to_list()
+
+    history = [_membership_record_dict(r) for r in membership_records]
+    info = serialize_membership_info(customer)
+
+    return success_response(
+        "Customer membership details retrieved successfully",
+        data={
+            **info,
+            "customer_id": str(customer.id),
+            "customer_name": customer.full_name.strip(),
+            "history": history,
+        },
+    )
+
+
+@router.get("/{customer_id}/membership/history")
+async def get_customer_membership_history(
+    customer_id: str,
+    current_user: User = Depends(PermissionChecker("customer_analytics.view")),
+):
+    tenant_id = _effective_tenant(current_user)
+    try:
+        cust_oid = PydanticObjectId(customer_id)
+    except Exception as exc:
+        raise ResourceNotFoundException("Customer not found") from exc
+
+    query: dict = {"_id": cust_oid, "is_deleted": False}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+
+    customer = await Customer.find_one(query)
+    if not customer:
+        raise ResourceNotFoundException("Customer not found")
+
+    membership_records = await CustomerMembership.find(
+        {"customer_id": str(customer.id), "is_deleted": False}
+    ).sort("-created_at").to_list()
+
+    history = [_membership_record_dict(r) for r in membership_records]
+
+    return success_response(
+        "Customer membership history retrieved successfully",
+        data={
+            "customer_id": str(customer.id),
+            "history": history,
+        },
+    )
