@@ -117,6 +117,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("META_EMBEDDED_SIGNUP_CONFIG_ID", "WHATSAPP_CONFIG_ID", "WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID"),
     )
+    META_OAUTH_REDIRECT_URI: str = Field(
+        default="",
+        validation_alias=AliasChoices("META_OAUTH_REDIRECT_URI", "META_REDIRECT_URI", "FACEBOOK_REDIRECT_URI", "OAUTH_REDIRECT_URI"),
+    )
     WHATSAPP_REVIEW_URL: str = Field(default="")
 
 
