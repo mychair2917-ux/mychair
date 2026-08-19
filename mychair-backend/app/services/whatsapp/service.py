@@ -103,7 +103,145 @@ class WhatsAppService:
         logger.info("Salon %s successfully connected WABA phone_number_id=%s", salon_id, phone_number_id)
         return account
 
+    async def exchange_embedded_signup_code(
+        self,
+        salon_id: str,
+        tenant_id: str,
+        code: Optional[str] = None,
+        waba_id: Optional[str] = None,
+        phone_number_id: Optional[str] = None,
+        direct_access_token: Optional[str] = None,
+    ) -> SalonWhatsAppAccount:
+        """
+        Exchanges Meta Embedded Signup authorization code for a system access token,
+        fetches & validates WABA and phone details directly from Meta Graph API,
+        checks for WhatsApp Business App mobile coexistence requirements,
+        and securely persists credentials to SalonWhatsAppAccount associated with salon_id and tenant_id.
+        """
+        access_token = direct_access_token
+        expires_in = None
+
+        # 1. Exchange OAuth authorization code with Meta Graph API if code is provided
+        if code:
+            app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
+            app_secret = settings.WHATSAPP_APP_SECRET
+            
+            if app_id and app_secret:
+                url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/oauth/access_token"
+                params = {
+                    "client_id": app_id,
+                    "client_secret": app_secret,
+                    "code": code,
+                }
+                try:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=12.0) as client:
+                        resp = await client.get(url, params=params)
+                        body = resp.json()
+                        if resp.status_code == 200 and "access_token" in body:
+                            access_token = body["access_token"]
+                            expires_in = body.get("expires_in")
+                        else:
+                            error_msg = body.get("error", {}).get("message") or f"Meta OAuth token exchange failed (HTTP {resp.status_code})"
+                            logger.error("Meta OAuth exchange error: %s", body)
+                            if not access_token:
+                                raise ValueError(f"Meta authorization exchange failed: {error_msg}")
+                except httpx.HTTPError as exc:
+                    logger.exception("HTTP error during Meta OAuth token exchange: %s", exc)
+                    if not access_token:
+                        raise ValueError(f"Network error exchanging code with Meta: {str(exc)}")
+
+        if not access_token:
+            access_token = settings.whatsapp_bearer_token
+
+        if not access_token:
+            raise ValueError("No access token acquired from Meta Embedded Signup code exchange.")
+
+        # 2. Fetch WABA details & phone number details from Meta Graph API
+        fetched_waba_id = waba_id
+        fetched_phone_id = phone_number_id
+        business_phone = None
+        display_name = None
+        connection_status = "ACTIVE"
+        meta_raw: Dict[str, Any] = {}
+
+        if access_token and access_token.startswith("EAA"):
+            import httpx
+            headers = {"Authorization": f"Bearer {access_token}"}
+            api_ver = settings.WHATSAPP_API_VERSION
+
+            if not fetched_waba_id:
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        waba_resp = await client.get(f"https://graph.facebook.com/{api_ver}/me/client_whatsapp_business_accounts", headers=headers)
+                        waba_data = waba_resp.json()
+                        data_list = waba_data.get("data", [])
+                        if data_list and isinstance(data_list, list):
+                            fetched_waba_id = data_list[0].get("id")
+                except Exception as exc:
+                    logger.warning("Could not auto-resolve WABA ID: %s", exc)
+
+            if fetched_waba_id:
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        phone_url = f"https://graph.facebook.com/{api_ver}/{fetched_waba_id}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,status,name_status"
+                        p_resp = await client.get(phone_url, headers=headers)
+                        p_data = p_resp.json()
+                        meta_raw["phone_numbers"] = p_data
+
+                        phones = p_data.get("data", [])
+                        selected_phone = None
+                        if phones:
+                            if fetched_phone_id:
+                                selected_phone = next((p for p in phones if p.get("id") == fetched_phone_id), phones[0])
+                            else:
+                                selected_phone = phones[0]
+
+                        if selected_phone:
+                            fetched_phone_id = selected_phone.get("id")
+                            business_phone = selected_phone.get("display_phone_number")
+                            display_name = selected_phone.get("verified_name")
+
+                            ver_status = selected_phone.get("code_verification_status")
+                            p_status = selected_phone.get("status")
+                            if ver_status and ver_status != "VERIFIED":
+                                connection_status = "VERIFICATION_REQUIRED"
+                            elif p_status in ("MIGRATION_REQUIRED", "COEXISTENCE_REQUIRED"):
+                                connection_status = "COEXISTENCE_REQUIRED"
+                except Exception as exc:
+                    logger.warning("Could not query Meta phone numbers for WABA %s: %s", fetched_waba_id, exc)
+
+        if not fetched_waba_id:
+            fetched_waba_id = waba_id or "pending_waba_id"
+        if not fetched_phone_id:
+            fetched_phone_id = phone_number_id or "pending_phone_id"
+        if not business_phone:
+            business_phone = "Pending Meta Setup"
+        if not display_name:
+            display_name = "Salon WhatsApp"
+
+        additional_data = {
+            "oauth_code": code,
+            "token_expires_in": expires_in,
+            "meta_raw": meta_raw,
+        }
+
+        account = await self.connect_salon_waba(
+            salon_id=salon_id,
+            tenant_id=tenant_id,
+            waba_id=fetched_waba_id,
+            phone_number_id=fetched_phone_id,
+            business_phone_number=business_phone,
+            display_name=display_name,
+            access_token=access_token,
+            connection_status=connection_status,
+            additional_auth_data=additional_data,
+        )
+
+        return account
+
     async def disconnect_salon_waba(self, salon_id: str) -> Optional[SalonWhatsAppAccount]:
+
         """Disconnects WhatsApp integration for a salon."""
         account = await self.get_salon_account(salon_id)
         if account:

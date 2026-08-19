@@ -16,6 +16,18 @@ class WhatsAppAccountResponse(BaseModel):
     features: Dict[str, bool] = Field(default_factory=dict)
     templates: Dict[str, str] = Field(default_factory=dict)
 
+class WhatsAppConfigResponse(BaseModel):
+    app_id: Optional[str] = Field(default=None, description="Meta App ID for FB SDK")
+    config_id: Optional[str] = Field(default=None, description="Meta Embedded Signup Configuration ID")
+    configured: bool = Field(default=False, description="Whether Meta Embedded Signup is properly configured")
+
+class WhatsAppEmbeddedSignupPayload(BaseModel):
+    salon_id: str = Field(..., description="Salon ID")
+    code: Optional[str] = Field(default=None, description="Authorization code from Meta Embedded Signup OAuth")
+    waba_id: Optional[str] = Field(default=None, description="Captured WABA ID from Meta SDK postMessage event")
+    phone_number_id: Optional[str] = Field(default=None, description="Captured Phone Number ID from Meta SDK postMessage event")
+    access_token: Optional[str] = Field(default=None, description="Direct token fallback (for dev/test override)")
+
 class WhatsAppConnectPayload(BaseModel):
     salon_id: str = Field(..., description="Salon ID")
     waba_id: str = Field(..., description="Meta WhatsApp Business Account ID")
@@ -24,6 +36,7 @@ class WhatsAppConnectPayload(BaseModel):
     display_name: Optional[str] = Field(default=None, description="Display Name on WhatsApp")
     access_token: str = Field(..., description="Meta System User or User Access Token")
     connection_status: Optional[str] = Field(default="ACTIVE")
+
 
 class WhatsAppSettingsUpdatePayload(BaseModel):
     salon_id: str = Field(..., description="Salon ID")

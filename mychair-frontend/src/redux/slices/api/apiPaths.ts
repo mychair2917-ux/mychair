@@ -178,6 +178,8 @@ export const API_PATHS = {
     SUBSCRIPTION_NOTIFICATIONS: '/notifications/subscription-notifications',
   },
   WHATSAPP: {
+    CONFIG: '/whatsapp/config',
+    EMBEDDED_EXCHANGE: '/whatsapp/embedded-signup/exchange',
     STATUS: '/whatsapp/status',
     CONNECT: '/whatsapp/connect',
     DISCONNECT: '/whatsapp/disconnect',
@@ -186,4 +188,5 @@ export const API_PATHS = {
     MESSAGES: '/whatsapp/messages',
     ADMIN_SALONS: '/whatsapp/admin/salons',
   },
+
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   MessageSquare,
   CheckCircle2,
@@ -13,9 +13,16 @@ import {
   Sliders,
   FileText,
   Clock,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Terminal,
 } from 'lucide-react';
+
 import {
+  useGetWhatsAppConfigQuery,
   useGetWhatsAppStatusQuery,
+  useExchangeEmbeddedSignupMutation,
   useConnectWhatsAppMutation,
   useDisconnectWhatsAppMutation,
   useUpdateWhatsAppSettingsMutation,
@@ -28,42 +35,244 @@ interface WhatsAppSettingsTabProps {
 }
 
 export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonId }) => {
+  // Redux queries & mutations
+  const { data: configRes, isLoading: isConfigLoading } = useGetWhatsAppConfigQuery();
   const { data: statusData, isLoading, refetch } = useGetWhatsAppStatusQuery({ salonId });
-  const [connectWhatsApp, { isLoading: isConnecting }] = useConnectWhatsAppMutation();
+  const [exchangeEmbeddedSignup, { isLoading: isExchanging }] = useExchangeEmbeddedSignupMutation();
+  const [connectWhatsApp, { isLoading: isConnectingManual }] = useConnectWhatsAppMutation();
   const [disconnectWhatsApp, { isLoading: isDisconnecting }] = useDisconnectWhatsAppMutation();
   const [updateSettings, { isLoading: isUpdating }] = useUpdateWhatsAppSettingsMutation();
   const [sendTestMessage, { isLoading: isSendingTest }] = useSendTestWhatsAppMessageMutation();
 
   const { data: logsData } = useGetWhatsAppMessageLogsQuery({ salonId, page: 1, limit: 10 });
 
+  const config = configRes?.data;
   const account = statusData?.data;
   const isConnected = account?.status === 'CONNECTED';
 
-  // Modal states
-  const [showConnectModal, setShowConnectModal] = useState(false);
+  // Local state for Meta SDK captured postMessage data
+  const [capturedWabaId, setCapturedWabaId] = useState<string>('');
+  const [capturedPhoneId, setCapturedPhoneId] = useState<string>('');
+  const [isLaunchingSignup, setIsLaunchingSignup] = useState(false);
+  const [connectError, setConnectError] = useState<string>('');
+  const [connectSuccess, setConnectSuccess] = useState<string>('');
+
+  // Modals state
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
+  const [showNoConfigModal, setShowNoConfigModal] = useState(false);
+  const [showDeveloperAccordion, setShowDeveloperAccordion] = useState(false);
 
-  // Connect form state
+  // Manual developer connection state
   const [wabaId, setWabaId] = useState('');
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [businessPhoneNumber, setBusinessPhoneNumber] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [accessToken, setAccessToken] = useState('');
-  const [formError, setFormError] = useState('');
-  const [formSuccess, setFormSuccess] = useState('');
+  const [devFormError, setDevFormError] = useState('');
+  const [devFormSuccess, setDevFormSuccess] = useState('');
 
   // Test form state
   const [testPhone, setTestPhone] = useState('');
   const [testResult, setTestResult] = useState<{ success?: boolean; message?: string } | null>(null);
 
-  const handleConnectSubmit = async (e: React.FormEvent) => {
+  // Meta SDK state tracking: 'idle' | 'loading' | 'ready' | 'failed'
+  const [sdkStatus, setSdkStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+
+  // Load & initialize Meta Facebook SDK reliably when Meta App ID is available
+  useEffect(() => {
+    if (!config?.app_id || !config?.configured) {
+      setSdkStatus('idle');
+      return;
+    }
+
+    const appId = config.app_id;
+
+    const initFB = () => {
+      try {
+        if ((window as any).FB) {
+          (window as any).FB.init({
+            appId: appId,
+            cookie: true,
+            xfbml: true,
+            version: 'v20.0',
+          });
+          setSdkStatus('ready');
+        } else {
+          setSdkStatus('failed');
+        }
+      } catch (e) {
+        console.error('Meta FB.init error:', e);
+        setSdkStatus('failed');
+      }
+    };
+
+    if ((window as any).FB) {
+      initFB();
+      return;
+    }
+
+    setSdkStatus('loading');
+
+    const prevFbAsyncInit = (window as any).fbAsyncInit;
+    (window as any).fbAsyncInit = function () {
+      if (typeof prevFbAsyncInit === 'function') {
+        try {
+          prevFbAsyncInit();
+        } catch (e) {
+          // ignore
+        }
+      }
+      initFB();
+    };
+
+    let script = document.getElementById('facebook-jssdk') as HTMLScriptElement | null;
+    let isNewScript = false;
+
+    if (!script) {
+      isNewScript = true;
+      script = document.createElement('script');
+      script.id = 'facebook-jssdk';
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      script.async = true;
+      script.defer = true;
+    }
+
+    const handleScriptError = () => {
+      setSdkStatus('failed');
+    };
+
+    script.addEventListener('error', handleScriptError);
+
+    if (isNewScript) {
+      document.body.appendChild(script);
+    }
+
+    return () => {
+      if (script) {
+        script.removeEventListener('error', handleScriptError);
+      }
+    };
+  }, [config?.app_id, config?.configured]);
+
+  // Listen for Meta postMessage events during Embedded Signup flow
+  useEffect(() => {
+    const handleMetaMessage = (event: MessageEvent) => {
+      if (
+        event.origin !== 'https://www.facebook.com' &&
+        event.origin !== 'https://web.facebook.com'
+      ) {
+        return;
+      }
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data && (data.event === 'WA_EMBEDDED_SIGNUP' || data.type === 'WA_EMBEDDED_SIGNUP')) {
+          if (data.data?.waba_id) {
+            setCapturedWabaId(data.data.waba_id);
+          }
+          if (data.data?.phone_number_id) {
+            setCapturedPhoneId(data.data.phone_number_id);
+          }
+        }
+      } catch (e) {
+        // Ignore non-JSON postMessage calls
+      }
+    };
+
+    window.addEventListener('message', handleMetaMessage);
+    return () => window.removeEventListener('message', handleMetaMessage);
+  }, []);
+
+  // Launch Meta Embedded Signup Flow
+  const handleLaunchEmbeddedSignup = () => {
+    setConnectError('');
+    setConnectSuccess('');
+
+    const appId = config?.app_id;
+    const configId = config?.config_id;
+
+    if (!config?.configured || !appId || !configId) {
+      setShowNoConfigModal(true);
+      return;
+    }
+
+    if (sdkStatus === 'failed' || !(window as any).FB) {
+      setConnectError('Unable to load Meta connection service. Check your internet connection or browser privacy/ad-blocking settings and try again.');
+      return;
+    }
+
+    setIsLaunchingSignup(true);
+
+    try {
+      (window as any).FB.login(
+        (response: any) => {
+          setIsLaunchingSignup(false);
+          if (response?.authResponse?.code) {
+            const authCode = response.authResponse.code;
+            handleExchangeCode(authCode);
+          } else if (response?.status !== 'connected') {
+            setConnectError('Meta authorization was cancelled or closed before completion.');
+          }
+        },
+        {
+          config_id: configId,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {
+              session_id: `mychair-${salonId}-${Date.now()}`,
+            },
+          },
+        }
+      );
+    } catch (err: any) {
+      setIsLaunchingSignup(false);
+      setConnectError(err?.message || 'Failed to open Meta Embedded Signup popup.');
+    }
+  };
+
+  // Exchange authorization code with backend
+  const handleExchangeCode = async (code: string) => {
+    setConnectError('');
+    setConnectSuccess('');
+
+    try {
+      const res = await exchangeEmbeddedSignup({
+        salon_id: salonId,
+        code,
+        waba_id: capturedWabaId || undefined,
+        phone_number_id: capturedPhoneId || undefined,
+      }).unwrap();
+
+      if (res.success) {
+        setConnectSuccess('WhatsApp Business Account connected successfully via Meta Embedded Signup!');
+      }
+    } catch (err: any) {
+      setConnectError(err?.data?.detail || 'Failed to complete Meta Embedded Signup connection.');
+    }
+  };
+
+  // Disconnect salon WABA
+  const handleDisconnect = async () => {
+    if (window.confirm('Are you sure you want to disconnect WhatsApp for this salon?')) {
+      try {
+        await disconnectWhatsApp({ salonId }).unwrap();
+        setConnectSuccess('');
+        setConnectError('');
+      } catch (err: any) {
+        console.error('Failed to disconnect:', err);
+      }
+    }
+  };
+
+  // Developer manual connection submit
+  const handleDevConnectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError('');
-    setFormSuccess('');
+    setDevFormError('');
+    setDevFormSuccess('');
 
     if (!wabaId || !phoneNumberId || !businessPhoneNumber || !accessToken) {
-      setFormError('Please fill in all required Meta WhatsApp API fields.');
+      setDevFormError('Please fill in all required Meta WhatsApp API fields.');
       return;
     }
 
@@ -78,27 +287,17 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
       }).unwrap();
 
       if (res.success) {
-        setFormSuccess('WhatsApp Business Account connected successfully!');
+        setDevFormSuccess('WhatsApp Business Account connected manually via Developer settings.');
         setTimeout(() => {
-          setShowConnectModal(false);
-          setFormSuccess('');
-        }, 1200);
+          setDevFormSuccess('');
+        }, 3000);
       }
     } catch (err: any) {
-      setFormError(err?.data?.detail || 'Failed to connect WhatsApp account.');
+      setDevFormError(err?.data?.detail || 'Failed to connect WhatsApp account manually.');
     }
   };
 
-  const handleDisconnect = async () => {
-    if (window.confirm('Are you sure you want to disconnect WhatsApp for this salon?')) {
-      try {
-        await disconnectWhatsApp({ salonId }).unwrap();
-      } catch (err) {
-        console.error('Failed to disconnect:', err);
-      }
-    }
-  };
-
+  // Toggle automated messaging features
   const handleToggleFeature = async (featureKey: string, currentValue: boolean) => {
     if (!account) return;
     try {
@@ -113,6 +312,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     }
   };
 
+  // Send test message
   const handleSendTest = async (e: React.FormEvent) => {
     e.preventDefault();
     setTestResult(null);
@@ -124,6 +324,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
         salon_id: salonId,
         recipient_phone: testPhone.trim(),
       }).unwrap();
+
 
       if (res.data?.status === 'SENT' || res.data?.status === 'QUEUED') {
         setTestResult({
@@ -144,7 +345,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isConfigLoading) {
     return (
       <div className="flex items-center justify-center p-12 text-slate-400">
         <RefreshCw className="w-6 h-6 animate-spin mr-3 text-emerald-500" />
@@ -153,24 +354,32 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     );
   }
 
+  const isConnecting = isLaunchingSignup || isExchanging;
+
   return (
     <div className="space-y-6">
-      {/* Top Banner / Status Overview Card */}
+      {/* Primary Connection Banner Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           <div className="flex items-start gap-4">
-            <div className={`p-4 rounded-2xl ${isConnected ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+            <div
+              className={`p-4 rounded-2xl ${
+                isConnected
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                  : 'bg-slate-800 text-slate-400'
+              }`}
+            >
               <MessageSquare className="w-8 h-8" />
             </div>
 
             <div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h2 className="text-xl font-bold text-white">WhatsApp Business Integration</h2>
                 {isConnected ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Connected & Active
+                    <CheckCircle2 className="w-3.5 h-3.5" /> WhatsApp Connected
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
@@ -180,7 +389,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
               </div>
 
               <p className="text-slate-400 text-sm mt-1 max-w-2xl">
-                Connect your salon&apos;s WhatsApp Business number to send direct billing receipts, automated appointment confirmations, reminders, and marketing campaigns directly through MYCHAIR.
+                Connect your salon&apos;s WhatsApp Business number using Meta&apos;s 1-click official onboarding. Send automated receipts, appointment confirmations, reminders, and customer campaigns.
               </p>
             </div>
           </div>
@@ -190,7 +399,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
               onClick={() => setShowHelpModal(true)}
               className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition-colors inline-flex items-center gap-2 border border-slate-700"
             >
-              <HelpCircle className="w-4 h-4 text-emerald-400" /> Need Help?
+              <HelpCircle className="w-4 h-4 text-emerald-400" /> Guide & Setup
             </button>
 
             {isConnected ? (
@@ -203,6 +412,19 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                 </button>
 
                 <button
+                  onClick={handleLaunchEmbeddedSignup}
+                  disabled={isConnecting || sdkStatus === 'loading'}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-sm font-medium transition-all inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isConnecting || sdkStatus === 'loading' ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {sdkStatus === 'loading' ? 'Preparing Meta...' : 'Reconnect'}
+                </button>
+
+                <button
                   onClick={handleDisconnect}
                   disabled={isDisconnecting}
                   className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-sm font-medium transition-all"
@@ -212,16 +434,93 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
               </>
             ) : (
               <button
-                onClick={() => setShowConnectModal(true)}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-semibold text-sm shadow-lg shadow-emerald-500/20 transition-all inline-flex items-center gap-2"
+                onClick={handleLaunchEmbeddedSignup}
+                disabled={isConnecting || sdkStatus === 'loading'}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-xl shadow-emerald-500/20 transition-all inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Zap className="w-4 h-4 fill-current" /> Connect WhatsApp
+                {isConnecting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>Connecting with Meta...</span>
+                  </>
+                ) : sdkStatus === 'loading' ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>Preparing Meta connection...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 fill-current text-white" />
+                    <span>Connect WhatsApp (Meta Onboarding)</span>
+                  </>
+                )}
               </button>
             )}
           </div>
         </div>
 
-        {/* Connected Account Quick Details */}
+        {/* Error / Success Notifications */}
+        {sdkStatus === 'failed' && !isConnected && (
+          <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+            <div className="flex-1">
+              <span className="font-semibold block text-amber-200">Meta Connection Service Unavailable</span>
+              <span>
+                Unable to load Meta connection service. Check your internet connection or browser privacy/ad-blocking settings and try again.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {connectError && (
+          <div className="mt-4 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-start gap-3">
+            <XCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-semibold block">Meta Connection Failed</span>
+              <span>{connectError}</span>
+            </div>
+            <button
+              onClick={handleLaunchEmbeddedSignup}
+              className="px-3 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-lg text-xs font-semibold"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {connectSuccess && (
+          <div className="mt-4 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 shrink-0" />
+            <span>{connectSuccess}</span>
+          </div>
+        )}
+
+        {/* Coexistence & Verification Alerts */}
+        {isConnected && account?.connection_status === 'COEXISTENCE_REQUIRED' && (
+          <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+            <div>
+              <span className="font-semibold block text-amber-200">WhatsApp Mobile App Coexistence Required</span>
+              <span>
+                This phone number is currently active on the WhatsApp Business App mobile client. Meta requires completing phone number verification in Meta Business Manager to enable Cloud API coexistence. MYCHAIR will not automatically overwrite or disconnect your existing mobile app.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {isConnected && account?.connection_status === 'VERIFICATION_REQUIRED' && (
+          <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+            <div>
+              <span className="font-semibold block text-amber-200">Meta Phone Number Verification Pending</span>
+              <span>
+                Your WhatsApp number has been linked, but Meta requires 2FA SMS code verification in Meta Business Manager before outbound messages can be dispatched.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Connected Account Display Details (NEVER EXPOSES ACCESS TOKENS) */}
         {isConnected && account && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-800">
             <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
@@ -233,7 +532,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
             </div>
 
             <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
-              <div className="text-xs text-slate-500 font-medium">Display Name</div>
+              <div className="text-xs text-slate-500 font-medium">Salon Display Name</div>
               <div className="text-sm font-semibold text-white mt-1 flex items-center gap-2">
                 <Building className="w-3.5 h-3.5 text-teal-400" />
                 {account.display_name || 'Salon WhatsApp'}
@@ -241,9 +540,10 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
             </div>
 
             <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
-              <div className="text-xs text-slate-500 font-medium">Meta WABA ID</div>
-              <div className="text-sm font-mono text-slate-300 mt-1 truncate">
-                {account.waba_id || 'N/A'}
+              <div className="text-xs text-slate-500 font-medium">Status</div>
+              <div className="text-sm font-semibold text-emerald-400 mt-1 flex items-center gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                Active ({account.connection_status || 'ACTIVE'})
               </div>
             </div>
 
@@ -407,31 +707,44 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
         )}
       </div>
 
-      {/* Connect Modal */}
-      {showConnectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" /> Connect Meta WhatsApp
-              </h3>
-              <button
-                onClick={() => setShowConnectModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
-              >
-                &times;
-              </button>
+      {/* Advanced / Developer Connection (Clearly Separated Accordion) */}
+      <div className="bg-slate-900 border border-slate-800/80 rounded-2xl overflow-hidden shadow-lg">
+        <button
+          onClick={() => setShowDeveloperAccordion(!showDeveloperAccordion)}
+          className="w-full p-4 bg-slate-950/40 hover:bg-slate-950/80 transition-colors flex items-center justify-between text-left border-b border-slate-800/50"
+        >
+          <div className="flex items-center gap-3">
+            <Terminal className="w-5 h-5 text-amber-400" />
+            <div>
+              <h4 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                Advanced / Developer Connection
+                <span className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  Super Admin / Dev Testing
+                </span>
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Manual token entry option for internal testing. Salon owners should use the primary Meta Connect button above.
+              </p>
             </div>
+          </div>
+          {showDeveloperAccordion ? (
+            <ChevronUp className="w-5 h-5 text-slate-400" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-slate-400" />
+          )}
+        </button>
 
-            <form onSubmit={handleConnectSubmit} className="space-y-4">
-              {formError && (
+        {showDeveloperAccordion && (
+          <div className="p-6 bg-slate-950/60 border-t border-slate-800/60">
+            <form onSubmit={handleDevConnectSubmit} className="space-y-4 max-w-xl">
+              {devFormError && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-                  {formError}
+                  {devFormError}
                 </div>
               )}
-              {formSuccess && (
+              {devFormSuccess && (
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
-                  {formSuccess}
+                  {devFormSuccess}
                 </div>
               )}
 
@@ -443,7 +756,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                   placeholder="e.g. 109823471092837"
                   value={wabaId}
                   onChange={(e) => setWabaId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -455,7 +768,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                   placeholder="e.g. 102938475610293"
                   value={phoneNumberId}
                   onChange={(e) => setPhoneNumberId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -467,7 +780,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                   placeholder="e.g. +919876543210"
                   value={businessPhoneNumber}
                   onChange={(e) => setBusinessPhoneNumber(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -478,7 +791,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                   placeholder="e.g. Style Lounge Salon"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -490,31 +803,24 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                   placeholder="EAA..."
                   value={accessToken}
                   onChange={(e) => setAccessToken(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
-                  type="button"
-                  onClick={() => setShowConnectModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
                   type="submit"
-                  disabled={isConnecting}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-all inline-flex items-center gap-2"
+                  disabled={isConnectingManual}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold transition-all inline-flex items-center gap-2"
                 >
-                  {isConnecting && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  Save & Connect
+                  {isConnectingManual && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  Manual Connect (Dev Only)
                 </button>
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Test Message Modal */}
       {showTestModal && (
@@ -579,6 +885,50 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
         </div>
       )}
 
+      {/* Meta Config Missing Notice Modal */}
+      {showNoConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-400" /> Meta App Setup Required
+              </h3>
+              <button
+                onClick={() => setShowNoConfigModal(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm text-slate-300">
+              <p>
+                Meta Embedded Signup requires setting the Meta App ID and Configuration ID in your server environment variables:
+              </p>
+              <div className="bg-slate-950 p-3 rounded-xl font-mono text-xs text-amber-300 space-y-1">
+                <div>META_APP_ID=your_meta_app_id</div>
+                <div>META_EMBEDDED_SIGNUP_CONFIG_ID=your_config_id</div>
+              </div>
+              <p className="text-xs text-slate-400">
+                For local development or manual testing, you can use the <strong>Advanced / Developer Connection</strong> option at the bottom of this tab.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end pt-4 mt-6 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  setShowNoConfigModal(false);
+                  setShowDeveloperAccordion(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold"
+              >
+                Use Developer Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Guidance / Help Modal */}
       {showHelpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -597,27 +947,27 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
 
             <div className="space-y-4 text-sm text-slate-300">
               <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
-                MYCHAIR integrates directly with Meta WhatsApp Cloud API without third-party middleman markup.
+                MYCHAIR integrates directly with Meta WhatsApp Cloud API via official Embedded Signup without third-party middleman markup.
               </div>
 
               <div>
-                <h4 className="font-semibold text-white text-sm mb-1">Step 1: Meta Developer App</h4>
+                <h4 className="font-semibold text-white text-sm mb-1">Step 1: Click Connect WhatsApp</h4>
                 <p className="text-xs text-slate-400">
-                  Log in to developers.facebook.com, select your business app, and add WhatsApp product.
+                  Salon owners simply click <strong>Connect WhatsApp</strong>. Meta will prompt you to authenticate your Facebook/Meta Business account.
                 </p>
               </div>
 
               <div>
-                <h4 className="font-semibold text-white text-sm mb-1">Step 2: Obtain WABA & Phone Number ID</h4>
+                <h4 className="font-semibold text-white text-sm mb-1">Step 2: Select Meta Business & WhatsApp Number</h4>
                 <p className="text-xs text-slate-400">
-                  From WhatsApp API Setup, copy your <strong>WhatsApp Business Account ID</strong> and <strong>Phone Number ID</strong>.
+                  Select your Meta Business Portfolio, pick your existing WhatsApp Business number or add a new number, and complete phone verification.
                 </p>
               </div>
 
               <div>
-                <h4 className="font-semibold text-white text-sm mb-1">Step 3: Generate System User Token</h4>
+                <h4 className="font-semibold text-white text-sm mb-1">Step 3: Return to MYCHAIR</h4>
                 <p className="text-xs text-slate-400">
-                  Generate a Permanent Meta System User Access Token with <code className="text-emerald-400">whatsapp_business_messaging</code> permissions.
+                  MYCHAIR automatically receives authorization and activates automated billing receipts, appointment confirmations, and reminders.
                 </p>
               </div>
             </div>

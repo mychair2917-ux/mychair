@@ -14,11 +14,14 @@ from app.models.salon_whatsapp_account import SalonWhatsAppAccount
 from app.models.whatsapp_message import WhatsAppMessageLog
 from app.schemas.whatsapp import (
     WhatsAppAccountResponse,
+    WhatsAppConfigResponse,
+    WhatsAppEmbeddedSignupPayload,
     WhatsAppConnectPayload,
     WhatsAppSettingsUpdatePayload,
     WhatsAppTestMessagePayload,
     WhatsAppMessageLogResponse,
 )
+
 from app.services.whatsapp import whatsapp_service
 from app.utils.api_response import success_response
 from app.utils.timezone import now_utc
@@ -81,6 +84,27 @@ def _verify_salon_access(user: User, salon_id: str) -> None:
         )
 
 
+@router.get("/config")
+async def get_whatsapp_config(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns public Meta App ID and Embedded Signup Configuration ID
+    required for initializing Meta Facebook JS SDK on the frontend.
+    """
+    app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
+    config_id = settings.META_EMBEDDED_SIGNUP_CONFIG_ID
+
+    return success_response(
+        "WhatsApp configuration retrieved",
+        data={
+            "app_id": app_id if app_id else None,
+            "config_id": config_id if config_id else None,
+            "configured": bool(app_id and config_id),
+        },
+    )
+
+
 @router.get("/status")
 async def get_whatsapp_status(
     salon_id: str = Query(..., description="Salon ID"),
@@ -91,6 +115,45 @@ async def get_whatsapp_status(
     account = await whatsapp_service.get_salon_account(salon_id)
     data = _sanitize_account_dict(account, salon_id)
     return success_response("WhatsApp status retrieved successfully", data=data)
+
+
+@router.post("/embedded-signup/exchange")
+async def exchange_embedded_signup(
+    payload: WhatsAppEmbeddedSignupPayload,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Onboarding exchange endpoint for Meta Embedded Signup.
+    Exchanges Meta authorization code for system access token, queries Meta Graph API,
+    validates WABA & phone number, checks for mobile app coexistence, and securely
+    stores credentials associated with both tenant_id AND salon_id.
+    """
+    _verify_salon_access(current_user, payload.salon_id)
+
+    try:
+        account = await whatsapp_service.exchange_embedded_signup_code(
+            salon_id=payload.salon_id,
+            tenant_id=current_user.tenant_id or "default",
+            code=payload.code,
+            waba_id=payload.waba_id,
+            phone_number_id=payload.phone_number_id,
+            direct_access_token=payload.access_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        logger.exception("Error in embedded signup exchange for salon %s: %s", payload.salon_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to complete Meta Embedded Signup onboarding: {str(exc)}",
+        )
+
+    data = _sanitize_account_dict(account, payload.salon_id)
+    return success_response("Meta WhatsApp onboarding completed successfully", data=data)
+
 
 
 @router.post("/connect")

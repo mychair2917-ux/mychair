@@ -22,6 +22,20 @@ export interface WhatsAppAccount {
   templates: Record<string, string>;
 }
 
+export interface WhatsAppConfigResponse {
+  app_id?: string;
+  config_id?: string;
+  configured: boolean;
+}
+
+export interface WhatsAppEmbeddedSignupPayload {
+  salon_id: string;
+  code?: string;
+  waba_id?: string;
+  phone_number_id?: string;
+  access_token?: string;
+}
+
 export interface WhatsAppConnectPayload {
   salon_id: string;
   waba_id: string;
@@ -83,12 +97,28 @@ export interface AdminSalonWhatsAppItem {
 
 export const whatsappApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
+    getWhatsAppConfig: builder.query<{ success: boolean; data: WhatsAppConfigResponse }, void>({
+      query: () => ({
+        url: API_PATHS.WHATSAPP.CONFIG,
+        method: 'GET',
+      }),
+    }),
+
     getWhatsAppStatus: builder.query<{ success: boolean; data: WhatsAppAccount }, { salonId: string }>({
       query: ({ salonId }) => ({
         url: `${API_PATHS.WHATSAPP.STATUS}?salon_id=${salonId}`,
         method: 'GET',
       }),
       providesTags: ['WhatsAppStatus'],
+    }),
+
+    exchangeEmbeddedSignup: builder.mutation<{ success: boolean; data: WhatsAppAccount }, WhatsAppEmbeddedSignupPayload>({
+      query: (body) => ({
+        url: API_PATHS.WHATSAPP.EMBEDDED_EXCHANGE,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['WhatsAppStatus', 'WhatsAppAdmin'],
     }),
 
     connectWhatsApp: builder.mutation<{ success: boolean; data: WhatsAppAccount }, WhatsAppConnectPayload>({
@@ -150,7 +180,9 @@ export const whatsappApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetWhatsAppConfigQuery,
   useGetWhatsAppStatusQuery,
+  useExchangeEmbeddedSignupMutation,
   useConnectWhatsAppMutation,
   useDisconnectWhatsAppMutation,
   useUpdateWhatsAppSettingsMutation,
@@ -158,3 +190,4 @@ export const {
   useGetWhatsAppMessageLogsQuery,
   useGetAdminSalonWhatsAppStatusesQuery,
 } = whatsappApi;
+

@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     BACKEND_PUBLIC_URL: str = Field(default="")
     PUBLIC_ASSET_DIR: str = Field(default="public")
 
-    # WhatsApp Cloud API
+    # WhatsApp Cloud API & Meta Embedded Signup
     WHATSAPP_API_VERSION: str = Field(default="v20.0")
     WHATSAPP_PHONE_NUMBER_ID: str = Field(default="")
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = Field(default="")
@@ -105,8 +105,20 @@ class Settings(BaseSettings):
         description="WhatsApp template mode (e.g. test or production)",
     )
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = Field(default="mychair_whatsapp_verify")
-    WHATSAPP_APP_SECRET: str = Field(default="")
+    WHATSAPP_APP_SECRET: str = Field(
+        default="",
+        validation_alias=AliasChoices("META_APP_SECRET", "WHATSAPP_APP_SECRET"),
+    )
+    META_APP_ID: str = Field(
+        default="",
+        validation_alias=AliasChoices("META_APP_ID", "WHATSAPP_APP_ID"),
+    )
+    META_EMBEDDED_SIGNUP_CONFIG_ID: str = Field(
+        default="",
+        validation_alias=AliasChoices("META_EMBEDDED_SIGNUP_CONFIG_ID", "WHATSAPP_CONFIG_ID", "WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID"),
+    )
     WHATSAPP_REVIEW_URL: str = Field(default="")
+
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
