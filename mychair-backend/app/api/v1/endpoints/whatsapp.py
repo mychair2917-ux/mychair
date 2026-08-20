@@ -32,9 +32,24 @@ router = APIRouter()
 
 def _sanitize_account_dict(acc: Optional[SalonWhatsAppAccount], salon_id: str) -> Dict[str, Any]:
     """Formats safe salon WhatsApp account representation for the frontend (NEVER exposes secrets)."""
+    default_features = {
+        "billing_enabled": True,
+        "appointment_confirmations_enabled": True,
+        "appointment_reminders_enabled": True,
+        "birthday_messages_enabled": True,
+        "marketing_enabled": True,
+    }
+    default_templates = {
+        "bill_receipt": "hello_world",
+        "appointment_confirmation": "hello_world",
+        "appointment_reminder": "hello_world",
+        "birthday_wish": "hello_world",
+    }
+
     if not acc:
         return {
             "salon_id": salon_id,
+            "connected": False,
             "status": "DISCONNECTED",
             "connection_status": "ACTIVE",
             "waba_id": None,
@@ -42,42 +57,39 @@ def _sanitize_account_dict(acc: Optional[SalonWhatsAppAccount], salon_id: str) -
             "business_phone_number": None,
             "display_name": None,
             "connected_at": None,
-            "features": {
-                "billing_enabled": True,
-                "appointment_confirmations_enabled": True,
-                "appointment_reminders_enabled": True,
-                "birthday_messages_enabled": True,
-                "marketing_enabled": True,
-            },
-            "templates": {
-                "bill_receipt": "hello_world",
-                "appointment_confirmation": "hello_world",
-                "appointment_reminder": "hello_world",
-                "birthday_wish": "hello_world",
-            },
+            "features": default_features,
+            "templates": default_templates,
         }
 
     return {
-        "id": str(acc.id),
-        "salon_id": acc.salon_id,
-        "status": acc.status,
-        "connection_status": acc.connection_status,
+        "id": str(acc.id) if getattr(acc, "id", None) else None,
+        "salon_id": acc.salon_id or salon_id,
+        "connected": acc.status == "CONNECTED",
+        "status": acc.status or "DISCONNECTED",
+        "connection_status": acc.connection_status or "ACTIVE",
         "waba_id": acc.waba_id,
         "phone_number_id": acc.phone_number_id,
         "business_phone_number": acc.business_phone_number,
         "display_name": acc.display_name,
         "connected_at": acc.connected_at.isoformat() if acc.connected_at else None,
         "disconnected_at": acc.disconnected_at.isoformat() if acc.disconnected_at else None,
-        "features": acc.features,
-        "templates": acc.templates,
+        "features": acc.features if acc.features is not None else default_features,
+        "templates": acc.templates if acc.templates is not None else default_templates,
     }
 
 
 def _verify_salon_access(user: User, salon_id: str) -> None:
     """Enforces multi-tenant security rule: user must belong to salon_id unless super admin."""
+    if not salon_id or not isinstance(salon_id, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid salon_id parameter.",
+        )
     if user.role == ROLE_SUPER_ADMIN:
         return
-    if user.salon_id != salon_id:
+
+    user_salon_id = getattr(user, "salon_id", None) or getattr(user, "tenant_id", None)
+    if not user_salon_id or user_salon_id != salon_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. You can only access your own salon's WhatsApp configuration.",
@@ -112,9 +124,39 @@ async def get_whatsapp_status(
 ):
     """Returns safe connection status and feature toggles for the salon's WhatsApp integration."""
     _verify_salon_access(current_user, salon_id)
-    account = await whatsapp_service.get_salon_account(salon_id)
-    data = _sanitize_account_dict(account, salon_id)
-    return success_response("WhatsApp status retrieved successfully", data=data)
+
+    try:
+        account = await whatsapp_service.get_salon_account(salon_id)
+        account_found = account is not None
+        stored_status = account.status if account else "DISCONNECTED"
+        stored_conn_status = account.connection_status if account else "ACTIVE"
+
+        logger.info(
+            "WhatsApp status request: salon_id=%s tenant_id=%s role=%s account_found=%s status=%s connection_status=%s",
+            salon_id,
+            getattr(current_user, "tenant_id", "none"),
+            getattr(current_user, "role", "unknown"),
+            account_found,
+            stored_status,
+            stored_conn_status,
+        )
+
+        data = _sanitize_account_dict(account, salon_id)
+        return success_response("WhatsApp status retrieved successfully", data=data)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Unhandled exception in WhatsApp status check for salon_id=%s tenant_id=%s role=%s exc_class=%s",
+            salon_id,
+            getattr(current_user, "tenant_id", "none"),
+            getattr(current_user, "role", "unknown"),
+            exc.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve WhatsApp status due to an internal server error.",
+        )
 
 
 @router.post("/embedded-signup/exchange")
