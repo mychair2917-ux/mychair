@@ -125,13 +125,25 @@ class WhatsAppService:
         if code:
             app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
             app_secret = settings.WHATSAPP_APP_SECRET
+            redirect_uri = settings.META_OAUTH_REDIRECT_URI or "https://mychair.co.in/admin/settings"
             
             if app_id and app_secret:
+                from urllib.parse import urlparse
+                redirect_host = urlparse(redirect_uri).netloc or redirect_uri
+                logger.info(
+                    "Meta Embedded Signup exchange app_id_present=%s app_secret_present=%s redirect_uri_present=%s redirect_uri_host=%s",
+                    bool(app_id),
+                    bool(app_secret),
+                    bool(redirect_uri),
+                    redirect_host,
+                )
+
                 url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/oauth/access_token"
                 params = {
                     "client_id": app_id,
                     "client_secret": app_secret,
                     "code": code,
+                    "redirect_uri": redirect_uri,
                 }
 
                 try:
@@ -143,8 +155,16 @@ class WhatsAppService:
                             access_token = body["access_token"]
                             expires_in = body.get("expires_in")
                         else:
-                            error_msg = body.get("error", {}).get("message") or f"Meta OAuth token exchange failed (HTTP {resp.status_code})"
-                            logger.error("Meta OAuth exchange error: %s", body)
+                            err_obj = body.get("error", {}) if isinstance(body, dict) else {}
+                            error_msg = err_obj.get("message") or f"Meta OAuth token exchange failed (HTTP {resp.status_code})"
+                            logger.error(
+                                "Meta OAuth exchange failure: status=%s type=%s code=%s subcode=%s message=%s",
+                                resp.status_code,
+                                err_obj.get("type"),
+                                err_obj.get("code"),
+                                err_obj.get("error_subcode"),
+                                err_obj.get("message"),
+                            )
                             if not access_token:
                                 raise ValueError(f"Meta authorization exchange failed: {error_msg}")
                 except httpx.HTTPError as exc:
@@ -178,7 +198,24 @@ class WhatsAppService:
                         waba_data = waba_resp.json()
                         data_list = waba_data.get("data", [])
                         if data_list and isinstance(data_list, list):
-                            fetched_waba_id = data_list[0].get("id")
+                            if len(data_list) == 1:
+                                fetched_waba_id = data_list[0].get("id")
+                            elif len(data_list) > 1:
+                                if waba_id:
+                                    matched = next((w for w in data_list if w.get("id") == waba_id), None)
+                                    if matched:
+                                        fetched_waba_id = matched.get("id")
+                                if not fetched_waba_id:
+                                    logger.error(
+                                        "Multiple WABAs found (%d WABAs) for salon %s and no unambiguous selection was made.",
+                                        len(data_list),
+                                        salon_id,
+                                    )
+                                    raise ValueError(
+                                        f"Multiple WhatsApp Business Accounts ({len(data_list)}) found. Please specify which WABA to connect."
+                                    )
+                except ValueError:
+                    raise
                 except Exception as exc:
                     logger.warning("Could not auto-resolve WABA ID: %s", exc)
 
@@ -222,7 +259,6 @@ class WhatsAppService:
             display_name = "Salon WhatsApp"
 
         additional_data = {
-            "oauth_code": code,
             "token_expires_in": expires_in,
             "meta_raw": meta_raw,
         }

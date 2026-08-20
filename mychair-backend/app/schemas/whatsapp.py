@@ -19,6 +19,7 @@ class WhatsAppAccountResponse(BaseModel):
 class WhatsAppConfigResponse(BaseModel):
     app_id: Optional[str] = Field(default=None, description="Meta App ID for FB SDK")
     config_id: Optional[str] = Field(default=None, description="Meta Embedded Signup Configuration ID")
+    oauth_redirect_uri: Optional[str] = Field(default=None, description="Meta OAuth Redirect URI")
     configured: bool = Field(default=False, description="Whether Meta Embedded Signup is properly configured")
 
 class WhatsAppEmbeddedSignupPayload(BaseModel):

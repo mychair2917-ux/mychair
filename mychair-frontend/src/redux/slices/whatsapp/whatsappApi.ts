@@ -25,6 +25,7 @@ export interface WhatsAppAccount {
 export interface WhatsAppConfigResponse {
   app_id?: string;
   config_id?: string;
+  oauth_redirect_uri?: string;
   configured: boolean;
 }
 

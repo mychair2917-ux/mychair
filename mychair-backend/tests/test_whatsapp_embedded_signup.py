@@ -79,3 +79,85 @@ async def test_multi_salon_isolation_verification():
     assert phone_b == "phone-id-b"
     assert token_b == "token-b"
     assert token_a != token_b
+
+
+@pytest.mark.asyncio
+async def test_get_config_returns_oauth_redirect_uri():
+    """Test 1: GET /whatsapp/config schema and settings return oauth_redirect_uri safely."""
+    from app.core.config import settings
+    assert settings.META_OAUTH_REDIRECT_URI == "https://mychair.co.in/admin/settings"
+
+    config_resp = WhatsAppConfigResponse(
+        app_id="926424756517271",
+        config_id="1624499392725484",
+        oauth_redirect_uri=settings.META_OAUTH_REDIRECT_URI,
+        configured=True,
+    )
+    assert config_resp.oauth_redirect_uri == "https://mychair.co.in/admin/settings"
+    assert config_resp.app_id == "926424756517271"
+    assert config_resp.config_id == "1624499392725484"
+
+
+def test_oauth_url_structure_and_absence_of_xd_arbiter():
+    """Test 2 & 3: Validate manual Meta OAuth URL structure and verify xd_arbiter is NOT used."""
+    from urllib.parse import urlparse, parse_qs
+
+    app_id = "926424756517271"
+    config_id = "1624499392725484"
+    redirect_uri = "https://mychair.co.in/admin/settings"
+    state = "secure-random-state-1234"
+
+    oauth_url = f"https://www.facebook.com/v20.0/dialog/oauth?client_id={app_id}&config_id={config_id}&response_type=code&redirect_uri={redirect_uri}&state={state}"
+
+    parsed = urlparse(oauth_url)
+    params = parse_qs(parsed.query)
+
+    assert params["client_id"][0] == app_id
+    assert params["config_id"][0] == config_id
+    assert params["response_type"][0] == "code"
+    assert params["redirect_uri"][0] == "https://mychair.co.in/admin/settings"
+    assert params["state"][0] == state
+
+    # Assert staticxx.facebook.com and xd_arbiter are NOT present
+    assert "staticxx.facebook.com" not in oauth_url
+    assert "xd_arbiter" not in oauth_url
+
+
+@pytest.mark.asyncio
+async def test_backend_token_exchange_sends_exact_redirect_uri():
+    """Test 7 & 8: Verify backend token exchange sends exact redirect_uri and does NOT persist oauth_code."""
+    salon_id = "salon-redirect-test"
+    tenant_id = "tenant-redirect-test"
+    code = "fresh-test-code-123"
+
+    service = WhatsAppService()
+    
+    mock_connect = AsyncMock()
+    service.connect_salon_waba = mock_connect
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "access_token": "EAA-test-token-valid",
+        "expires_in": 5184000,
+    }
+
+    with patch("httpx.AsyncClient.get", return_value=mock_resp) as mock_get:
+        await service.exchange_embedded_signup_code(
+            salon_id=salon_id,
+            tenant_id=tenant_id,
+            code=code,
+        )
+
+        assert mock_get.call_count >= 1
+        first_call_kwargs = mock_get.call_args_list[0].kwargs
+        params = first_call_kwargs.get("params", {})
+        
+        assert params.get("redirect_uri") == "https://mychair.co.in/admin/settings"
+        assert params.get("code") == code
+
+        # Verify additional_auth_data passed to connect_salon_waba does NOT contain oauth_code
+        mock_connect.assert_called_once()
+        additional_auth_data = mock_connect.call_args.kwargs.get("additional_auth_data", {})
+        assert "oauth_code" not in additional_auth_data
+

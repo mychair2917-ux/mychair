@@ -190,44 +190,40 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
 
     const appId = config?.app_id;
     const configId = config?.config_id;
+    const redirectUri = config?.oauth_redirect_uri || 'https://mychair.co.in/admin/settings';
 
     if (!config?.configured || !appId || !configId) {
       setShowNoConfigModal(true);
       return;
     }
 
-    if (sdkStatus === 'failed' || !(window as any).FB) {
-      setConnectError('Unable to load Meta connection service. Check your internet connection or browser privacy/ad-blocking settings and try again.');
-      return;
-    }
-
     setIsLaunchingSignup(true);
 
     try {
-      (window as any).FB.login(
-        (response: any) => {
-          setIsLaunchingSignup(false);
-          if (response?.authResponse?.code) {
-            const authCode = response.authResponse.code;
-            handleExchangeCode(authCode);
-          } else if (response?.status !== 'connected') {
-            setConnectError('Meta authorization was cancelled or closed before completion.');
-          }
-        },
-        {
-          config_id: configId,
-          response_type: 'code',
-          override_default_response_type: true,
-          extras: {
-            setup: {
-              session_id: `mychair-${salonId}-${Date.now()}`,
-            },
-          },
-        }
-      );
+      // Generate cryptographically strong random state for OAuth state validation
+      const state =
+        typeof window.crypto?.randomUUID === 'function'
+          ? window.crypto.randomUUID()
+          : Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+      sessionStorage.setItem(`mychair_meta_oauth_state_${salonId}`, state);
+
+      const params = new URLSearchParams({
+        client_id: appId,
+        config_id: configId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        state: state,
+      });
+
+      const apiVersion = 'v20.0';
+      const oauthUrl = `https://www.facebook.com/${apiVersion}/dialog/oauth?${params.toString()}`;
+
+      // Controlled top-level OAuth redirect to bypass xd_arbiter dynamic redirect_uri
+      window.location.assign(oauthUrl);
     } catch (err: any) {
       setIsLaunchingSignup(false);
-      setConnectError(err?.message || 'Failed to open Meta Embedded Signup popup.');
+      setConnectError(err?.message || 'Failed to initiate Meta OAuth redirection.');
     }
   };
 
@@ -251,6 +247,46 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
       setConnectError(err?.data?.detail || 'Failed to complete Meta Embedded Signup connection.');
     }
   };
+
+  // Handle Meta OAuth redirect callback on /admin/settings
+  const hasProcessedCallbackRef = React.useRef(false);
+
+  useEffect(() => {
+    if (hasProcessedCallbackRef.current) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const returnedState = urlParams.get('state');
+    const error = urlParams.get('error');
+    const errorReason = urlParams.get('error_reason');
+    const errorDescription = urlParams.get('error_description');
+
+    if (!code && !error && !errorReason) return;
+
+    hasProcessedCallbackRef.current = true;
+
+    // Immediately clean sensitive OAuth parameters from browser address bar
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    if (error || errorReason) {
+      const msg = errorDescription || errorReason || 'Meta authorization was cancelled or closed before completion.';
+      setConnectError(`Meta onboarding failed: ${msg}`);
+      return;
+    }
+
+    if (code) {
+      const storageKey = `mychair_meta_oauth_state_${salonId}`;
+      const expectedState = sessionStorage.getItem(storageKey);
+      sessionStorage.removeItem(storageKey);
+
+      if (!returnedState || !expectedState || returnedState !== expectedState) {
+        setConnectError('Meta authorization could not be verified. Please reconnect WhatsApp.');
+        return;
+      }
+
+      handleExchangeCode(code);
+    }
+  }, [salonId]);
 
   // Disconnect salon WABA
   const handleDisconnect = async () => {

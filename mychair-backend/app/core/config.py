@@ -118,7 +118,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("META_EMBEDDED_SIGNUP_CONFIG_ID", "WHATSAPP_CONFIG_ID", "WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID"),
     )
     META_OAUTH_REDIRECT_URI: str = Field(
-        default="",
+        default="https://mychair.co.in/admin/settings",
         validation_alias=AliasChoices("META_OAUTH_REDIRECT_URI", "META_REDIRECT_URI", "FACEBOOK_REDIRECT_URI", "OAUTH_REDIRECT_URI"),
     )
     WHATSAPP_REVIEW_URL: str = Field(default="")
@@ -187,6 +187,9 @@ class Settings(BaseSettings):
                 )
             else:
                 self.BACKEND_PUBLIC_URL = _UAT_BACKEND_PUBLIC_URL
+
+        if not self.META_OAUTH_REDIRECT_URI or not self.META_OAUTH_REDIRECT_URI.strip():
+            self.META_OAUTH_REDIRECT_URI = "https://mychair.co.in/admin/settings"
 
         if is_production:
             if self.SECRET_KEY == _DEFAULT_SECRET:

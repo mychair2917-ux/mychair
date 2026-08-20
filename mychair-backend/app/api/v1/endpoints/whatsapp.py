@@ -106,12 +106,14 @@ async def get_whatsapp_config(
     """
     app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
     config_id = settings.META_EMBEDDED_SIGNUP_CONFIG_ID
+    redirect_uri = settings.META_OAUTH_REDIRECT_URI or "https://mychair.co.in/admin/settings"
 
     return success_response(
         "WhatsApp configuration retrieved",
         data={
             "app_id": app_id if app_id else None,
             "config_id": config_id if config_id else None,
+            "oauth_redirect_uri": redirect_uri,
             "configured": bool(app_id and config_id),
         },
     )
