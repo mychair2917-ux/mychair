@@ -133,8 +133,6 @@ class WhatsAppService:
                     "client_secret": app_secret,
                     "code": code,
                 }
-                if settings.META_OAUTH_REDIRECT_URI:
-                    params["redirect_uri"] = settings.META_OAUTH_REDIRECT_URI
 
                 try:
                     import httpx
