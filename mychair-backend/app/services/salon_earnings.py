@@ -48,8 +48,10 @@ class _LineAgg:
     quantity: int = 0
     gross: float = 0.0
     discounts: float = 0.0
+    refunds: float = 0.0
     net: float = 0.0
     incentive: float = 0.0
+    buying_price_unit: Optional[float] = None
     product_cost: float = 0.0
     has_product_cost: bool = False
     staff_names: Set[str] = field(default_factory=set)
@@ -72,6 +74,7 @@ class _DayAgg:
     service_revenue: float = 0.0
     product_revenue: float = 0.0
     incentives: float = 0.0
+    product_cost: float = 0.0
 
 
 @dataclass
@@ -377,7 +380,9 @@ class SalonEarningsService:
                         total_revenue=self._safe_round(day.total_revenue),
                         service_revenue=self._safe_round(day.service_revenue),
                         product_revenue=self._safe_round(day.product_revenue),
-                        net_salon_earnings=self._safe_round(day.total_revenue - day.incentives),
+                        net_salon_earnings=self._safe_round(
+                            day.total_revenue - day.product_cost - day.incentives
+                        ),
                     )
                 )
             return trend
@@ -397,6 +402,7 @@ class SalonEarningsService:
             bucket.service_revenue += src.service_revenue
             bucket.product_revenue += src.product_revenue
             bucket.incentives += src.incentives
+            bucket.product_cost += src.product_cost
         for week_key in sorted(week_buckets.keys()):
             bucket = week_buckets[week_key]
             trend.append(
@@ -407,7 +413,7 @@ class SalonEarningsService:
                     service_revenue=self._safe_round(bucket.service_revenue),
                     product_revenue=self._safe_round(bucket.product_revenue),
                     net_salon_earnings=self._safe_round(
-                        bucket.total_revenue - bucket.incentives
+                        bucket.total_revenue - bucket.product_cost - bucket.incentives
                     ),
                 )
             )
@@ -472,6 +478,8 @@ class SalonEarningsService:
         total_refunds = 0.0
         total_taxes = 0.0
         total_incentives = 0.0
+        total_product_cost_accum = 0.0
+        total_product_incentives_accum = 0.0
 
         for invoice in invoices:
             appointment = appointment_map.get(invoice.appointment_id or "")
@@ -571,6 +579,7 @@ class SalonEarningsService:
                     agg.quantity += item.quantity
                     agg.gross += line_gross
                     agg.discounts += line_discount
+                    agg.refunds += refund_on_sales
                     agg.net += net_sales
                     agg.incentive += incentive
                     if item.staff_name:
@@ -578,6 +587,7 @@ class SalonEarningsService:
                 else:
                     inv_agg.product_names.append(item.name)
                     total_product_net += net_sales
+                    total_product_incentives_accum += incentive
                     day_aggs[day_key].product_revenue += net_sales
                     key = item.item_id or item.name
                     if key not in product_aggs:
@@ -589,12 +599,18 @@ class SalonEarningsService:
                     agg.quantity += item.quantity
                     agg.gross += line_gross
                     agg.discounts += line_discount
+                    agg.refunds += refund_on_sales
                     agg.net += net_sales
                     agg.incentive += incentive
                     cost_unit = product_costs.get(item.item_id)
                     if cost_unit is not None and cost_unit > 0:
                         agg.has_product_cost = True
-                        agg.product_cost += round(cost_unit * item.quantity, 2)
+                        agg.buying_price_unit = cost_unit
+                        effective_cost = round(cost_unit * item.quantity * (1.0 - refund_ratio), 2)
+                        agg.product_cost += effective_cost
+                        day_aggs[day_key].product_cost += effective_cost
+                        total_product_cost_accum += effective_cost
+
                     if item.staff_name:
                         agg.staff_names.add(item.staff_name)
 
@@ -625,7 +641,20 @@ class SalonEarningsService:
         total_refunds = self._safe_round(total_refunds)
         total_taxes = self._safe_round(total_taxes)
         total_incentives = self._safe_round(total_incentives)
-        net_salon_earnings = self._safe_round(total_revenue - total_incentives)
+        total_product_cost_final = self._safe_round(total_product_cost_accum)
+        product_incentives_final = self._safe_round(total_product_incentives_accum)
+        net_salon_earnings = self._safe_round(
+            total_revenue - total_product_cost_final - total_incentives
+        )
+
+        total_product_profit_final = self._safe_round(
+            sum(
+                (agg.net - agg.product_cost - agg.incentive)
+                if agg.has_product_cost
+                else (agg.net - agg.incentive)
+                for agg in product_aggs.values()
+            )
+        )
 
         summary = SalonEarningsSummary(
             total_revenue=total_revenue,
@@ -635,6 +664,9 @@ class SalonEarningsService:
             refunds=total_refunds,
             taxes=total_taxes,
             staff_incentives=total_incentives,
+            total_product_cost=total_product_cost_final,
+            product_staff_incentives=product_incentives_final,
+            total_product_profit=total_product_profit_final,
             net_salon_earnings=net_salon_earnings,
             invoice_count=len(invoice_aggs),
         )
@@ -674,22 +706,48 @@ class SalonEarningsService:
         products: List[ProductEarningsRow] = []
         for agg in sorted(product_aggs.values(), key=lambda a: a.net, reverse=True):
             cost = self._safe_round(agg.product_cost) if agg.has_product_cost else None
-            profit = (
-                self._safe_round(agg.net - agg.product_cost) if agg.has_product_cost else None
+            owner_profit = (
+                self._safe_round(agg.net - agg.product_cost - agg.incentive)
+                if agg.has_product_cost
+                else self._safe_round(agg.net - agg.incentive)
             )
+            unit_price = (
+                self._safe_round(agg.gross / agg.quantity)
+                if agg.quantity > 0
+                else None
+            )
+            buying_price = (
+                self._safe_round(agg.buying_price_unit)
+                if agg.buying_price_unit is not None
+                else (
+                    self._safe_round(agg.product_cost / agg.quantity)
+                    if (agg.has_product_cost and agg.quantity > 0)
+                    else None
+                )
+            )
+            staff_incentive_pct = (
+                self._safe_round((agg.incentive / agg.net) * 100.0)
+                if agg.net > 0 and agg.incentive > 0
+                else 0.0
+            )
+
             products.append(
                 ProductEarningsRow(
                     product_id=agg.item_id,
                     product_name=agg.item_name,
                     quantity_sold=agg.quantity,
+                    unit_price=unit_price,
                     gross_sales=self._safe_round(agg.gross),
                     discounts=self._safe_round(agg.discounts),
+                    refunds=self._safe_round(agg.refunds),
                     net_sales=self._safe_round(agg.net),
                     sold_by=sorted(agg.staff_names),
+                    buying_price=buying_price,
                     product_cost=cost,
-                    profit=profit,
+                    staff_incentive_pct=staff_incentive_pct,
                     staff_incentive=self._safe_round(agg.incentive),
-                    salon_earnings=self._safe_round(agg.net - agg.incentive),
+                    profit=owner_profit,
+                    salon_earnings=owner_profit,
                 )
             )
 

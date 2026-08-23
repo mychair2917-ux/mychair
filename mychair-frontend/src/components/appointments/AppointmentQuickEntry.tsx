@@ -266,8 +266,8 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
         phone: clientForm.phone.trim(),
         email: clientForm.email.trim() || undefined,
         gender: clientForm.gender,
-        dob: clientForm.dob || undefined,
-        anniversary_date: clientForm.anniversary_date || undefined,
+        dob: clientForm.is_member ? (clientForm.dob || undefined) : undefined,
+        anniversary_date: clientForm.is_member ? (clientForm.anniversary_date || undefined) : undefined,
         ...(allowMembership ? { is_member: Boolean(clientForm.is_member) } : {}),
       }).unwrap();
 
@@ -450,35 +450,45 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
                 />
               </div>
               {allowMembership && (
-                <label className="mb-2 flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-primary)]">
+                <label className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={clientForm.is_member}
-                    onChange={(event) =>
-                      setClientForm({ ...clientForm, is_member: event.target.checked })
-                    }
+                    onChange={(event) => {
+                      const isMember = event.target.checked;
+                      setClientForm({
+                        ...clientForm,
+                        is_member: isMember,
+                        dob: isMember ? clientForm.dob : '',
+                        anniversary_date: isMember ? clientForm.anniversary_date : '',
+                      });
+                    }}
                     className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
                   />
                   Member
                 </label>
               )}
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Birthday (DOB)</label>
-              <Input
-                type="date"
-                value={clientForm.dob}
-                onChange={(event) => setClientForm({ ...clientForm, dob: event.target.value })}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Anniversary Date</label>
-              <Input
-                type="date"
-                value={clientForm.anniversary_date}
-                onChange={(event) => setClientForm({ ...clientForm, anniversary_date: event.target.value })}
-              />
-            </div>
+            {clientForm.is_member && (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Birthday (DOB)</label>
+                  <Input
+                    type="date"
+                    value={clientForm.dob}
+                    onChange={(event) => setClientForm({ ...clientForm, dob: event.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Anniversary Date</label>
+                  <Input
+                    type="date"
+                    value={clientForm.anniversary_date}
+                    onChange={(event) => setClientForm({ ...clientForm, anniversary_date: event.target.value })}
+                  />
+                </div>
+              </>
+            )}
           </div>
           <div className="mt-3 flex gap-2 justify-end">
             <Button type="button" variant="outline" size="sm" onClick={() => setQuickAddOpen(false)}>

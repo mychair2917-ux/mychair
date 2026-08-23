@@ -52,14 +52,20 @@ async def test_multi_salon_isolation_verification():
     salon_b = "salon-b"
 
     account_a = MagicMock()
+    account_a.waba_id = "waba-a-111"
     account_a.phone_number_id = "phone-id-a"
+    account_a.business_phone_number = "+919876543210"
     account_a.authorization_data = {"access_token": "token-a"}
     account_a.status = "CONNECTED"
+    account_a.connection_status = "ACTIVE"
 
     account_b = MagicMock()
+    account_b.waba_id = "waba-b-222"
     account_b.phone_number_id = "phone-id-b"
+    account_b.business_phone_number = "+919876543211"
     account_b.authorization_data = {"access_token": "token-b"}
     account_b.status = "CONNECTED"
+    account_b.connection_status = "ACTIVE"
 
     async def mock_get_account(s_id):
         if s_id == salon_a:

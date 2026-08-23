@@ -19,6 +19,9 @@ class SalonEarningsSummary(BaseModel):
     refunds: float = 0.0
     taxes: float = 0.0
     staff_incentives: float = 0.0
+    total_product_cost: float = 0.0
+    product_staff_incentives: float = 0.0
+    total_product_profit: float = 0.0
     net_salon_earnings: float = 0.0
     invoice_count: int = 0
     comparison: PeriodComparison = Field(default_factory=PeriodComparison)
@@ -56,13 +59,17 @@ class ProductEarningsRow(BaseModel):
     product_id: str
     product_name: str
     quantity_sold: int = 0
+    unit_price: Optional[float] = None
     gross_sales: float = 0.0
     discounts: float = 0.0
+    refunds: float = 0.0
     net_sales: float = 0.0
     sold_by: List[str] = Field(default_factory=list)
+    buying_price: Optional[float] = None
     product_cost: Optional[float] = None
-    profit: Optional[float] = None
+    staff_incentive_pct: Optional[float] = None
     staff_incentive: float = 0.0
+    profit: Optional[float] = None
     salon_earnings: float = 0.0
 
 

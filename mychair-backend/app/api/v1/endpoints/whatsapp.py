@@ -61,10 +61,20 @@ def _sanitize_account_dict(acc: Optional[SalonWhatsAppAccount], salon_id: str) -
             "templates": default_templates,
         }
 
+    from app.services.whatsapp.service import is_real_value
+
+    is_connected = (
+        acc.status == "CONNECTED"
+        and is_real_value(acc.waba_id)
+        and is_real_value(acc.phone_number_id)
+        and is_real_value(acc.business_phone_number)
+        and acc.connection_status not in ("VERIFICATION_REQUIRED", "COEXISTENCE_REQUIRED", "PHONE_SETUP_REQUIRED", "AUTHORIZED", "PHONE_SELECTION_REQUIRED")
+    )
+
     return {
         "id": str(acc.id) if getattr(acc, "id", None) else None,
         "salon_id": acc.salon_id or salon_id,
-        "connected": acc.status == "CONNECTED",
+        "connected": is_connected,
         "status": acc.status or "DISCONNECTED",
         "connection_status": acc.connection_status or "ACTIVE",
         "waba_id": acc.waba_id,

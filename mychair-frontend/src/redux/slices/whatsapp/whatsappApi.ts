@@ -4,8 +4,8 @@ import { API_PATHS } from '../api/apiPaths';
 export interface WhatsAppAccount {
   id?: string;
   salon_id: string;
-  status: 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'PENDING';
-  connection_status: 'ACTIVE' | 'MIGRATION_REQUIRED' | 'COEXISTENCE_REQUIRED' | 'VERIFICATION_REQUIRED';
+  status: 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'PENDING' | 'AUTHORIZED' | 'VERIFICATION_REQUIRED' | 'COEXISTENCE_REQUIRED' | 'PHONE_SETUP_REQUIRED' | 'PHONE_SELECTION_REQUIRED' | (string & {});
+  connection_status: 'ACTIVE' | 'MIGRATION_REQUIRED' | 'COEXISTENCE_REQUIRED' | 'VERIFICATION_REQUIRED' | 'AUTHORIZED' | (string & {});
   waba_id?: string;
   phone_number_id?: string;
   business_phone_number?: string;

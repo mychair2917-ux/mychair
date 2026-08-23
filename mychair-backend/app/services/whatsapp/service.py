@@ -27,6 +27,22 @@ def normalize_phone_number(phone: Optional[str]) -> str:
     return digits
 
 
+def is_real_value(val: Optional[str]) -> bool:
+    """Checks if a string is a non-empty, non-placeholder value."""
+    if not val or not isinstance(val, str):
+        return False
+    stripped = val.strip()
+    if not stripped:
+        return False
+    placeholders = {
+        "pending_phone_id",
+        "pending_waba_id",
+        "pending meta setup",
+        "pending",
+    }
+    return stripped.lower() not in placeholders
+
+
 class WhatsAppService:
     """
     Centralized WhatsApp Service Layer.
@@ -59,19 +75,24 @@ class WhatsAppService:
     async def is_salon_connected(self, salon_id: str) -> bool:
         """Returns whether a salon has an active, connected WhatsApp Business account."""
         account = await self.get_salon_account(salon_id)
-        if account and account.status == "CONNECTED" and account.phone_number_id:
-            return True
-        # Global environment fallback if configured
-        return bool(settings.WHATSAPP_PHONE_NUMBER_ID and settings.whatsapp_bearer_token)
+        if not account:
+            return False
+        if account.status != "CONNECTED":
+            return False
+        if not is_real_value(account.waba_id) or not is_real_value(account.phone_number_id) or not is_real_value(account.business_phone_number):
+            return False
+        if account.connection_status in ("VERIFICATION_REQUIRED", "COEXISTENCE_REQUIRED", "PHONE_SETUP_REQUIRED", "AUTHORIZED", "PHONE_SELECTION_REQUIRED"):
+            return False
+        return True
 
     async def connect_salon_waba(
         self,
         salon_id: str,
         tenant_id: str,
-        waba_id: str,
-        phone_number_id: str,
-        business_phone_number: str,
-        display_name: str,
+        waba_id: Optional[str],
+        phone_number_id: Optional[str],
+        business_phone_number: Optional[str],
+        display_name: Optional[str],
         access_token: str,
         connection_status: str = "ACTIVE",
         additional_auth_data: Optional[Dict[str, Any]] = None,
@@ -84,23 +105,37 @@ class WhatsAppService:
         
         # Build encrypted/secure authorization container
         auth_data = account.authorization_data or {}
-        auth_data["access_token"] = access_token
+        if access_token:
+            auth_data["access_token"] = access_token
         auth_data["updated_at"] = now_utc().isoformat()
         if additional_auth_data:
             auth_data.update(additional_auth_data)
 
-        account.waba_id = waba_id
-        account.phone_number_id = phone_number_id
-        account.business_phone_number = business_phone_number
-        account.display_name = display_name
-        account.status = "CONNECTED"
-        account.connection_status = connection_status
+        clean_waba = waba_id if is_real_value(waba_id) else None
+        clean_phone_id = phone_number_id if is_real_value(phone_number_id) else None
+        clean_business_phone = business_phone_number if is_real_value(business_phone_number) else None
+
+        account.waba_id = clean_waba
+        account.phone_number_id = clean_phone_id
+        account.business_phone_number = clean_business_phone
+        account.display_name = display_name or "Salon WhatsApp"
         account.authorization_data = auth_data
-        account.connected_at = now_utc()
-        account.disconnected_at = None
+        account.connection_status = connection_status
+
+        # Determine status strictly from actual resolved Meta assets
+        if connection_status in ("VERIFICATION_REQUIRED", "COEXISTENCE_REQUIRED", "PHONE_SELECTION_REQUIRED", "PHONE_SETUP_REQUIRED"):
+            account.status = connection_status
+        elif is_real_value(clean_waba) and is_real_value(clean_phone_id) and is_real_value(clean_business_phone) and connection_status in ("ACTIVE", "CONNECTED", "VERIFIED"):
+            account.status = "CONNECTED"
+            account.connected_at = now_utc()
+            account.disconnected_at = None
+        elif is_real_value(clean_waba) and not is_real_value(clean_phone_id):
+            account.status = "AUTHORIZED"
+        else:
+            account.status = "PHONE_SETUP_REQUIRED"
 
         await account.save()
-        logger.info("Salon %s successfully connected WABA phone_number_id=%s", salon_id, phone_number_id)
+        logger.info("Salon %s WhatsApp status set to %s (connection_status=%s)", salon_id, account.status, connection_status)
         return account
 
     async def exchange_embedded_signup_code(
@@ -179,8 +214,8 @@ class WhatsAppService:
             raise ValueError("No access token acquired from Meta Embedded Signup code exchange.")
 
         # 2. Fetch WABA details & phone number details from Meta Graph API
-        fetched_waba_id = waba_id
-        fetched_phone_id = phone_number_id
+        fetched_waba_id = waba_id if is_real_value(waba_id) else None
+        fetched_phone_id = phone_number_id if is_real_value(phone_number_id) else None
         business_phone = None
         display_name = None
         connection_status = "ACTIVE"
@@ -201,44 +236,47 @@ class WhatsAppService:
                             if len(data_list) == 1:
                                 fetched_waba_id = data_list[0].get("id")
                             elif len(data_list) > 1:
-                                if waba_id:
+                                if waba_id and is_real_value(waba_id):
                                     matched = next((w for w in data_list if w.get("id") == waba_id), None)
                                     if matched:
                                         fetched_waba_id = matched.get("id")
                                 if not fetched_waba_id:
-                                    logger.error(
+                                    connection_status = "PHONE_SELECTION_REQUIRED"
+                                    logger.warning(
                                         "Multiple WABAs found (%d WABAs) for salon %s and no unambiguous selection was made.",
                                         len(data_list),
                                         salon_id,
                                     )
-                                    raise ValueError(
-                                        f"Multiple WhatsApp Business Accounts ({len(data_list)}) found. Please specify which WABA to connect."
-                                    )
-                except ValueError:
-                    raise
                 except Exception as exc:
                     logger.warning("Could not auto-resolve WABA ID: %s", exc)
 
-            if fetched_waba_id:
+            if fetched_waba_id and connection_status != "PHONE_SELECTION_REQUIRED":
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as client:
-                        phone_url = f"https://graph.facebook.com/{api_ver}/{fetched_waba_id}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating,status,name_status"
+                        phone_url = f"https://graph.facebook.com/{api_ver}/{fetched_waba_id}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,status,quality_rating,name_status"
                         p_resp = await client.get(phone_url, headers=headers)
                         p_data = p_resp.json()
                         meta_raw["phone_numbers"] = p_data
 
                         phones = p_data.get("data", [])
                         selected_phone = None
-                        if phones:
-                            if fetched_phone_id:
-                                selected_phone = next((p for p in phones if p.get("id") == fetched_phone_id), phones[0])
-                            else:
+                        if phones and isinstance(phones, list):
+                            if fetched_phone_id and is_real_value(fetched_phone_id):
+                                selected_phone = next((p for p in phones if p.get("id") == fetched_phone_id), None)
+                            elif len(phones) == 1:
                                 selected_phone = phones[0]
+                            elif len(phones) > 1:
+                                connection_status = "PHONE_SELECTION_REQUIRED"
+                                logger.warning(
+                                    "Multiple phone numbers (%d phones) for WABA %s with no specific selection.",
+                                    len(phones),
+                                    fetched_waba_id,
+                                )
 
                         if selected_phone:
                             fetched_phone_id = selected_phone.get("id")
                             business_phone = selected_phone.get("display_phone_number")
-                            display_name = selected_phone.get("verified_name")
+                            display_name = selected_phone.get("verified_name") or selected_phone.get("display_name")
 
                             ver_status = selected_phone.get("code_verification_status")
                             p_status = selected_phone.get("status")
@@ -246,17 +284,20 @@ class WhatsAppService:
                                 connection_status = "VERIFICATION_REQUIRED"
                             elif p_status in ("MIGRATION_REQUIRED", "COEXISTENCE_REQUIRED"):
                                 connection_status = "COEXISTENCE_REQUIRED"
+                            elif p_status in ("UNVERIFIED", "NOT_VERIFIED"):
+                                connection_status = "VERIFICATION_REQUIRED"
+                        elif connection_status != "PHONE_SELECTION_REQUIRED" and not fetched_phone_id:
+                            connection_status = "PHONE_SETUP_REQUIRED"
                 except Exception as exc:
                     logger.warning("Could not query Meta phone numbers for WABA %s: %s", fetched_waba_id, exc)
 
-        if not fetched_waba_id:
-            fetched_waba_id = waba_id or "pending_waba_id"
-        if not fetched_phone_id:
-            fetched_phone_id = phone_number_id or "pending_phone_id"
-        if not business_phone:
-            business_phone = "Pending Meta Setup"
-        if not display_name:
-            display_name = "Salon WhatsApp"
+        clean_waba = fetched_waba_id if is_real_value(fetched_waba_id) else None
+        clean_phone = fetched_phone_id if is_real_value(fetched_phone_id) else None
+        clean_biz_phone = business_phone if is_real_value(business_phone) else None
+
+        if not clean_waba or not clean_phone or not clean_biz_phone:
+            if connection_status not in ("COEXISTENCE_REQUIRED", "VERIFICATION_REQUIRED", "PHONE_SELECTION_REQUIRED"):
+                connection_status = "AUTHORIZED" if clean_waba else "PHONE_SETUP_REQUIRED"
 
         additional_data = {
             "token_expires_in": expires_in,
@@ -266,10 +307,10 @@ class WhatsAppService:
         account = await self.connect_salon_waba(
             salon_id=salon_id,
             tenant_id=tenant_id,
-            waba_id=fetched_waba_id,
-            phone_number_id=fetched_phone_id,
-            business_phone_number=business_phone,
-            display_name=display_name,
+            waba_id=clean_waba,
+            phone_number_id=clean_phone,
+            business_phone_number=clean_biz_phone,
+            display_name=display_name or "Salon WhatsApp",
             access_token=access_token,
             connection_status=connection_status,
             additional_auth_data=additional_data,
@@ -278,7 +319,6 @@ class WhatsAppService:
         return account
 
     async def disconnect_salon_waba(self, salon_id: str) -> Optional[SalonWhatsAppAccount]:
-
         """Disconnects WhatsApp integration for a salon."""
         account = await self.get_salon_account(salon_id)
         if account:
@@ -289,15 +329,15 @@ class WhatsAppService:
         return account
 
     async def _resolve_credentials(self, salon_id: str) -> Tuple[Optional[str], Optional[str], Optional[SalonWhatsAppAccount]]:
-        """Resolves Phone Number ID and Access Token for a specific salon, with environment fallback."""
+        """Resolves Phone Number ID and Access Token for a specific salon."""
         account = await self.get_salon_account(salon_id)
-        if account and account.status == "CONNECTED" and account.phone_number_id:
-            token = account.authorization_data.get("access_token") or settings.whatsapp_bearer_token
-            return account.phone_number_id, token, account
+        if not account:
+            return None, None, None
 
-        # Fallback to system-level developer app settings if salon account is not configured yet
-        if settings.WHATSAPP_PHONE_NUMBER_ID and settings.whatsapp_bearer_token:
-            return settings.WHATSAPP_PHONE_NUMBER_ID, settings.whatsapp_bearer_token, account
+        if await self.is_salon_connected(salon_id):
+            token = (account.authorization_data or {}).get("access_token") or settings.whatsapp_bearer_token
+            if is_real_value(account.phone_number_id) and token:
+                return account.phone_number_id, token, account
 
         return None, None, account
 

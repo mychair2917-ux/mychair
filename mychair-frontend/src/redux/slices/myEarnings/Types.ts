@@ -168,6 +168,9 @@ export interface SalonEarningsSummary {
   refunds: number;
   taxes: number;
   staff_incentives: number;
+  total_product_cost?: number;
+  product_staff_incentives?: number;
+  total_product_profit?: number;
   net_salon_earnings: number;
   invoice_count: number;
   comparison: PeriodComparison;
@@ -205,13 +208,17 @@ export interface ProductEarningsRow {
   product_id: string;
   product_name: string;
   quantity_sold: number;
+  unit_price?: number | null;
   gross_sales: number;
   discounts: number;
+  refunds?: number;
   net_sales: number;
   sold_by: string[];
+  buying_price?: number | null;
   product_cost: number | null;
-  profit: number | null;
+  staff_incentive_pct?: number | null;
   staff_incentive: number;
+  profit: number | null;
   salon_earnings: number;
 }
 

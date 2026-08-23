@@ -146,6 +146,7 @@ const OwnerSalonEarnings: React.FC = () => {
   const [revenueType, setRevenueType] = useState<'' | 'SERVICE' | 'PRODUCT'>('');
   const [txPage, setTxPage] = useState(1);
   const [openingBillId, setOpeningBillId] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState('');
 
   const params = useMemo<SalonEarningsQueryParams>(
     () => ({
@@ -274,8 +275,32 @@ const OwnerSalonEarnings: React.FC = () => {
     setProductId('');
     setPaymentMethod('');
     setRevenueType('');
+    setProductSearch('');
     setTxPage(1);
   };
+
+  const filteredProducts = useMemo(() => {
+    if (!report?.products) return [];
+    if (!productSearch.trim()) return report.products;
+    const query = productSearch.toLowerCase().trim();
+    return report.products.filter(
+      (p) =>
+        p.product_name.toLowerCase().includes(query) ||
+        p.sold_by.some((s) => s.toLowerCase().includes(query))
+    );
+  }, [report?.products, productSearch]);
+
+  const searchedProduct = useMemo(() => {
+    if (!productSearch.trim() && !productId) return null;
+    if (productId && report?.products) {
+      const match = report.products.find((p) => p.product_id === productId);
+      if (match) return match;
+    }
+    if (productSearch.trim() && filteredProducts.length > 0) {
+      return filteredProducts[0];
+    }
+    return null;
+  }, [productSearch, productId, report?.products, filteredProducts]);
 
   const hasData = (summary?.invoice_count ?? 0) > 0 || (summary?.total_revenue ?? 0) > 0;
 
@@ -560,11 +585,51 @@ const OwnerSalonEarnings: React.FC = () => {
             <MetricCard
               label="Staff Incentives"
               value={formatCurrency(summary?.staff_incentives ?? 0)}
-              helper="Commissions for the period"
+              helper="Commissions & incentives paid"
               icon={HandCoins}
               tone="bg-teal-50 text-teal-700"
             />
           </div>
+
+          <SectionCard className="border-violet-100 bg-gradient-to-r from-violet-50/50 via-white to-amber-50/30">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-violet-600" />
+                <h3 className="text-base font-bold text-[var(--color-text-primary)]">
+                  Product Profitability Breakdown
+                </h3>
+              </div>
+              <span className="inline-flex items-center rounded-full bg-violet-100/80 px-3 py-1 text-xs font-semibold text-violet-800">
+                Formula: Net Sales − Buying Cost − Staff Incentive
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-xs">
+                <p className="text-xs font-medium text-gray-500">Net Product Sales</p>
+                <p className="mt-1 text-lg font-bold text-gray-900">
+                  {formatCurrency(summary?.product_revenue ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3.5 shadow-xs">
+                <p className="text-xs font-medium text-rose-700">Product Buying Costs</p>
+                <p className="mt-1 text-lg font-bold text-rose-700">
+                  -{formatCurrency(summary?.total_product_cost ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-3.5 shadow-xs">
+                <p className="text-xs font-medium text-amber-700">Staff Product Incentives</p>
+                <p className="mt-1 text-lg font-bold text-amber-700">
+                  -{formatCurrency(summary?.product_staff_incentives ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 shadow-xs">
+                <p className="text-xs font-semibold text-emerald-800">Salon Owner Product Profit</p>
+                <p className="mt-1 text-lg font-bold text-emerald-800">
+                  {formatCurrency(summary?.total_product_profit ?? 0)}
+                </p>
+              </div>
+            </div>
+          </SectionCard>
 
           {comparison?.has_previous_data && (
             <SectionCard>
@@ -652,14 +717,10 @@ const OwnerSalonEarnings: React.FC = () => {
 
               <div className="mt-6 rounded-2xl bg-[var(--color-surface-bg)] p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  How net is calculated
+                  How net salon earnings are calculated
                 </p>
                 <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-                  Revenue (services + products, after discounts & refunds) − Staff incentives ={' '}
-                  <span className="font-semibold text-[var(--color-text-primary)]">
-                    Net Salon Earnings
-                  </span>
-                  . Taxes are shown separately as amounts collected.
+                  <span className="font-semibold text-gray-800">Net Salon Earnings</span> = Service Net Sales − Staff Service Incentives + Product Profit (Product Net − Buying Cost − Staff Product Incentives).
                 </p>
               </div>
             </SectionCard>
@@ -715,56 +776,144 @@ const OwnerSalonEarnings: React.FC = () => {
       )}
 
       {!isLoading && !isError && report && tab === 'products' && (
-        <TableShell>
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-3">Product</th>
-                <th className="px-4 py-3">Qty</th>
-                <th className="px-4 py-3">Gross</th>
-                <th className="px-4 py-3">Discounts</th>
-                <th className="px-4 py-3">Net</th>
-                <th className="px-4 py-3">Sold By</th>
-                <th className="px-4 py-3">Cost</th>
-                <th className="px-4 py-3">Profit</th>
-                <th className="px-4 py-3">Salon Earnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(report.products?.length ?? 0) === 0 ? (
+        <div className="space-y-4">
+          <SectionCard>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-bold text-[var(--color-text-primary)]">
+                  Product Sales & Profitability Report
+                </h3>
+                <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
+                  Track sales, costs, staff incentives, and net profit per product
+                </p>
+              </div>
+              <div className="w-full sm:w-72">
+                <Input
+                  placeholder="Search product or staff..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="!h-10 rounded-xl"
+                />
+              </div>
+            </div>
+
+            {searchedProduct && (
+              <div className="mt-4 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50/80 to-emerald-50/50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-violet-700">
+                      Product Profit Calculation Detail
+                    </span>
+                    <h4 className="text-lg font-bold text-gray-900">
+                      {searchedProduct.product_name}
+                    </h4>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 shadow-xs">
+                    Qty Sold: {searchedProduct.quantity_sold}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl bg-white p-3 shadow-xs">
+                    <p className="text-xs font-medium text-gray-500">Gross / Net Sales</p>
+                    <p className="mt-0.5 text-sm font-bold text-gray-900">
+                      {formatCurrency(searchedProduct.net_sales)}
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Gross: {formatCurrency(searchedProduct.gross_sales)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-rose-50/60 p-3 shadow-xs">
+                    <p className="text-xs font-medium text-rose-700">Product Buying Cost</p>
+                    <p className="mt-0.5 text-sm font-bold text-rose-700">
+                      {searchedProduct.product_cost != null
+                        ? `-${formatCurrency(searchedProduct.product_cost)}`
+                        : 'N/A'}
+                    </p>
+                    {searchedProduct.buying_price != null && (
+                      <p className="mt-1 text-[11px] text-rose-600">
+                        @ {formatCurrency(searchedProduct.buying_price)} / unit
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-xl bg-amber-50/60 p-3 shadow-xs">
+                    <p className="text-xs font-medium text-amber-700">Staff Product Incentive</p>
+                    <p className="mt-0.5 text-sm font-bold text-amber-700">
+                      -{formatCurrency(searchedProduct.staff_incentive)}
+                    </p>
+                    {searchedProduct.staff_incentive_pct != null && searchedProduct.staff_incentive_pct > 0 && (
+                      <p className="mt-1 text-[11px] text-amber-600">
+                        ({searchedProduct.staff_incentive_pct}% rate)
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-xl bg-emerald-100/70 p-3 shadow-xs border border-emerald-300">
+                    <p className="text-xs font-bold text-emerald-800">Salon Owner Profit</p>
+                    <p className="mt-0.5 text-base font-extrabold text-emerald-900">
+                      {searchedProduct.profit != null
+                        ? formatCurrency(searchedProduct.profit)
+                        : formatCurrency(searchedProduct.salon_earnings)}
+                    </p>
+                    <p className="mt-1 text-[10px] font-medium text-emerald-700">
+                      = Net Sales − Cost − Incentive
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+
+          <TableShell>
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                    No product sales for this period.
-                  </td>
+                  <th className="px-4 py-3">Product</th>
+                  <th className="px-4 py-3">Qty</th>
+                  <th className="px-4 py-3">Gross Sales</th>
+                  <th className="px-4 py-3">Discounts</th>
+                  <th className="px-4 py-3">Net Sales</th>
+                  <th className="px-4 py-3">Sold By</th>
+                  <th className="px-4 py-3">Buying Cost</th>
+                  <th className="px-4 py-3">Staff Incentive</th>
+                  <th className="px-4 py-3">Salon Owner Profit</th>
                 </tr>
-              ) : (
-                report.products.map((row) => (
-                  <tr key={row.product_id} className="border-t border-gray-100">
-                    <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
-                      {row.product_name}
-                    </td>
-                    <td className="px-4 py-3">{row.quantity_sold}</td>
-                    <td className="px-4 py-3">{formatCurrency(row.gross_sales)}</td>
-                    <td className="px-4 py-3">{formatCurrency(row.discounts)}</td>
-                    <td className="px-4 py-3">{formatCurrency(row.net_sales)}</td>
-                    <td className="px-4 py-3 text-[var(--color-text-secondary)]">
-                      {row.sold_by.join(', ') || '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.product_cost != null ? formatCurrency(row.product_cost) : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.profit != null ? formatCurrency(row.profit) : '—'}
-                    </td>
-                    <td className="px-4 py-3 font-semibold">
-                      {formatCurrency(row.salon_earnings)}
+              </thead>
+              <tbody>
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                      No product sales found matching your query.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </TableShell>
+                ) : (
+                  filteredProducts.map((row) => (
+                    <tr key={row.product_id} className="border-t border-gray-100 hover:bg-gray-50/50">
+                      <td className="px-4 py-3 font-medium text-[var(--color-text-primary)]">
+                        {row.product_name}
+                      </td>
+                      <td className="px-4 py-3">{row.quantity_sold}</td>
+                      <td className="px-4 py-3">{formatCurrency(row.gross_sales)}</td>
+                      <td className="px-4 py-3">{formatCurrency(row.discounts)}</td>
+                      <td className="px-4 py-3 font-medium">{formatCurrency(row.net_sales)}</td>
+                      <td className="px-4 py-3 text-[var(--color-text-secondary)]">
+                        {row.sold_by.join(', ') || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-rose-700 font-medium">
+                        {row.product_cost != null ? formatCurrency(row.product_cost) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-amber-700 font-medium">
+                        {formatCurrency(row.staff_incentive)}
+                      </td>
+                      <td className="px-4 py-3 font-bold text-emerald-700">
+                        {formatCurrency(row.profit ?? row.salon_earnings)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </TableShell>
+        </div>
       )}
 
       {!isLoading && !isError && report && tab === 'staff' && (

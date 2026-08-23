@@ -438,8 +438,8 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           phone: values.phone.trim(),
           email: values.email || undefined,
           gender: values.gender || undefined,
-          dob: values.dob || undefined,
-          anniversary_date: values.anniversary_date || undefined,
+          dob: values.is_member && values.dob ? values.dob : undefined,
+          anniversary_date: values.is_member && values.anniversary_date ? values.anniversary_date : undefined,
           address: values.address || undefined,
           notes: values.notes || undefined,
           ...(allowMembership
@@ -610,11 +610,13 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                   ]}
                 />
               </div>
-              {field('dob', 'Date of Birth (Birthday)', 'date')}
+              {formik.values.is_member && field('dob', 'Date of Birth (Birthday)', 'date')}
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {field('anniversary_date', 'Anniversary Date', 'date')}
-            </div>
+            {formik.values.is_member && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {field('anniversary_date', 'Anniversary Date', 'date')}
+              </div>
+            )}
             {field('address', 'Address')}
             {allowMembership && (
               <div className="space-y-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 p-3.5 border border-amber-200/70 dark:border-amber-800/40">
@@ -625,6 +627,10 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                     checked={formik.values.is_member}
                     onChange={(e) => {
                       formik.handleChange(e);
+                      if (!e.target.checked) {
+                        formik.setFieldValue('dob', '');
+                        formik.setFieldValue('anniversary_date', '');
+                      }
                       if (e.target.checked && !formik.values.membership_end_date) {
                         const num = memSettingsRes?.data?.default_duration_number || 1;
                         const unit = (memSettingsRes?.data?.default_duration_unit || 'Years').toLowerCase();

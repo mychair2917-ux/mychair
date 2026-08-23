@@ -19,12 +19,18 @@ async def test_multi_tenant_account_resolution():
 
     mock_account_a = MagicMock()
     mock_account_a.status = "CONNECTED"
+    mock_account_a.connection_status = "ACTIVE"
+    mock_account_a.waba_id = "waba-a-111"
     mock_account_a.phone_number_id = "phone-id-a-111"
+    mock_account_a.business_phone_number = "+919876543210"
     mock_account_a.authorization_data = {"access_token": "EAA-token-salon-a"}
 
     mock_account_b = MagicMock()
     mock_account_b.status = "CONNECTED"
+    mock_account_b.connection_status = "ACTIVE"
+    mock_account_b.waba_id = "waba-b-222"
     mock_account_b.phone_number_id = "phone-id-b-222"
+    mock_account_b.business_phone_number = "+919876543211"
     mock_account_b.authorization_data = {"access_token": "EAA-token-salon-b"}
 
     async def mock_get_salon_account(s_id):

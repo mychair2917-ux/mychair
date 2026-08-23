@@ -48,7 +48,25 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
 
   const config = configRes?.data;
   const account = statusData?.data;
-  const isConnected = account?.status === 'CONNECTED';
+
+  const isRealValue = (val?: string): boolean => {
+    if (!val || typeof val !== 'string') return false;
+    const trimmed = val.trim().toLowerCase();
+    return (
+      trimmed !== '' &&
+      trimmed !== 'pending_phone_id' &&
+      trimmed !== 'pending_waba_id' &&
+      trimmed !== 'pending meta setup' &&
+      trimmed !== 'pending'
+    );
+  };
+
+  const isConnected = Boolean(
+    ((account as any)?.connected ?? true) &&
+    account?.status === 'CONNECTED' &&
+    isRealValue(account?.phone_number_id) &&
+    isRealValue(account?.business_phone_number)
+  );
 
   // Local state for Meta SDK captured postMessage data
   const [capturedWabaId, setCapturedWabaId] = useState<string>('');
@@ -417,6 +435,18 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                     <CheckCircle2 className="w-3.5 h-3.5" /> WhatsApp Connected
                   </span>
+                ) : account?.status === 'AUTHORIZED' || account?.connection_status === 'AUTHORIZED' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Meta Authorized
+                  </span>
+                ) : account?.status === 'VERIFICATION_REQUIRED' || account?.connection_status === 'VERIFICATION_REQUIRED' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Phone Verification Required
+                  </span>
+                ) : account?.status === 'COEXISTENCE_REQUIRED' || account?.connection_status === 'COEXISTENCE_REQUIRED' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Existing WhatsApp Business Number
+                  </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
                     <XCircle className="w-3.5 h-3.5" /> Not Connected
@@ -531,12 +561,24 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
           </div>
         )}
 
-        {/* Coexistence & Verification Alerts */}
-        {isConnected && account?.connection_status === 'COEXISTENCE_REQUIRED' && (
-          <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+        {/* Setup, Coexistence & Verification Alerts */}
+        {!isConnected && (account?.status === 'AUTHORIZED' || account?.connection_status === 'AUTHORIZED' || account?.status === 'PHONE_SETUP_REQUIRED' || account?.status === 'PHONE_SELECTION_REQUIRED') && (
+          <div className="mt-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 text-sm flex items-start gap-3">
+            <HelpCircle className="w-5 h-5 shrink-0 mt-0.5 text-blue-400" />
             <div>
-              <span className="font-semibold block text-amber-200">WhatsApp Mobile App Coexistence Required</span>
+              <span className="font-semibold block text-blue-200">WhatsApp Number Setup Required</span>
+              <span>
+                Meta authorization is complete, but no active WhatsApp phone number has been linked yet. Please complete phone number selection in Meta Embedded Signup.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {(account?.status === 'COEXISTENCE_REQUIRED' || account?.connection_status === 'COEXISTENCE_REQUIRED') && (
+          <div className="mt-4 p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-sm flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-purple-400" />
+            <div>
+              <span className="font-semibold block text-purple-200">Existing WhatsApp Business Number / Finish Meta Coexistence Setup</span>
               <span>
                 This phone number is currently active on the WhatsApp Business App mobile client. Meta requires completing phone number verification in Meta Business Manager to enable Cloud API coexistence. MYCHAIR will not automatically overwrite or disconnect your existing mobile app.
               </span>
@@ -544,11 +586,11 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
           </div>
         )}
 
-        {isConnected && account?.connection_status === 'VERIFICATION_REQUIRED' && (
+        {(account?.status === 'VERIFICATION_REQUIRED' || account?.connection_status === 'VERIFICATION_REQUIRED') && (
           <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
             <div>
-              <span className="font-semibold block text-amber-200">Meta Phone Number Verification Pending</span>
+              <span className="font-semibold block text-amber-200">Phone Verification Required</span>
               <span>
                 Your WhatsApp number has been linked, but Meta requires 2FA SMS code verification in Meta Business Manager before outbound messages can be dispatched.
               </span>

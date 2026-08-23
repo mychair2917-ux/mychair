@@ -559,6 +559,38 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     setTotalAmount(String(calculatedTotal));
   }, [calculatedTotal]);
 
+  const isEditFormValid = useMemo(() => {
+    if (!appointment) return false;
+
+    const serviceRowsToSubmit = serviceRows.filter((row) => !isServiceRowBlank(row));
+    const invalidServiceCount = serviceRowsToSubmit.filter((row) => !isServiceRowComplete(row)).length;
+
+    const productRowsToSubmit = productRows.filter((row) => !isProductRowBlank(row));
+    const invalidProductCount = productRowsToSubmit.filter((row) => !isProductRowComplete(row)).length;
+
+    if (invalidServiceCount > 0 || invalidProductCount > 0) return false;
+    if (serviceRowsToSubmit.length === 0 && productRowsToSubmit.length === 0) return false;
+
+    if (!paymentMethod || !paymentStatus) return false;
+
+    const finalTotal = Number(totalAmount || calculatedTotal);
+    if (paymentStatus === 'PARTIALLY_PAID') {
+      const pa = Number(paidAmount);
+      if (!paidAmount || pa <= 0 || pa >= finalTotal) return false;
+    }
+
+    return true;
+  }, [
+    appointment,
+    serviceRows,
+    productRows,
+    paymentMethod,
+    paymentStatus,
+    paidAmount,
+    totalAmount,
+    calculatedTotal,
+  ]);
+
   const updateServiceRow = (rowId: string, field: keyof ServiceRow, value: string) => {
     setInvalidServiceRowIds((ids) => ids.filter((id) => id !== rowId));
     setServiceRows((rows) =>
@@ -947,7 +979,15 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" isLoading={isUpdating} onClick={handleSubmit}>
+          <Button
+            type="button"
+            isLoading={isUpdating}
+            disabled={!isEditFormValid || isUpdating}
+            onClick={handleSubmit}
+            className={cn(
+              !isEditFormValid && 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500 shadow-none border-transparent hover:bg-gray-300 hover:text-gray-500'
+            )}
+          >
             Save Changes
           </Button>
         </div>
@@ -1722,8 +1762,8 @@ const Appointments: React.FC = () => {
         phone: clientForm.phone.trim(),
         email: clientForm.email.trim() || undefined,
         gender: clientForm.gender,
-        dob: clientForm.dob || undefined,
-        anniversary_date: clientForm.anniversary_date || undefined,
+        dob: clientForm.is_member ? (clientForm.dob || undefined) : undefined,
+        anniversary_date: clientForm.is_member ? (clientForm.anniversary_date || undefined) : undefined,
         ...(allowMembership ? { is_member: Boolean(clientForm.is_member) } : {}),
       }).unwrap();
       if (response.data) {
@@ -1975,6 +2015,39 @@ const Appointments: React.FC = () => {
 
     await executeSubmit(payload);
   };
+
+  const isFormValid = useMemo(() => {
+    if (!salonId || !selectedClient) return false;
+
+    const serviceRowsToSubmit = serviceRows.filter((row) => !isServiceRowBlank(row));
+    const invalidServiceCount = serviceRowsToSubmit.filter((row) => !isServiceRowComplete(row)).length;
+
+    const productRowsToSubmit = productRows.filter((row) => !isProductRowBlank(row));
+    const invalidProductCount = productRowsToSubmit.filter((row) => !isProductRowComplete(row)).length;
+
+    if (invalidServiceCount > 0 || invalidProductCount > 0) return false;
+    if (serviceRowsToSubmit.length === 0 && productRowsToSubmit.length === 0) return false;
+
+    if (!paymentMethod || !paymentStatus) return false;
+
+    const finalTotal = Number(totalAmount || calculatedTotal);
+    if (paymentStatus === 'PARTIALLY_PAID') {
+      const pa = Number(paidAmount);
+      if (!paidAmount || pa <= 0 || pa >= finalTotal) return false;
+    }
+
+    return true;
+  }, [
+    salonId,
+    selectedClient,
+    serviceRows,
+    productRows,
+    paymentMethod,
+    paymentStatus,
+    paidAmount,
+    totalAmount,
+    calculatedTotal,
+  ]);
 
   return (
     <div className="min-h-screen bg-[var(--color-surface-bg)]/30 p-4 md:p-6 lg:p-8">
@@ -2320,35 +2393,45 @@ const Appointments: React.FC = () => {
                           />
                         </div>
                         {allowMembership && (
-                          <label className="mb-2 flex shrink-0 items-center gap-2 text-sm text-[var(--color-text-primary)]">
+                          <label className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)] cursor-pointer">
                             <input
                               type="checkbox"
                               checked={clientForm.is_member}
-                              onChange={(event) =>
-                                setClientForm({ ...clientForm, is_member: event.target.checked })
-                              }
+                              onChange={(event) => {
+                                const isMember = event.target.checked;
+                                setClientForm({
+                                  ...clientForm,
+                                  is_member: isMember,
+                                  dob: isMember ? clientForm.dob : '',
+                                  anniversary_date: isMember ? clientForm.anniversary_date : '',
+                                });
+                              }}
                               className="h-4 w-4 rounded border-gray-300 text-[var(--color-brand-gold)] focus:ring-[var(--color-brand-gold)]"
                             />
                             Member
                           </label>
                         )}
                       </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Birthday (DOB)</label>
-                        <Input
-                          type="date"
-                          value={clientForm.dob}
-                          onChange={(event) => setClientForm({ ...clientForm, dob: event.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Anniversary Date</label>
-                        <Input
-                          type="date"
-                          value={clientForm.anniversary_date}
-                          onChange={(event) => setClientForm({ ...clientForm, anniversary_date: event.target.value })}
-                        />
-                      </div>
+                      {clientForm.is_member && (
+                        <>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Birthday (DOB)</label>
+                            <Input
+                              type="date"
+                              value={clientForm.dob}
+                              onChange={(event) => setClientForm({ ...clientForm, dob: event.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">Anniversary Date</label>
+                            <Input
+                              type="date"
+                              value={clientForm.anniversary_date}
+                              onChange={(event) => setClientForm({ ...clientForm, anniversary_date: event.target.value })}
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                     <Button type="submit" className="mt-3" isLoading={isCreatingClient}>
                       Save client
@@ -2763,7 +2846,16 @@ const Appointments: React.FC = () => {
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                 />
-                <Button fullWidth type="button" isLoading={isSubmitting} onClick={handleSubmit}>
+                <Button
+                  fullWidth
+                  type="button"
+                  isLoading={isSubmitting}
+                  disabled={!isFormValid || isSubmitting}
+                  onClick={handleSubmit}
+                  className={cn(
+                    !isFormValid && 'opacity-50 cursor-not-allowed bg-gray-300 text-gray-500 shadow-none border-transparent hover:bg-gray-300 hover:text-gray-500'
+                  )}
+                >
                   Submit Billing
                 </Button>
               </div>
