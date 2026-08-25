@@ -1,0 +1,153 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/suraj/Documents/Mychair/mychair-backend
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-1.4.0
+asyncio: mode=auto, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 9 items
+
+tests/test_whatsapp_embedded_signup.py F......F.                         [100%]
+
+=================================== FAILURES ===================================
+____________________ test_embedded_signup_exchange_success _____________________
+tests/test_whatsapp_embedded_signup.py:31: in test_embedded_signup_exchange_success
+    result = await service.exchange_embedded_signup_code(
+app/services/whatsapp/service.py:188: in exchange_embedded_signup_code
+    raise ValueError("Provided access token is invalid or expired.")
+E   ValueError: Provided access token is invalid or expired.
+------------------------------ Captured log call -------------------------------
+ERROR    whatsapp.service:service.py:187 direct_access_token debug validation failed
+________________________ test_legacy_code_exchange_used ________________________
+tests/test_whatsapp_embedded_signup.py:292: in test_legacy_code_exchange_used
+    mock_get_req.assert_not_called()
+/usr/lib/python3.10/unittest/mock.py:890: in assert_not_called
+    raise AssertionError(msg)
+E   AssertionError: Expected 'get' to not have been called. Called 1 times.
+E   Calls: [call('https://graph.facebook.com/v20.0/me/client_whatsapp_business_accounts', headers={'Authorization': 'Bearer EAA-legacy-token'}),
+E    call().json()].
+------------------------------ Captured log call -------------------------------
+WARNING  whatsapp.service:service.py:307 Could not auto-resolve WABA ID: 'coroutine' object has no attribute 'get'
+=============================== warnings summary ===============================
+app/models/base.py:16
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/base.py:16: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    tenant_id: Optional[str] = Field(default=None, index=True)
+
+app/models/user.py:12
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/user.py:12: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    email: EmailStr = Field(..., index=True)
+
+app/models/user.py:13
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/user.py:13: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    phone: Optional[str] = Field(default=None, index=True)
+
+app/models/user.py:24
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/user.py:24: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    employee_id: Optional[str] = Field(default=None, index=True)
+
+app/models/user.py:46
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/user.py:46: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    branch_id: Optional[str] = Field(default=None, index=True)
+
+app/models/user.py:47
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/user.py:47: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    employee_code: Optional[str] = Field(default=None, max_length=50, index=True)
+
+app/models/customer.py:13
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/customer.py:13: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    email: Optional[EmailStr] = Field(default=None, index=True)
+
+app/models/customer.py:14
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/customer.py:14: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    phone: str = Field(..., index=True)  # Primary unique contact identifier per tenant
+
+app/models/salon_whatsapp_account.py:12
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/salon_whatsapp_account.py:12: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    salon_id: str = Field(..., index=True)
+
+app/models/salon_whatsapp_account.py:13
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/salon_whatsapp_account.py:13: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    waba_id: Optional[str] = Field(default=None, index=True)
+
+app/models/salon_whatsapp_account.py:14
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/salon_whatsapp_account.py:14: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    phone_number_id: Optional[str] = Field(default=None, index=True)
+
+app/models/salon_whatsapp_account.py:15
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/salon_whatsapp_account.py:15: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    business_phone_number: Optional[str] = Field(default=None, index=True)
+
+app/models/salon_whatsapp_account.py:19
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/salon_whatsapp_account.py:19: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    status: str = Field(default="DISCONNECTED", index=True)
+
+app/models/salon_whatsapp_account.py:22
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/salon_whatsapp_account.py:22: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    connection_status: str = Field(default="ACTIVE", index=True)
+
+app/models/whatsapp_message.py:11
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:11: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    salon_id: str = Field(..., index=True)
+
+app/models/whatsapp_message.py:12
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:12: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    customer_id: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:13
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:13: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    phone_number: str = Field(..., index=True)
+
+app/models/whatsapp_message.py:18
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:18: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    message_type: str = Field(default="BILL_RECEIPT", index=True)
+
+app/models/whatsapp_message.py:21
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:21: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    status: str = Field(default="QUEUED", index=True)
+
+app/models/whatsapp_message.py:22
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:22: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    delivery_status: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:29
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:29: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    wamid: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:30
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:30: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    meta_message_id: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:33
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:33: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    reference_type: Optional[str] = Field(default=None, index=True)  # BILL, APPOINTMENT, CAMPAIGN, BIRTHDAY, TEST
+
+app/models/whatsapp_message.py:34
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:34: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    reference_id: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:37
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:37: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    deduplication_key: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:39
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:39: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    appointment_id: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:40
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:40: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    invoice_id: Optional[str] = Field(default=None, index=True)
+
+app/models/whatsapp_message.py:41
+  /home/suraj/Documents/Mychair/mychair-backend/app/models/whatsapp_message.py:41: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'index'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    bill_id: Optional[str] = Field(default=None, index=True)
+
+tests/test_whatsapp_embedded_signup.py::test_legacy_code_exchange_used
+  /home/suraj/Documents/Mychair/mychair-backend/.venv/lib/python3.10/site-packages/_pytest/stash.py:108: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    del self._storage[key]
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_whatsapp_embedded_signup.py::test_embedded_signup_exchange_success
+FAILED tests/test_whatsapp_embedded_signup.py::test_legacy_code_exchange_used
+=================== 2 failed, 7 passed, 29 warnings in 1.27s ===================
