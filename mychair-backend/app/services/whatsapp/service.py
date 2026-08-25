@@ -145,8 +145,6 @@ class WhatsAppService:
         code: Optional[str] = None,
         waba_id: Optional[str] = None,
         phone_number_id: Optional[str] = None,
-        direct_access_token: Optional[str] = None,
-        redirect_uri: Optional[str] = None,
     ) -> SalonWhatsAppAccount:
         """
         Exchanges Meta Embedded Signup authorization code for a system access token,
@@ -174,9 +172,8 @@ class WhatsAppService:
                     "code": code,
                 }
                 
-                if redirect_uri:
-                    params["redirect_uri"] = redirect_uri
-                    params["grant_type"] = "authorization_code"
+                params["redirect_uri"] = "https://mychair.co.in/admin/settings"
+                params["grant_type"] = "authorization_code"
                 
                 try:
                     import httpx

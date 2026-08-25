@@ -73,7 +73,6 @@ async def test_embedded_signup_exchange_success():
             code=code,
             waba_id=waba_id,
             phone_number_id=phone_number_id,
-            direct_access_token="EAA-test-long-lived-token",
         )
 
     assert result.salon_id == salon_id
@@ -168,8 +167,8 @@ def test_oauth_url_structure_and_absence_of_xd_arbiter():
 
 
 @pytest.mark.asyncio
-async def test_sdk_embedded_signup_token_exchange_sends_redirect_uri():
-    """Verify SDK Embedded Signup token exchange sends client_id, client_secret, code, and redirect_uri."""
+async def test_oauth_token_exchange_sends_hardcoded_redirect_uri():
+    """Verify OAuth token exchange sends client_id, client_secret, code, and hardcoded redirect_uri via GET."""
     salon_id = "salon-sdk-test"
     tenant_id = "tenant-sdk-test"
     code = "fresh-sdk-code-123"
@@ -186,183 +185,26 @@ async def test_sdk_embedded_signup_token_exchange_sends_redirect_uri():
         "expires_in": 5184000,
     }
 
-    with patch("httpx.AsyncClient.post", return_value=mock_resp) as mock_post:
+    with patch("httpx.AsyncClient.get", return_value=mock_resp) as mock_get:
         await service.exchange_embedded_signup_code(
             salon_id=salon_id,
             tenant_id=tenant_id,
             code=code,
         )
 
-        assert mock_post.call_count >= 1
-        first_call_kwargs = mock_post.call_args_list[0].kwargs
+        assert mock_get.call_count >= 1
+        first_call_kwargs = mock_get.call_args_list[0].kwargs
         params = first_call_kwargs.get("params", {})
         
-        # Verify SDK Embedded Signup parameters
+        # Verify OAuth exchange parameters
         assert "client_id" in params
         assert "client_secret" in params
         assert params.get("code") == code
-        # Now we expect redirect_uri to be present
-        from app.core.config import settings
-        assert params.get("redirect_uri") == settings.META_OAUTH_REDIRECT_URI
+        # Now we expect hardcoded redirect_uri to be present
+        assert params.get("redirect_uri") == "https://mychair.co.in/admin/settings"
+        assert params.get("grant_type") == "authorization_code"
 
-        # Verify additional_auth_data passed to connect_salon_waba does NOT contain oauth_code
+        # Verify connect_salon_waba
         mock_connect.assert_called_once()
-        additional_auth_data = mock_connect.call_args.kwargs.get("additional_auth_data", {})
-        assert "oauth_code" not in additional_auth_data
 
-
-@pytest.mark.asyncio
-async def test_oauth_redirect_token_exchange_sends_redirect_uri_when_provided():
-    """Verify legacy OAuth redirect flow sends redirect_uri when explicitly passed or uses fallback."""
-    salon_id = "salon-redirect-test"
-    tenant_id = "tenant-redirect-test"
-    code = "fresh-redirect-code-456"
-    redirect_uri = "https://mychair.co.in/admin/settings"
-
-    service = WhatsAppService()
-    
-    mock_connect = AsyncMock()
-    service.connect_salon_waba = mock_connect
-
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "access_token": "EAA-test-token-valid",
-        "expires_in": 5184000,
-    }
-
-    with patch("httpx.AsyncClient.post", return_value=mock_resp) as mock_post:
-        await service.exchange_embedded_signup_code(
-            salon_id=salon_id,
-            tenant_id=tenant_id,
-            code=code,
-            redirect_uri=redirect_uri,
-        )
-
-        assert mock_post.call_count >= 1
-        first_call_kwargs = mock_post.call_args_list[0].kwargs
-        params = first_call_kwargs.get("params", {})
-        
-        assert "redirect_uri" in params
-        from app.core.config import settings
-        expected_redirect_uri = settings.META_OAUTH_REDIRECT_URI or redirect_uri
-        assert params.get("redirect_uri") == expected_redirect_uri
-        assert params.get("code") == code
-
-
-@pytest.mark.asyncio
-async def test_direct_token_overrides_code():
-    """Test A: direct_access_token + code -> direct access token used, /oauth/access_token code exchange NOT called"""
-    salon_id = "salon-test-123"
-    tenant_id = "tenant-test-999"
-    code = "mock-meta-auth-code"
-    direct_token = "EAA-direct-token-valid"
-
-    service = WhatsAppService()
-    service.connect_salon_waba = AsyncMock()
-
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "data": {
-            "is_valid": True,
-            "app_id": "926424756517271",
-            "type": "USER"
-        }
-    }
-    
-    mock_extend_resp = MagicMock()
-    mock_extend_resp.status_code = 200
-    mock_extend_resp.json.return_value = {
-        "access_token": "EAA-extended-long-token"
-    }
-
-    async def mock_get(url, *args, **kwargs):
-        if "debug_token" in url:
-            return mock_resp
-        if "oauth/access_token" in url:
-            return mock_extend_resp
-        return MagicMock(status_code=200, json=lambda: {"data": []})
-
-    with patch("httpx.AsyncClient.get", side_effect=mock_get) as mock_get_req, \
-         patch("httpx.AsyncClient.post") as mock_post_req, \
-         patch("app.core.config.settings.META_APP_ID", "926424756517271"), \
-         patch("app.core.config.settings.WHATSAPP_APP_SECRET", "secret"):
-        
-        await service.exchange_embedded_signup_code(
-            salon_id=salon_id,
-            tenant_id=tenant_id,
-            code=code,
-            direct_access_token=direct_token
-        )
-
-        mock_post_req.assert_not_called()
-
-@pytest.mark.asyncio
-async def test_legacy_code_exchange_used():
-    """Test B: only code -> legacy code exchange used"""
-    salon_id = "salon-test-123"
-    tenant_id = "tenant-test-999"
-    code = "mock-meta-auth-code"
-
-    service = WhatsAppService()
-    service.connect_salon_waba = AsyncMock()
-
-    mock_post_resp = MagicMock()
-    mock_post_resp.status_code = 200
-    mock_post_resp.json.return_value = {
-        "access_token": "EAA-legacy-token"
-    }
-
-    async def mock_get(url, *args, **kwargs):
-        return MagicMock(status_code=200, json=lambda: {"data": []})
-
-    with patch("httpx.AsyncClient.post", return_value=mock_post_resp) as mock_post_req, \
-         patch("httpx.AsyncClient.get", side_effect=mock_get) as mock_get_req, \
-         patch("app.core.config.settings.META_APP_ID", "926424756517271"), \
-         patch("app.core.config.settings.WHATSAPP_APP_SECRET", "secret"):
-        
-        await service.exchange_embedded_signup_code(
-            salon_id=salon_id,
-            tenant_id=tenant_id,
-            code=code
-        )
-
-        mock_post_req.assert_called()
-        
-        for call in mock_get_req.call_args_list:
-            assert "debug_token" not in call.args[0]
-
-@pytest.mark.asyncio
-async def test_invalid_direct_token_no_fallback():
-    """Test C: invalid direct token -> validation error, NO fallback to code exchange"""
-    salon_id = "salon-test-123"
-    tenant_id = "tenant-test-999"
-    code = "mock-meta-auth-code"
-    direct_token = "EAA-direct-token-invalid"
-
-    service = WhatsAppService()
-
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "data": {
-            "is_valid": False
-        }
-    }
-
-    with patch("httpx.AsyncClient.get", return_value=mock_resp) as mock_get_req, \
-         patch("httpx.AsyncClient.post") as mock_post_req, \
-         patch("app.core.config.settings.META_APP_ID", "926424756517271"), \
-         patch("app.core.config.settings.WHATSAPP_APP_SECRET", "secret"):
-        
-        with pytest.raises(ValueError, match="Provided access token is invalid or expired."):
-            await service.exchange_embedded_signup_code(
-                salon_id=salon_id,
-                tenant_id=tenant_id,
-                code=code,
-                direct_access_token=direct_token
-            )
-
-        mock_post_req.assert_not_called()
 
