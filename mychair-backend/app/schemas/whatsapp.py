@@ -27,9 +27,6 @@ class WhatsAppEmbeddedSignupPayload(BaseModel):
     code: Optional[str] = Field(default=None, description="Authorization code from Meta Embedded Signup OAuth")
     waba_id: Optional[str] = Field(default=None, description="Captured WABA ID from Meta SDK postMessage event")
     phone_number_id: Optional[str] = Field(default=None, description="Captured Phone Number ID from Meta SDK postMessage event")
-    access_token: Optional[str] = Field(default=None, description="Direct token fallback (for dev/test override)")
-    direct_access_token: Optional[str] = Field(default=None, description="Access token provided directly by FB.login authResponse")
-    redirect_uri: Optional[str] = Field(default=None, description="Optional redirect URI if initiated via top-level OAuth redirect")
 
 class WhatsAppConnectPayload(BaseModel):
     salon_id: str = Field(..., description="Salon ID")

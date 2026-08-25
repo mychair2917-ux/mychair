@@ -172,7 +172,7 @@ class WhatsAppService:
                     "code": code,
                 }
                 
-                params["redirect_uri"] = "https://mychair.co.in/admin/settings"
+                params["redirect_uri"] = settings.META_OAUTH_REDIRECT_URI or "https://mychair.co.in/admin/settings"
                 params["grant_type"] = "authorization_code"
                 
                 try:

@@ -92,16 +92,25 @@ async def test_5_multiple_wabas_does_not_silently_select_first():
         ]
     }
 
+    mock_oauth_resp = MagicMock()
+    mock_oauth_resp.status_code = 200
+    mock_oauth_resp.json.return_value = {"access_token": "mock-token"}
+
+    async def mock_get(url, *args, **kwargs):
+        if "oauth/access_token" in url:
+            return mock_oauth_resp
+        return mock_waba_resp
+
     mock_account = MagicMock(spec=SalonWhatsAppAccount)
     mock_account.status = "PHONE_SELECTION_REQUIRED"
     mock_account.connection_status = "PHONE_SELECTION_REQUIRED"
     service.connect_salon_waba = AsyncMock(return_value=mock_account)
 
-    with patch("httpx.AsyncClient.get", return_value=mock_waba_resp):
+    with patch("httpx.AsyncClient.get", side_effect=mock_get):
         res = await service.exchange_embedded_signup_code(
             salon_id="salon-multi-waba",
             tenant_id="tenant-multi-waba",
-            direct_access_token="EAA-test-token",
+            code="mock-code",
         )
         assert res.status == "PHONE_SELECTION_REQUIRED"
         assert res.connection_status == "PHONE_SELECTION_REQUIRED"
@@ -121,17 +130,32 @@ async def test_6_multiple_phone_numbers_no_silent_selection():
         ]
     }
 
+    mock_waba_resp = MagicMock()
+    mock_waba_resp.status_code = 200
+    mock_waba_resp.json.return_value = {"data": [{"id": "waba-001"}]}
+
+    mock_oauth_resp = MagicMock()
+    mock_oauth_resp.status_code = 200
+    mock_oauth_resp.json.return_value = {"access_token": "mock-token"}
+
+    async def mock_get(url, *args, **kwargs):
+        if "oauth/access_token" in url:
+            return mock_oauth_resp
+        if "phone_numbers" in url:
+            return mock_phone_resp
+        return mock_waba_resp
+
     mock_account = MagicMock(spec=SalonWhatsAppAccount)
     mock_account.status = "PHONE_SELECTION_REQUIRED"
     mock_account.connection_status = "PHONE_SELECTION_REQUIRED"
     service.connect_salon_waba = AsyncMock(return_value=mock_account)
 
-    with patch("httpx.AsyncClient.get", return_value=mock_phone_resp):
+    with patch("httpx.AsyncClient.get", side_effect=mock_get):
         res = await service.exchange_embedded_signup_code(
             salon_id="salon-multi-phone",
             tenant_id="tenant-multi-phone",
             waba_id="waba-001",
-            direct_access_token="EAA-test-token",
+            code="mock-code",
         )
         assert res.status == "PHONE_SELECTION_REQUIRED"
 
