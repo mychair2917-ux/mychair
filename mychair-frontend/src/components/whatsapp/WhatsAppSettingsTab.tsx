@@ -346,7 +346,29 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
   const hasProcessedCallbackRef = React.useRef(false);
 
   useEffect(() => {
-    // Disabled as requested
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+
+    if (code && state) {
+      if (hasProcessedCallbackRef.current) return;
+      hasProcessedCallbackRef.current = true;
+
+      const savedState = sessionStorage.getItem('oauth_state');
+      if (state !== savedState) {
+        setConnectError('OAuth state mismatch. Validation failed.');
+        return;
+      }
+      
+      // state validated, delete it
+      sessionStorage.removeItem('oauth_state');
+
+      // Exchange code explicitly with redirect_uri
+      handleExchangeCode(code, undefined, undefined, 'https://mychair.co.in/admin/settings');
+      
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, [salonId, config?.oauth_redirect_uri]);
 
   // Disconnect salon WABA
@@ -542,28 +564,44 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
                 </button>
               </>
             ) : (
-              <button
-                onClick={handleLaunchEmbeddedSignup}
-                disabled={isConnecting || sdkStatus === 'loading'}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-xl shadow-emerald-500/20 transition-all inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isConnecting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                    <span>Connecting with Meta...</span>
-                  </>
-                ) : sdkStatus === 'loading' ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                    <span>Preparing Meta connection...</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 fill-current text-white" />
-                    <span>Connect WhatsApp (Meta Onboarding)</span>
-                  </>
-                )}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleLaunchEmbeddedSignup}
+                  disabled={isConnecting || sdkStatus === 'loading'}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-xl shadow-emerald-500/20 transition-all inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isConnecting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                      <span>Connecting with Meta...</span>
+                    </>
+                  ) : sdkStatus === 'loading' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                      <span>Preparing Meta connection...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 fill-current text-white" />
+                      <span>Connect WhatsApp (Meta Onboarding)</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                      .map(b => b.toString(16).padStart(2, '0'))
+                      .join('');
+                    sessionStorage.setItem('oauth_state', state);
+                    const url = `https://www.facebook.com/v25.0/dialog/oauth?client_id=926424756517271&config_id=1763034791576572&response_type=code&redirect_uri=${encodeURIComponent('https://mychair.co.in/admin/settings')}&state=${state}`;
+                    window.location.href = url;
+                  }}
+                  className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-sm shadow-xl border border-amber-500/30 transition-all inline-flex items-center gap-2"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Manual Test OAuth</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

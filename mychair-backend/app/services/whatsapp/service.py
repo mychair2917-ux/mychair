@@ -174,6 +174,10 @@ class WhatsAppService:
                     "code": code,
                 }
                 
+                if redirect_uri:
+                    params["redirect_uri"] = redirect_uri
+                    params["grant_type"] = "authorization_code"
+                
                 try:
                     import httpx
                     async with httpx.AsyncClient(timeout=12.0) as client:
