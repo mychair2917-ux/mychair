@@ -276,8 +276,23 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     }
   };
 
+  // Ref to prevent duplicate code exchange attempts
+  const lastExchangedCodeRef = React.useRef<string>('');
+
   // Exchange authorization code with backend
-  const handleExchangeCode = async (code: string, wabaIdParam?: string, phoneIdParam?: string) => {
+  const handleExchangeCode = async (
+    code: string,
+    wabaIdParam?: string,
+    phoneIdParam?: string,
+    redirectUriParam?: string
+  ) => {
+    if (!code) return;
+    if (lastExchangedCodeRef.current === code) {
+      console.warn('Authorization code has already been processed for exchange.');
+      return;
+    }
+    lastExchangedCodeRef.current = code;
+
     setConnectError('');
     setConnectSuccess('');
 
@@ -290,6 +305,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
         code,
         waba_id: targetWabaId || undefined,
         phone_number_id: targetPhoneId || undefined,
+        redirect_uri: redirectUriParam || undefined,
       }).unwrap();
 
       if (res.success) {
@@ -336,9 +352,9 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
         return;
       }
 
-      handleExchangeCode(code);
+      handleExchangeCode(code, undefined, undefined, config?.oauth_redirect_uri);
     }
-  }, [salonId]);
+  }, [salonId, config?.oauth_redirect_uri]);
 
   // Disconnect salon WABA
   const handleDisconnect = async () => {

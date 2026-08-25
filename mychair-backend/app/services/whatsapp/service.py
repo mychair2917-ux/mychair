@@ -146,6 +146,7 @@ class WhatsAppService:
         waba_id: Optional[str] = None,
         phone_number_id: Optional[str] = None,
         direct_access_token: Optional[str] = None,
+        redirect_uri: Optional[str] = None,
     ) -> SalonWhatsAppAccount:
         """
         Exchanges Meta Embedded Signup authorization code for a system access token,
@@ -160,13 +161,12 @@ class WhatsAppService:
         if code:
             app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
             app_secret = settings.WHATSAPP_APP_SECRET
-            redirect_uri = settings.META_OAUTH_REDIRECT_URI or "https://mychair.co.in/admin/settings"
             
             if app_id and app_secret:
                 from urllib.parse import urlparse
-                redirect_host = urlparse(redirect_uri).netloc or redirect_uri
+                redirect_host = urlparse(redirect_uri).netloc if redirect_uri else "none"
                 logger.info(
-                    "Meta Embedded Signup exchange app_id_present=%s app_secret_present=%s redirect_uri_present=%s redirect_uri_host=%s",
+                    "Meta Embedded Signup exchange app_id_present=%s app_secret_present=%s redirect_uri_provided=%s redirect_uri_host=%s",
                     bool(app_id),
                     bool(app_secret),
                     bool(redirect_uri),
@@ -178,8 +178,9 @@ class WhatsAppService:
                     "client_id": app_id,
                     "client_secret": app_secret,
                     "code": code,
-                    "redirect_uri": redirect_uri,
                 }
+                if redirect_uri:
+                    params["redirect_uri"] = redirect_uri
 
                 try:
                     import httpx

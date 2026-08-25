@@ -192,6 +192,7 @@ async def exchange_embedded_signup(
             waba_id=payload.waba_id,
             phone_number_id=payload.phone_number_id,
             direct_access_token=payload.access_token,
+            redirect_uri=payload.redirect_uri,
         )
     except ValueError as exc:
         raise HTTPException(
