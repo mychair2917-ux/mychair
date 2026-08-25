@@ -170,10 +170,8 @@ class WhatsAppService:
                     "client_id": app_id,
                     "client_secret": app_secret,
                     "code": code,
+                    "redirect_uri": "",
                 }
-                
-                params["redirect_uri"] = settings.META_OAUTH_REDIRECT_URI or "https://mychair.co.in/admin/settings"
-                params["grant_type"] = "authorization_code"
                 
                 try:
                     import httpx
@@ -182,11 +180,11 @@ class WhatsAppService:
                         body = resp.json()
                         
                         logger.info(
-                            "Meta OAuth Exchange: status=%s fbtrace_id=%s error_code=%s error_subcode=%s",
+                            "Meta OAuth Exchange: credential_path=AUTH_CODE redirect_uri_parameter_present=true redirect_uri_length=0 code_present=true HTTP_status=%s Meta_error_code=%s Meta_error_subcode=%s fbtrace_id=%s",
                             resp.status_code,
-                            body.get("error", {}).get("fbtrace_id"),
                             body.get("error", {}).get("code"),
-                            body.get("error", {}).get("error_subcode")
+                            body.get("error", {}).get("error_subcode"),
+                            body.get("error", {}).get("fbtrace_id")
                         )
 
                         if resp.status_code == 200 and "access_token" in body:

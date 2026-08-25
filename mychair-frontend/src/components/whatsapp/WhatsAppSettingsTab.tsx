@@ -91,37 +91,78 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
   const [testPhone, setTestPhone] = useState('');
   const [testResult, setTestResult] = useState<{ success?: boolean; message?: string } | null>(null);
 
-  // Launch Meta Embedded Signup Flow via OAuth Redirect
+  // Listen for Meta Embedded Signup messages
+  const capturedWabaIdRef = React.useRef<string>('');
+  const capturedPhoneIdRef = React.useRef<string>('');
+
+  useEffect(() => {
+    const handleMetaMessage = (event: MessageEvent) => {
+      if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') {
+        return;
+      }
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data?.type === 'WA_EMBEDDED_SIGNUP') {
+          if (data.event === 'FINISH') {
+            const { waba_id, phone_number_id } = data.data || {};
+            if (waba_id) capturedWabaIdRef.current = waba_id;
+            if (phone_number_id) capturedPhoneIdRef.current = phone_number_id;
+          } else if (data.event === 'ERROR') {
+            setConnectError(data.error_message || data.error || 'Meta Embedded Signup encountered an error.');
+            setIsLaunchingSignup(false);
+          }
+        }
+      } catch (e) {
+        // Ignore parsing errors for unrelated messages
+      }
+    };
+
+    window.addEventListener('message', handleMetaMessage);
+    return () => window.removeEventListener('message', handleMetaMessage);
+  }, []);
+
+  // Launch Meta Embedded Signup Flow via FB.login()
   const handleLaunchEmbeddedSignup = () => {
     setConnectError('');
     setConnectSuccess('');
 
-    const appId = config?.app_id;
     const configId = config?.config_id;
-    const redirectUri = config?.oauth_redirect_uri;
 
-    if (!config?.configured || !appId || !configId || !redirectUri) {
+    if (!config?.configured || !configId) {
       setShowNoConfigModal(true);
+      return;
+    }
+
+    if (!(window as any).FB) {
+      setConnectError('Meta Facebook SDK is not ready. Please refresh or check your network connection.');
       return;
     }
 
     setIsLaunchingSignup(true);
 
     try {
-      const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-      sessionStorage.setItem(`mychair_meta_oauth_state_${salonId}`, state);
-
-      const urlParams = new URLSearchParams({
-        client_id: appId,
-        config_id: configId,
-        response_type: 'code',
-        redirect_uri: redirectUri,
-        state: state,
-      });
-
-      window.location.href = `https://www.facebook.com/v25.0/dialog/oauth?${urlParams.toString()}`;
+      (window as any).FB.login(
+        (response: any) => {
+          setIsLaunchingSignup(false);
+          if (response?.authResponse?.code) {
+            const code = response.authResponse.code;
+            handleExchangeCode(code, capturedWabaIdRef.current, capturedPhoneIdRef.current);
+          } else if (response?.status === 'not_authorized') {
+            setConnectError('Meta authorization was not completed.');
+          } else {
+            setConnectError('Meta onboarding was cancelled or closed before authorization.');
+          }
+        },
+        {
+          config_id: configId,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+            sessionInfoVersion: 3,
+          },
+        }
+      );
     } catch (err: any) {
       setIsLaunchingSignup(false);
       setConnectError(err?.message || 'Failed to launch Meta Embedded Signup.');
@@ -132,7 +173,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
   const lastExchangedCodeRef = React.useRef<string>('');
 
   // Exchange authorization code with backend
-  const handleExchangeCode = async (code: string) => {
+  const handleExchangeCode = async (code: string, wabaId?: string, phoneId?: string) => {
     if (!code) return;
     if (lastExchangedCodeRef.current === code) {
       console.warn('Authorization token/code has already been processed for exchange.');
@@ -148,6 +189,8 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
         salon_id: salonId,
         code: code,
       };
+      if (wabaId) payload.waba_id = wabaId;
+      if (phoneId) payload.phone_number_id = phoneId;
 
       const res = await exchangeEmbeddedSignup(payload).unwrap();
 
@@ -158,36 +201,6 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
       setConnectError(err?.data?.detail || 'Failed to complete Meta Embedded Signup connection.');
     }
   };
-
-  // Meta OAuth redirect callback processing
-  const hasProcessedCallbackRef = React.useRef(false);
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const state = urlParams.get('state');
-
-    if (code && state) {
-      if (hasProcessedCallbackRef.current) return;
-      hasProcessedCallbackRef.current = true;
-
-      const stateKey = `mychair_meta_oauth_state_${salonId}`;
-      const savedState = sessionStorage.getItem(stateKey);
-      if (state !== savedState) {
-        setConnectError('OAuth state mismatch. Validation failed.');
-        return;
-      }
-      
-      // state validated, delete it
-      sessionStorage.removeItem(stateKey);
-
-      // Exchange code explicitly
-      handleExchangeCode(code);
-      
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, [salonId]);
 
   // Disconnect salon WABA
   const handleDisconnect = async () => {
