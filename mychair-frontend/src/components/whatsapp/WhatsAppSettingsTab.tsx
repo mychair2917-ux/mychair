@@ -246,14 +246,24 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     setIsLaunchingSignup(true);
 
     try {
+      console.log('[Meta Debug] Frontend App ID:', appId ? `${appId.substring(0, 6)}...` : 'NONE');
+      console.log('[Meta Debug] Config ID:', configId ? `${configId.substring(0, 6)}...` : 'NONE');
+      console.log('[Meta Debug] Graph API Version: v20.0');
+      console.log('[Meta Debug] Origin:', window.location.origin);
+      console.log('[Meta Debug] Href clean:', window.location.origin + window.location.pathname);
+
       (window as any).FB.login(
         (response: any) => {
           setIsLaunchingSignup(false);
+          console.log('[Meta Debug] FB.login response status:', response?.status);
+          console.log('[Meta Debug] authResponse.code present:', Boolean(response?.authResponse?.code));
+          console.log('[Meta Debug] auth code length:', response?.authResponse?.code ? response.authResponse.code.length : 0);
+
           if (response?.authResponse?.code) {
             const code = response.authResponse.code;
             const targetWabaId = capturedWabaIdRef.current || capturedWabaId;
             const targetPhoneId = capturedPhoneIdRef.current || capturedPhoneId;
-            handleExchangeCode(code, targetWabaId, targetPhoneId);
+            handleExchangeCode(code, targetWabaId, targetPhoneId, config?.oauth_redirect_uri || "https://mychair.co.in/admin/settings");
           } else if (response?.status === 'not_authorized') {
             setConnectError('Meta authorization was not completed.');
           } else {
@@ -264,9 +274,10 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
           config_id: configId,
           response_type: 'code',
           override_default_response_type: true,
+          redirect_uri: config?.oauth_redirect_uri || 'https://mychair.co.in/admin/settings',
           extras: {
             setup: {},
-            sessionInfoVersion: 2,
+            sessionInfoVersion: 3,
           },
         }
       );
@@ -316,44 +327,11 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     }
   };
 
-  // Handle Meta OAuth redirect callback on /admin/settings (Fallback for OAuth redirects)
+  // Legacy Meta OAuth redirect callback on /admin/settings disabled to prevent conflict with FB.login()
   const hasProcessedCallbackRef = React.useRef(false);
 
   useEffect(() => {
-    if (hasProcessedCallbackRef.current) return;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const returnedState = urlParams.get('state');
-    const error = urlParams.get('error');
-    const errorReason = urlParams.get('error_reason');
-    const errorDescription = urlParams.get('error_description');
-
-    if (!code && !error && !errorReason) return;
-
-    hasProcessedCallbackRef.current = true;
-
-    // Immediately clean sensitive OAuth parameters from browser address bar
-    window.history.replaceState({}, document.title, window.location.pathname);
-
-    if (error || errorReason) {
-      const msg = errorDescription || errorReason || 'Meta authorization was cancelled or closed before completion.';
-      setConnectError(`Meta onboarding failed: ${msg}`);
-      return;
-    }
-
-    if (code) {
-      const storageKey = `mychair_meta_oauth_state_${salonId}`;
-      const expectedState = sessionStorage.getItem(storageKey);
-      sessionStorage.removeItem(storageKey);
-
-      if (!returnedState || !expectedState || returnedState !== expectedState) {
-        setConnectError('Meta authorization could not be verified. Please reconnect WhatsApp.');
-        return;
-      }
-
-      handleExchangeCode(code, undefined, undefined, config?.oauth_redirect_uri);
-    }
+    // Disabled as requested
   }, [salonId, config?.oauth_redirect_uri]);
 
   // Disconnect salon WABA

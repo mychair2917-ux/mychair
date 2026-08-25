@@ -163,14 +163,14 @@ class WhatsAppService:
             app_secret = settings.WHATSAPP_APP_SECRET
             
             if app_id and app_secret:
-                from urllib.parse import urlparse
-                redirect_host = urlparse(redirect_uri).netloc if redirect_uri else "none"
+                target_redirect_uri = (redirect_uri or settings.META_OAUTH_REDIRECT_URI or "https://mychair.co.in/admin/settings").rstrip("/")
+
                 logger.info(
-                    "Meta Embedded Signup exchange app_id_present=%s app_secret_present=%s redirect_uri_provided=%s redirect_uri_host=%s",
-                    bool(app_id),
-                    bool(app_secret),
-                    bool(redirect_uri),
-                    redirect_host,
+                    "Meta /oauth/access_token exchange params: redirect_uri=%s client_id=%s code_present=%s code_length=%s",
+                    target_redirect_uri,
+                    app_id,
+                    bool(code),
+                    len(code) if code else 0,
                 )
 
                 url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/oauth/access_token"
@@ -178,14 +178,13 @@ class WhatsAppService:
                     "client_id": app_id,
                     "client_secret": app_secret,
                     "code": code,
+                    "redirect_uri": target_redirect_uri,
                 }
-                if redirect_uri:
-                    params["redirect_uri"] = redirect_uri
 
                 try:
                     import httpx
                     async with httpx.AsyncClient(timeout=12.0) as client:
-                        resp = await client.get(url, params=params)
+                        resp = await client.post(url, params=params)
                         body = resp.json()
                         if resp.status_code == 200 and "access_token" in body:
                             access_token = body["access_token"]
@@ -194,11 +193,12 @@ class WhatsAppService:
                             err_obj = body.get("error", {}) if isinstance(body, dict) else {}
                             error_msg = err_obj.get("message") or f"Meta OAuth token exchange failed (HTTP {resp.status_code})"
                             logger.error(
-                                "Meta OAuth exchange failure: status=%s type=%s code=%s subcode=%s message=%s",
+                                "Meta OAuth exchange failure: status=%s type=%s code=%s subcode=%s trace_id=%s message=%s",
                                 resp.status_code,
                                 err_obj.get("type"),
                                 err_obj.get("code"),
                                 err_obj.get("error_subcode"),
+                                err_obj.get("fbtrace_id"),
                                 err_obj.get("message"),
                             )
                             if not access_token:

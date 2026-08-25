@@ -130,8 +130,8 @@ def test_oauth_url_structure_and_absence_of_xd_arbiter():
 
 
 @pytest.mark.asyncio
-async def test_sdk_embedded_signup_token_exchange_omits_redirect_uri():
-    """Verify SDK Embedded Signup token exchange sends client_id, client_secret, code, and OMITS redirect_uri."""
+async def test_sdk_embedded_signup_token_exchange_includes_redirect_uri():
+    """Verify SDK Embedded Signup token exchange sends client_id, client_secret, code, and INCLUDES redirect_uri."""
     salon_id = "salon-sdk-test"
     tenant_id = "tenant-sdk-test"
     code = "fresh-sdk-code-123"
@@ -148,22 +148,22 @@ async def test_sdk_embedded_signup_token_exchange_omits_redirect_uri():
         "expires_in": 5184000,
     }
 
-    with patch("httpx.AsyncClient.get", return_value=mock_resp) as mock_get:
+    with patch("httpx.AsyncClient.post", return_value=mock_resp) as mock_post:
         await service.exchange_embedded_signup_code(
             salon_id=salon_id,
             tenant_id=tenant_id,
             code=code,
         )
 
-        assert mock_get.call_count >= 1
-        first_call_kwargs = mock_get.call_args_list[0].kwargs
+        assert mock_post.call_count >= 1
+        first_call_kwargs = mock_post.call_args_list[0].kwargs
         params = first_call_kwargs.get("params", {})
         
         # Verify SDK Embedded Signup parameters
         assert "client_id" in params
         assert "client_secret" in params
         assert params.get("code") == code
-        assert "redirect_uri" not in params
+        assert params.get("redirect_uri") == "https://mychair.co.in/admin/settings"
 
         # Verify additional_auth_data passed to connect_salon_waba does NOT contain oauth_code
         mock_connect.assert_called_once()
@@ -191,7 +191,7 @@ async def test_oauth_redirect_token_exchange_includes_redirect_uri_when_provided
         "expires_in": 5184000,
     }
 
-    with patch("httpx.AsyncClient.get", return_value=mock_resp) as mock_get:
+    with patch("httpx.AsyncClient.post", return_value=mock_resp) as mock_post:
         await service.exchange_embedded_signup_code(
             salon_id=salon_id,
             tenant_id=tenant_id,
@@ -199,8 +199,8 @@ async def test_oauth_redirect_token_exchange_includes_redirect_uri_when_provided
             redirect_uri=redirect_uri,
         )
 
-        assert mock_get.call_count >= 1
-        first_call_kwargs = mock_get.call_args_list[0].kwargs
+        assert mock_post.call_count >= 1
+        first_call_kwargs = mock_post.call_args_list[0].kwargs
         params = first_call_kwargs.get("params", {})
         
         assert params.get("redirect_uri") == redirect_uri
