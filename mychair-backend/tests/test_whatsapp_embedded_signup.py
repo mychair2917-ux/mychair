@@ -130,8 +130,8 @@ def test_oauth_url_structure_and_absence_of_xd_arbiter():
 
 
 @pytest.mark.asyncio
-async def test_sdk_embedded_signup_token_exchange_includes_redirect_uri():
-    """Verify SDK Embedded Signup token exchange sends client_id, client_secret, code, and INCLUDES redirect_uri."""
+async def test_sdk_embedded_signup_token_exchange_omits_redirect_uri():
+    """Verify SDK Embedded Signup token exchange sends client_id, client_secret, code, and OMITS redirect_uri."""
     salon_id = "salon-sdk-test"
     tenant_id = "tenant-sdk-test"
     code = "fresh-sdk-code-123"
@@ -163,7 +163,7 @@ async def test_sdk_embedded_signup_token_exchange_includes_redirect_uri():
         assert "client_id" in params
         assert "client_secret" in params
         assert params.get("code") == code
-        assert params.get("redirect_uri") == "https://mychair.co.in/admin/settings"
+        assert "redirect_uri" not in params
 
         # Verify additional_auth_data passed to connect_salon_waba does NOT contain oauth_code
         mock_connect.assert_called_once()
@@ -172,8 +172,8 @@ async def test_sdk_embedded_signup_token_exchange_includes_redirect_uri():
 
 
 @pytest.mark.asyncio
-async def test_oauth_redirect_token_exchange_includes_redirect_uri_when_provided():
-    """Verify legacy OAuth redirect flow includes redirect_uri when explicitly passed."""
+async def test_oauth_redirect_token_exchange_omits_redirect_uri_when_provided():
+    """Verify legacy OAuth redirect flow omits redirect_uri even when explicitly passed."""
     salon_id = "salon-redirect-test"
     tenant_id = "tenant-redirect-test"
     code = "fresh-redirect-code-456"
@@ -203,7 +203,7 @@ async def test_oauth_redirect_token_exchange_includes_redirect_uri_when_provided
         first_call_kwargs = mock_post.call_args_list[0].kwargs
         params = first_call_kwargs.get("params", {})
         
-        assert params.get("redirect_uri") == redirect_uri
+        assert "redirect_uri" not in params
         assert params.get("code") == code
 
 

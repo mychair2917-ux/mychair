@@ -263,7 +263,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
             const code = response.authResponse.code;
             const targetWabaId = capturedWabaIdRef.current || capturedWabaId;
             const targetPhoneId = capturedPhoneIdRef.current || capturedPhoneId;
-            handleExchangeCode(code, targetWabaId, targetPhoneId, config?.oauth_redirect_uri || "https://mychair.co.in/admin/settings");
+            handleExchangeCode(code, targetWabaId, targetPhoneId);
           } else if (response?.status === 'not_authorized') {
             setConnectError('Meta authorization was not completed.');
           } else {
@@ -274,7 +274,6 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
           config_id: configId,
           response_type: 'code',
           override_default_response_type: true,
-          redirect_uri: config?.oauth_redirect_uri || 'https://mychair.co.in/admin/settings',
           extras: {
             setup: {},
             sessionInfoVersion: 3,

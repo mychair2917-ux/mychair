@@ -163,11 +163,8 @@ class WhatsAppService:
             app_secret = settings.WHATSAPP_APP_SECRET
             
             if app_id and app_secret:
-                target_redirect_uri = (redirect_uri or settings.META_OAUTH_REDIRECT_URI or "https://mychair.co.in/admin/settings").rstrip("/")
-
                 logger.info(
-                    "Meta /oauth/access_token exchange params: redirect_uri=%s client_id=%s code_present=%s code_length=%s",
-                    target_redirect_uri,
+                    "Meta /oauth/access_token exchange params: client_id=%s code_present=%s code_length=%s",
                     app_id,
                     bool(code),
                     len(code) if code else 0,
@@ -178,7 +175,6 @@ class WhatsAppService:
                     "client_id": app_id,
                     "client_secret": app_secret,
                     "code": code,
-                    "redirect_uri": target_redirect_uri,
                 }
 
                 try:
