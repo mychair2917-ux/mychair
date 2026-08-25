@@ -115,7 +115,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
             appId: appId,
             cookie: true,
             xfbml: true,
-            version: 'v20.0',
+            version: 'v25.0',
           });
           setSdkStatus('ready');
         } else {
@@ -255,13 +255,14 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
       (window as any).FB.login(
         (response: any) => {
           setIsLaunchingSignup(false);
-          console.log('[Meta Debug] FB.login response status:', response?.status);
-          console.log('[Meta Debug] authResponse exists:', Boolean(response?.authResponse));
-          console.log('[Meta Debug] code present:', Boolean(response?.authResponse?.code));
-          console.log('[Meta Debug] code length:', response?.authResponse?.code ? response.authResponse.code.length : 0);
-          console.log('[Meta Debug] accessToken present:', Boolean(response?.authResponse?.accessToken));
-          console.log('[Meta Debug] accessToken length:', response?.authResponse?.accessToken ? response.authResponse.accessToken.length : 0);
-          console.log('[Meta Debug] expiresIn:', response?.authResponse?.expiresIn);
+          console.log('[MYCHAIR BUILD] WhatsAppSettingsTab version: direct-token-debug-v1');
+          console.log('response.status:', response?.status);
+          console.log('authResponse_present:', Boolean(response?.authResponse));
+          console.log('authResponse_code_present:', Boolean(response?.authResponse?.code));
+          console.log('authResponse_code_length:', response?.authResponse?.code ? response.authResponse.code.length : 0);
+          console.log('authResponse_accessToken_present:', Boolean(response?.authResponse?.accessToken));
+          console.log('authResponse_accessToken_length:', response?.authResponse?.accessToken ? response.authResponse.accessToken.length : 0);
+          console.log('expiresIn:', response?.authResponse?.expiresIn);
 
           if (response?.authResponse?.accessToken || response?.authResponse?.code) {
             const code = response.authResponse?.code || '';
