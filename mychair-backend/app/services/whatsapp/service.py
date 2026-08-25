@@ -157,17 +157,20 @@ class WhatsAppService:
         access_token = direct_access_token
         expires_in = None
 
-        # 1. Exchange OAuth authorization code with Meta Graph API if code is provided
         if code:
             app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
             app_secret = settings.WHATSAPP_APP_SECRET
             
             if app_id and app_secret:
+                target_redirect_uri = settings.META_OAUTH_REDIRECT_URI or redirect_uri
+                
                 logger.info(
-                    "Meta /oauth/access_token exchange params: client_id=%s code_present=%s code_length=%s",
+                    "Meta /oauth/access_token exchange request: Graph_API_version=%s client_id=%s code_present=%s code_length=%s redirect_uri=%s",
+                    settings.WHATSAPP_API_VERSION,
                     app_id,
                     bool(code),
                     len(code) if code else 0,
+                    target_redirect_uri,
                 )
 
                 url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/oauth/access_token"
@@ -176,6 +179,9 @@ class WhatsAppService:
                     "client_secret": app_secret,
                     "code": code,
                 }
+                
+                if target_redirect_uri:
+                    params["redirect_uri"] = target_redirect_uri
 
                 try:
                     import httpx
@@ -185,13 +191,13 @@ class WhatsAppService:
                         if resp.status_code == 200 and "access_token" in body:
                             access_token = body["access_token"]
                             expires_in = body.get("expires_in")
+                            logger.info("Meta /oauth/access_token exchange success (HTTP %s)", resp.status_code)
                         else:
                             err_obj = body.get("error", {}) if isinstance(body, dict) else {}
                             error_msg = err_obj.get("message") or f"Meta OAuth token exchange failed (HTTP {resp.status_code})"
                             logger.error(
-                                "Meta OAuth exchange failure: status=%s type=%s code=%s subcode=%s trace_id=%s message=%s",
+                                "Meta /oauth/access_token exchange failure: HTTP_status=%s Meta_error_code=%s Meta_error_subcode=%s fbtrace_id=%s message=%s",
                                 resp.status_code,
-                                err_obj.get("type"),
                                 err_obj.get("code"),
                                 err_obj.get("error_subcode"),
                                 err_obj.get("fbtrace_id"),
