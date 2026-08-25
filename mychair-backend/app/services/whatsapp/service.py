@@ -170,7 +170,7 @@ class WhatsAppService:
                     "client_id": app_id,
                     "client_secret": app_secret,
                     "code": code,
-                    "redirect_uri": "",
+                    "redirect_uri": settings.META_OAUTH_REDIRECT_URI,
                 }
                 
                 try:
