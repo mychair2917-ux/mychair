@@ -121,19 +121,58 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     return () => window.removeEventListener('message', handleMetaMessage);
   }, []);
 
+  // Load Facebook SDK dynamically
+  useEffect(() => {
+    if (!config?.app_id || (window as any).FB) return;
+
+    (window as any).fbAsyncInit = function() {
+      (window as any).FB.init({
+        appId            : config.app_id,
+        autoLogAppEvents : true,
+        xfbml            : true,
+        version          : 'v20.0'
+      });
+      console.log('[WhatsApp Connect] Facebook SDK initialized with app_id:', config.app_id);
+    };
+
+    const loadFbSdk = () => {
+      const scriptId = 'facebook-jssdk';
+      if (document.getElementById(scriptId)) return;
+      const js = document.createElement('script');
+      js.id = scriptId;
+      js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      js.async = true;
+      js.defer = true;
+      document.body.appendChild(js);
+    };
+
+    loadFbSdk();
+  }, [config?.app_id]);
+
   // Launch Meta Embedded Signup Flow via FB.login()
   const handleLaunchEmbeddedSignup = () => {
+    console.log('[WhatsApp Connect] handler entered');
+    console.log('[WhatsApp Connect] config state:', {
+      config_present: !!config,
+      app_id_present: !!(config as any)?.app_id,
+      config_id_present: !!config?.config_id,
+      FB_present: !!(window as any).FB,
+      fbReady: !!(window as any).FB
+    });
+
     setConnectError('');
     setConnectSuccess('');
 
     const configId = config?.config_id;
 
     if (!config?.configured || !configId) {
+      console.log('[WhatsApp Connect] stopped: missing config or config_id');
       setShowNoConfigModal(true);
       return;
     }
 
     if (!(window as any).FB) {
+      console.log('[WhatsApp Connect] stopped: FB not present');
       setConnectError('Meta Facebook SDK is not ready. Please refresh or check your network connection.');
       return;
     }
@@ -141,11 +180,20 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     setIsLaunchingSignup(true);
 
     try {
+      console.log('[WhatsApp Connect] calling FB.login');
       (window as any).FB.login(
         (response: any) => {
+          console.log('[WhatsApp Connect] FB.login callback received');
+          console.log('[WhatsApp Connect] authResponse status:', response?.status, {
+            authResponse_present: !!response?.authResponse,
+            code_present: !!response?.authResponse?.code,
+            code_length: response?.authResponse?.code ? response.authResponse.code.length : 0
+          });
+
           setIsLaunchingSignup(false);
           if (response?.authResponse?.code) {
             const code = response.authResponse.code;
+            console.log('[WhatsApp Connect] sending code to exchange handler');
             handleExchangeCode(code, capturedWabaIdRef.current, capturedPhoneIdRef.current);
           } else if (response?.status === 'not_authorized') {
             setConnectError('Meta authorization was not completed.');
@@ -174,6 +222,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
 
   // Exchange authorization code with backend
   const handleExchangeCode = async (code: string, wabaId?: string, phoneId?: string) => {
+    console.log('[WhatsApp Connect] handleExchangeCode entered');
     if (!code) return;
     if (lastExchangedCodeRef.current === code) {
       console.warn('Authorization token/code has already been processed for exchange.');
@@ -192,6 +241,7 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
       if (wabaId) payload.waba_id = wabaId;
       if (phoneId) payload.phone_number_id = phoneId;
 
+      console.log('[WhatsApp Connect] calling embedded-signup/exchange API');
       const res = await exchangeEmbeddedSignup(payload).unwrap();
 
       if (res.success) {
@@ -397,7 +447,10 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
             ) : (
               <div className="flex gap-2">
                 <button
-                  onClick={handleLaunchEmbeddedSignup}
+                  onClick={() => {
+                    console.log('[WhatsApp Connect] button clicked');
+                    handleLaunchEmbeddedSignup();
+                  }}
                   disabled={isConnecting}
                   className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-xl shadow-emerald-500/20 transition-all inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
