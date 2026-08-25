@@ -256,14 +256,19 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
         (response: any) => {
           setIsLaunchingSignup(false);
           console.log('[Meta Debug] FB.login response status:', response?.status);
-          console.log('[Meta Debug] authResponse.code present:', Boolean(response?.authResponse?.code));
-          console.log('[Meta Debug] auth code length:', response?.authResponse?.code ? response.authResponse.code.length : 0);
+          console.log('[Meta Debug] authResponse exists:', Boolean(response?.authResponse));
+          console.log('[Meta Debug] code present:', Boolean(response?.authResponse?.code));
+          console.log('[Meta Debug] code length:', response?.authResponse?.code ? response.authResponse.code.length : 0);
+          console.log('[Meta Debug] accessToken present:', Boolean(response?.authResponse?.accessToken));
+          console.log('[Meta Debug] accessToken length:', response?.authResponse?.accessToken ? response.authResponse.accessToken.length : 0);
+          console.log('[Meta Debug] expiresIn:', response?.authResponse?.expiresIn);
 
-          if (response?.authResponse?.code) {
-            const code = response.authResponse.code;
+          if (response?.authResponse?.accessToken || response?.authResponse?.code) {
+            const code = response.authResponse?.code || '';
+            const directAccessToken = response.authResponse?.accessToken || '';
             const targetWabaId = capturedWabaIdRef.current || capturedWabaId;
             const targetPhoneId = capturedPhoneIdRef.current || capturedPhoneId;
-            handleExchangeCode(code, targetWabaId, targetPhoneId);
+            handleExchangeCode(code, targetWabaId, targetPhoneId, undefined, directAccessToken);
           } else if (response?.status === 'not_authorized') {
             setConnectError('Meta authorization was not completed.');
           } else {
@@ -294,14 +299,16 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     code: string,
     wabaIdParam?: string,
     phoneIdParam?: string,
-    redirectUriParam?: string
+    redirectUriParam?: string,
+    directAccessToken?: string
   ) => {
-    if (!code) return;
-    if (lastExchangedCodeRef.current === code) {
-      console.warn('Authorization code has already been processed for exchange.');
+    if (!code && !directAccessToken) return;
+    const cacheKey = directAccessToken || code;
+    if (lastExchangedCodeRef.current === cacheKey) {
+      console.warn('Authorization token/code has already been processed for exchange.');
       return;
     }
-    lastExchangedCodeRef.current = code;
+    lastExchangedCodeRef.current = cacheKey;
 
     setConnectError('');
     setConnectSuccess('');
@@ -310,13 +317,21 @@ export const WhatsAppSettingsTab: React.FC<WhatsAppSettingsTabProps> = ({ salonI
     const targetPhoneId = phoneIdParam || capturedPhoneIdRef.current || capturedPhoneId;
 
     try {
-      const res = await exchangeEmbeddedSignup({
+      const payload: any = {
         salon_id: salonId,
-        code,
         waba_id: targetWabaId || undefined,
         phone_number_id: targetPhoneId || undefined,
         redirect_uri: redirectUriParam || undefined,
-      }).unwrap();
+      };
+
+      if (directAccessToken) {
+        payload.direct_access_token = directAccessToken;
+      }
+      if (code) {
+        payload.code = code;
+      }
+
+      const res = await exchangeEmbeddedSignup(payload).unwrap();
 
       if (res.success) {
         setConnectSuccess('WhatsApp Business Account connected successfully via Meta Embedded Signup!');

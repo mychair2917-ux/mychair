@@ -35,6 +35,7 @@ export interface WhatsAppEmbeddedSignupPayload {
   waba_id?: string;
   phone_number_id?: string;
   access_token?: string;
+  direct_access_token?: string;
   redirect_uri?: string;
 }
 

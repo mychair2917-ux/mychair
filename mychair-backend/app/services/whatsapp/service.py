@@ -154,13 +154,70 @@ class WhatsAppService:
         checks for WhatsApp Business App mobile coexistence requirements,
         and securely persists credentials to SalonWhatsAppAccount associated with salon_id and tenant_id.
         """
-        access_token = direct_access_token
+        access_token = None
         expires_in = None
+        app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
+        app_secret = settings.WHATSAPP_APP_SECRET
 
-        if code:
-            app_id = settings.META_APP_ID or settings.WHATSAPP_PHONE_NUMBER_ID
-            app_secret = settings.WHATSAPP_APP_SECRET
-            
+        if direct_access_token:
+            logger.info("Using direct_access_token instead of authorization code exchange.")
+            if app_id and app_secret:
+                try:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=12.0) as client:
+                        debug_url = "https://graph.facebook.com/debug_token"
+                        debug_params = {
+                            "input_token": direct_access_token,
+                            "access_token": f"{app_id}|{app_secret}"
+                        }
+                        debug_resp = await client.get(debug_url, params=debug_params)
+                        debug_data = debug_resp.json()
+                        data_obj = debug_data.get("data", {})
+                        
+                        if not data_obj.get("is_valid"):
+                            logger.error("direct_access_token debug validation failed: %s", debug_data)
+                            raise ValueError("Provided access token is invalid or expired.")
+                            
+                        token_app_id = data_obj.get("app_id")
+                        if str(token_app_id) != str(app_id):
+                            logger.error("Token App ID %s does not match System App ID %s", token_app_id, app_id)
+                            raise ValueError("Token belongs to a different Meta App ID.")
+                            
+                        scopes = data_obj.get("scopes", [])
+                        if "whatsapp_business_management" not in scopes and "whatsapp_business_messaging" not in scopes:
+                            logger.warning("direct_access_token might lack required WhatsApp scopes. Scopes: %s", scopes)
+                            
+                        expires_at = data_obj.get("expires_at")
+                        if expires_at and expires_at > 0:
+                            expires_in = max(0, expires_at - int(datetime.now().timestamp()))
+                            
+                        token_type = data_obj.get("type", "").upper()
+                        if token_type == "USER":
+                            extend_url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/oauth/access_token"
+                            extend_params = {
+                                "grant_type": "fb_exchange_token",
+                                "client_id": app_id,
+                                "client_secret": app_secret,
+                                "fb_exchange_token": direct_access_token
+                            }
+                            extend_resp = await client.get(extend_url, params=extend_params)
+                            extend_data = extend_resp.json()
+                            if extend_resp.status_code == 200 and "access_token" in extend_data:
+                                access_token = extend_data["access_token"]
+                                expires_in = extend_data.get("expires_in", expires_in)
+                                logger.info("Successfully extended direct access token to long-lived token.")
+                            else:
+                                logger.warning("Could not extend direct access token: %s", extend_data)
+                                access_token = direct_access_token
+                        else:
+                            access_token = direct_access_token
+                except httpx.HTTPError as exc:
+                    logger.exception("HTTP error during direct_access_token validation: %s", exc)
+                    raise ValueError(f"Network error validating token with Meta: {str(exc)}")
+            else:
+                access_token = direct_access_token
+
+        elif code:
             if app_id and app_secret:
                 target_redirect_uri = settings.META_OAUTH_REDIRECT_URI or redirect_uri
                 
