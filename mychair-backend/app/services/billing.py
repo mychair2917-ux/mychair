@@ -42,6 +42,28 @@ class BillingService:
         Auto-creates a finalized invoice from an appointment submission.
         Snapshots all appointment data permanently — no manual entry needed.
         """
+        if appointment_id:
+            existing = await Invoice.find_one(
+                {"appointment_id": appointment_id, "is_deleted": False}
+            )
+            if existing:
+                return await self.update_invoice_from_appointment(
+                    appointment_id=appointment_id,
+                    salon_id=salon_id,
+                    salon_name=salon_name,
+                    salon_phone=salon_phone,
+                    salon_address=salon_address,
+                    customer_id=customer_id,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    services=services,
+                    products=products,
+                    payment_status=payment_status,
+                    payment_method=payment_method,
+                    total_amount=total_amount,
+                    paid_amount=paid_amount,
+                )
+
         invoice_items: List[InvoiceItem] = []
         subtotal = 0.0
         tax_amount = 0.0

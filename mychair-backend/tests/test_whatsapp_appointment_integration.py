@@ -53,3 +53,17 @@ async def test_send_template_message_sends_hello_world_template():
                     mock_log_instance.insert.assert_called_once()
                     assert mock_log_instance.status == "SENT"
                     assert mock_log_instance.wamid == "wamid.HBgLOTE5Mjg1MjU4MjY5FQIAERgSRDM2QTMwNjc1QjhBOUFBMzM5AA=="
+
+
+@pytest.mark.asyncio
+async def test_whatsapp_service_has_submit_and_review_methods():
+    service = WhatsAppService()
+    assert hasattr(service, "send_on_appointment_submit")
+    assert hasattr(service, "send_invoice_review_after_completion")
+
+    # Verify calling them with an invalid appointment_id safely returns None instead of raising
+    res1 = await service.send_on_appointment_submit("invalid-id")
+    res2 = await service.send_invoice_review_after_completion("invalid-id")
+    assert res1 is None
+    assert res2 is None
+

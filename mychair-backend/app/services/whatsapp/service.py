@@ -570,6 +570,109 @@ class WhatsAppService:
         ).sort("-created_at").first_or_none()
         return log.delivery_status or log.status if log else "pending"
 
+    async def send_on_appointment_submit(self, appointment_id: str) -> Optional[WhatsAppMessageLog]:
+        """
+        Sends an automatic WhatsApp confirmation when an appointment is submitted/booked.
+        Safely handles lookup failures, disconnected WABA status, and exceptions.
+        """
+        try:
+            from app.models.appointment import Appointment
+            from beanie import PydanticObjectId
+
+            try:
+                appt_obj_id = PydanticObjectId(appointment_id)
+            except Exception:
+                return None
+
+            appt = await Appointment.find_one({"_id": appt_obj_id, "is_deleted": False})
+            if not appt or not appt.salon_id or not appt.customer_phone:
+                return None
+
+            is_connected = await self.is_salon_connected(appt.salon_id)
+            if not is_connected:
+                return None
+
+            account = await self.get_salon_account(appt.salon_id)
+            template_name = "hello_world"
+            if account and account.templates and "appointment_booking" in account.templates:
+                template_name = account.templates.get("appointment_booking", "hello_world")
+
+            cust_name = appt.customer_name or "Valued Customer"
+            appt_time = appt.start_datetime.strftime("%Y-%m-%d %H:%M") if appt.start_datetime else ""
+
+            return await self.send_template_message(
+                salon_id=appt.salon_id,
+                customer_id=appt.customer_id,
+                recipient_phone=appt.customer_phone,
+                message_type="APPOINTMENT_BOOKING",
+                template_name=template_name,
+                template_variables={
+                    "1": cust_name,
+                    "2": appt_time,
+                },
+                reference_type="APPOINTMENT",
+                reference_id=str(appt.id),
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger("whatsapp").warning(
+                "WhatsApp send_on_appointment_submit background task exception for appointment %s: %s",
+                appointment_id,
+                exc,
+            )
+            return None
+
+    async def send_invoice_review_after_completion(self, appointment_id: str) -> Optional[WhatsAppMessageLog]:
+        """
+        Sends a WhatsApp feedback/review request after appointment completion.
+        Safely handles lookup failures, disconnected WABA status, and exceptions.
+        """
+        try:
+            from app.models.appointment import Appointment
+            from beanie import PydanticObjectId
+
+            try:
+                appt_obj_id = PydanticObjectId(appointment_id)
+            except Exception:
+                return None
+
+            appt = await Appointment.find_one({"_id": appt_obj_id, "is_deleted": False})
+            if not appt or not appt.salon_id or not appt.customer_phone:
+                return None
+
+            is_connected = await self.is_salon_connected(appt.salon_id)
+            if not is_connected:
+                return None
+
+            account = await self.get_salon_account(appt.salon_id)
+            template_name = "hello_world"
+            if account and account.templates and "feedback_request" in account.templates:
+                template_name = account.templates.get("feedback_request", "hello_world")
+
+            cust_name = appt.customer_name or "Valued Customer"
+
+            return await self.send_template_message(
+                salon_id=appt.salon_id,
+                customer_id=appt.customer_id,
+                recipient_phone=appt.customer_phone,
+                message_type="FEEDBACK_REQUEST",
+                template_name=template_name,
+                template_variables={
+                    "1": cust_name,
+                },
+                reference_type="APPOINTMENT",
+                reference_id=str(appt.id),
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger("whatsapp").warning(
+                "WhatsApp send_invoice_review_after_completion background task exception for appointment %s: %s",
+                appointment_id,
+                exc,
+            )
+            return None
+
 
 # Global singleton instance
 whatsapp_service = WhatsAppService()
+

@@ -35,6 +35,28 @@ class BillService:
         Auto-creates a Bill record when an appointment is submitted.
         Snapshots all salon info, customer details, and line items permanently.
         """
+        if appointment_id:
+            existing = await Bill.find_one(
+                {"appointment_id": appointment_id, "is_deleted": False}
+            )
+            if existing:
+                return await self.update_bill_from_appointment(
+                    appointment_id=appointment_id,
+                    salon_id=salon_id,
+                    salon_name=salon_name,
+                    salon_phone=salon_phone,
+                    salon_address=salon_address,
+                    customer_id=customer_id,
+                    customer_name=customer_name,
+                    customer_phone=customer_phone,
+                    services=services,
+                    products=products,
+                    payment_status=payment_status,
+                    payment_method=payment_method,
+                    total_amount=total_amount,
+                    paid_amount=paid_amount,
+                )
+
         items: List[BillItem] = []
         subtotal = 0.0
         tax_amount = 0.0

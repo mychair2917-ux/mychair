@@ -591,7 +591,10 @@ class AppointmentService:
             existing_appt.paid_amount = effective_paid
             if not existing_appt.payment_history:
                 existing_appt.payment_history = [initial_history]
-            else:
+            elif (
+                existing_appt.payment_status != payment_status
+                or abs((existing_appt.paid_amount or 0.0) - effective_paid) > 0.01
+            ):
                 existing_appt.payment_history.append(initial_history)
             existing_appt.add_status("COMPLETED", changed_by=tenant_context.get_user_id())
             await existing_appt.save()
@@ -668,47 +671,83 @@ class AppointmentService:
         customer_name_str = customer.full_name.strip() if customer.full_name else ""
         customer_phone_str = customer.phone or ""
 
-        # Auto-generate Invoice (financial ledger record)
+        # Auto-generate/update Invoice (financial ledger record)
         try:
-            await self.billing_service.create_invoice_from_appointment(
-                appointment_id=str(appointment.id),
-                salon_id=salon_id,
-                salon_name=salon_name,
-                salon_phone=salon_phone,
-                salon_address=salon_address_str,
-                customer_id=customer_id,
-                customer_name=customer_name_str,
-                customer_phone=customer_phone_str,
-                services=service_payload,
-                products=product_payload,
-                payment_status=payment_status,
-                payment_method=payment_type,
-                total_amount=effective_total_amount,
-                paid_amount=effective_paid,
-            )
+            if existing_appt:
+                await self.billing_service.update_invoice_from_appointment(
+                    appointment_id=str(appointment.id),
+                    salon_id=salon_id,
+                    salon_name=salon_name,
+                    salon_phone=salon_phone,
+                    salon_address=salon_address_str,
+                    customer_id=customer_id,
+                    customer_name=customer_name_str,
+                    customer_phone=customer_phone_str,
+                    services=service_payload,
+                    products=product_payload,
+                    payment_status=payment_status,
+                    payment_method=payment_type,
+                    total_amount=effective_total_amount,
+                    paid_amount=effective_paid,
+                )
+            else:
+                await self.billing_service.create_invoice_from_appointment(
+                    appointment_id=str(appointment.id),
+                    salon_id=salon_id,
+                    salon_name=salon_name,
+                    salon_phone=salon_phone,
+                    salon_address=salon_address_str,
+                    customer_id=customer_id,
+                    customer_name=customer_name_str,
+                    customer_phone=customer_phone_str,
+                    services=service_payload,
+                    products=product_payload,
+                    payment_status=payment_status,
+                    payment_method=payment_type,
+                    total_amount=effective_total_amount,
+                    paid_amount=effective_paid,
+                )
         except Exception:
             # Invoice creation failure must not block appointment creation
             pass
 
-        # Auto-generate Bill (customer-facing bill stored in bills collection)
+        # Auto-generate/update Bill (customer-facing bill stored in bills collection)
         created_invoice_id: Optional[str] = None
         try:
-            bill = await self.bill_service.create_bill_from_appointment(
-                appointment_id=str(appointment.id),
-                salon_id=salon_id,
-                salon_name=salon_name,
-                salon_phone=salon_phone,
-                salon_address=salon_address_str,
-                customer_id=customer_id,
-                customer_name=customer_name_str,
-                customer_phone=customer_phone_str,
-                services=service_payload,
-                products=product_payload,
-                payment_status=payment_status,
-                payment_method=payment_type,
-                total_amount=effective_total_amount,
-                paid_amount=effective_paid,
-            )
+            if existing_appt:
+                bill = await self.bill_service.update_bill_from_appointment(
+                    appointment_id=str(appointment.id),
+                    salon_id=salon_id,
+                    salon_name=salon_name,
+                    salon_phone=salon_phone,
+                    salon_address=salon_address_str,
+                    customer_id=customer_id,
+                    customer_name=customer_name_str,
+                    customer_phone=customer_phone_str,
+                    services=service_payload,
+                    products=product_payload,
+                    payment_status=payment_status,
+                    payment_method=payment_type,
+                    total_amount=effective_total_amount,
+                    paid_amount=effective_paid,
+                )
+            else:
+                bill = await self.bill_service.create_bill_from_appointment(
+                    appointment_id=str(appointment.id),
+                    salon_id=salon_id,
+                    salon_name=salon_name,
+                    salon_phone=salon_phone,
+                    salon_address=salon_address_str,
+                    customer_id=customer_id,
+                    customer_name=customer_name_str,
+                    customer_phone=customer_phone_str,
+                    services=service_payload,
+                    products=product_payload,
+                    payment_status=payment_status,
+                    payment_method=payment_type,
+                    total_amount=effective_total_amount,
+                    paid_amount=effective_paid,
+                )
             if bill:
                 created_invoice_id = str(bill.id)
         except Exception:
