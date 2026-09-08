@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from beanie import PydanticObjectId
 from datetime import datetime, timedelta, timezone
@@ -275,7 +276,13 @@ class DashboardService:
             1 for entry in users if normalize_role(entry.role) in STAFF_ROLES
         )
 
-        invoice_query = {"is_deleted": False, "status": {"$ne": "VOIDED"}}
+        min_invoice_date = min(month_start, today_start - timedelta(days=6))
+        max_invoice_date = max(month_end, today_end)
+        invoice_query = {
+            "is_deleted": False,
+            "status": {"$ne": "VOIDED"},
+            "created_at": {"$gte": min_invoice_date, "$lt": max_invoice_date},
+        }
         all_invoices = await Invoice.find(invoice_query).to_list()
 
         today_revenue = sum(
@@ -470,9 +477,75 @@ class DashboardService:
         month_start, month_end = self._month_range(today.month, today.year)
         base_query = {"tenant_id": tenant_id, "is_deleted": False}
 
-        invoices = await Invoice.find(
-            {**base_query, "status": {"$ne": "VOIDED"}}
+        min_invoice_date = min(month_start, today_start - timedelta(days=6))
+        max_invoice_date = max(month_end, today_end)
+        active_cutoff = today - timedelta(days=90)
+
+        invoices_coro = Invoice.find(
+            {
+                **base_query,
+                "status": {"$ne": "VOIDED"},
+                "created_at": {"$gte": min_invoice_date, "$lt": max_invoice_date},
+            }
         ).to_list()
+
+        appointments_coro = Appointment.find(
+            {
+                **base_query,
+                "start_datetime": {"$gte": today_start, "$lt": today_end},
+            }
+        ).to_list()
+
+        active_clients_coro = Customer.find(
+            {
+                **base_query,
+                "last_visit_at": {"$gte": active_cutoff},
+            }
+        ).count()
+
+        appointment_trend_coro = self._appointment_trend_tenant(tenant_id, today, days=7)
+
+        attendance_coro = (
+            self._attendance_service.get_attendance_summary(
+                user,
+                date_from=today.strftime("%Y-%m-%d"),
+                date_to=today.strftime("%Y-%m-%d"),
+                salon_id=tenant_id,
+            )
+            if self._can_view_attendance(user.role, merged_permissions)
+            else None
+        )
+
+        inventory_coro = (
+            self._get_inventory_overview_and_count(tenant_id)
+            if self._can_view_inventory(user.role, merged_permissions)
+            else None
+        )
+
+        leave_coro = (
+            self._count_pending_leave_requests(tenant_id)
+            if self._can_approve_leave(user.role, merged_permissions)
+            else None
+        )
+
+        (
+            invoices,
+            appointments,
+            active_clients,
+            appointment_trend,
+            attendance_raw,
+            inventory_raw,
+            pending_leave_count,
+        ) = await asyncio.gather(
+            invoices_coro,
+            appointments_coro,
+            active_clients_coro,
+            appointment_trend_coro,
+            attendance_coro if attendance_coro else asyncio.sleep(0),
+            inventory_coro if inventory_coro else asyncio.sleep(0),
+            leave_coro if leave_coro else asyncio.sleep(0),
+        )
+
         today_revenue = sum(
             inv.total_amount
             for inv in invoices
@@ -486,36 +559,16 @@ class DashboardService:
             and month_start <= self._ensure_utc(inv.created_at) < month_end
         )
 
-        appointments = await Appointment.find(
-            {
-                **base_query,
-                "start_datetime": {"$gte": today_start, "$lt": today_end},
-            }
-        ).to_list()
         appointments_today = len(appointments)
         completed_today = sum(
             1 for apt in appointments if apt.status in COMPLETED_APPOINTMENT_STATUSES
         )
         walk_ins = sum(1 for apt in appointments if apt.booking_source == "WALK_IN")
 
-        customers = await Customer.find(base_query).to_list()
-        active_cutoff = today - timedelta(days=90)
-        active_clients = sum(
-            1
-            for customer in customers
-            if customer.last_visit_at
-            and self._ensure_utc(customer.last_visit_at) >= active_cutoff
-        )
-
         attendance_summary = None
         staff_present = 0
-        if self._can_view_attendance(user.role, merged_permissions):
-            summary = await self._attendance_service.get_attendance_summary(
-                user,
-                date_from=today.strftime("%Y-%m-%d"),
-                date_to=today.strftime("%Y-%m-%d"),
-                salon_id=tenant_id,
-            )
+        if self._can_view_attendance(user.role, merged_permissions) and attendance_raw:
+            summary = attendance_raw
             staff_present = summary.present_count + summary.late_count
             attendance_summary = AttendanceSnapshot(
                 present_count=summary.present_count,
@@ -526,8 +579,9 @@ class DashboardService:
             )
 
         low_stock = 0
-        if self._can_view_inventory(user.role, merged_permissions):
-            low_stock = await self._count_low_stock_for_tenant(tenant_id)
+        inventory_overview = None
+        if self._can_view_inventory(user.role, merged_permissions) and isinstance(inventory_raw, tuple):
+            inventory_overview, low_stock = inventory_raw
 
         pending_payments = sum(
             1
@@ -537,9 +591,8 @@ class DashboardService:
             and month_start <= self._ensure_utc(inv.created_at) < month_end
         )
 
-        pending_leave_count = 0
-        if self._can_approve_leave(user.role, merged_permissions):
-            pending_leave_count = await self._count_pending_leave_requests(tenant_id)
+        if not self._can_approve_leave(user.role, merged_permissions):
+            pending_leave_count = 0
 
         kpis = [
             DashboardKpi(
@@ -602,13 +655,12 @@ class DashboardService:
                 )
             )
 
-        upcoming = await self._upcoming_appointments(appointments)
-        revenue_trend = await self._revenue_trend(invoices, today, days=7)
-        appointment_trend = await self._appointment_trend_tenant(
-            tenant_id, today, days=7
+        upcoming, revenue_trend, top_staff, top_services = await asyncio.gather(
+            self._upcoming_appointments(appointments),
+            self._revenue_trend(invoices, today, days=7),
+            self._top_staff(invoices, today_start, today_end),
+            self._top_services(invoices, month_start, month_end),
         )
-        top_staff = await self._top_staff(invoices, today_start, today_end)
-        top_services = await self._top_services(invoices, month_start, month_end)
 
         operations: List[DashboardOperation] = [
             DashboardOperation(
@@ -643,7 +695,7 @@ class DashboardService:
                 )
             )
 
-        alerts = await self._inventory_alerts_for_tenant(tenant_id, low_stock)
+        alerts = await self._inventory_alerts_for_tenant(tenant_id, low_stock, overview=inventory_overview)
 
         return DashboardResponse(
             role_view="admin",
@@ -703,10 +755,18 @@ class DashboardService:
             ),
         ]
 
+        month_start, month_end = self._month_range(today.month, today.year)
+        min_invoice_date = min(month_start, today_start - timedelta(days=6))
+        max_invoice_date = max(month_end, today_end)
+
         invoices: List[Invoice] = []
         if self._can_view_billing(user.role, merged_permissions):
             invoices = await Invoice.find(
-                {**base_query, "status": {"$ne": "VOIDED"}}
+                {
+                    **base_query,
+                    "status": {"$ne": "VOIDED"},
+                    "created_at": {"$gte": min_invoice_date, "$lt": max_invoice_date},
+                }
             ).to_list()
             today_revenue = sum(
                 inv.total_amount
@@ -758,7 +818,6 @@ class DashboardService:
         )
 
         upcoming = await self._upcoming_appointments(appointments)
-        month_start, month_end = self._month_range(today.month, today.year)
 
         revenue_trend: List[TrendPoint] = []
         top_services: List[PerformanceItem] = []
@@ -771,7 +830,7 @@ class DashboardService:
         operations: List[DashboardOperation] = []
         alerts: List[DashboardAlert] = []
         if self._can_view_inventory(user.role, merged_permissions):
-            low_stock = await self._count_low_stock_for_tenant(tenant_id)
+            inventory_overview, low_stock = await self._get_inventory_overview_and_count(tenant_id)
             operations.append(
                 DashboardOperation(
                     key="low_stock",
@@ -779,7 +838,7 @@ class DashboardService:
                     value=str(low_stock),
                 )
             )
-            alerts = await self._inventory_alerts_for_tenant(tenant_id, low_stock)
+            alerts = await self._inventory_alerts_for_tenant(tenant_id, low_stock, overview=inventory_overview)
 
         return DashboardResponse(
             role_view="manager",
@@ -1053,33 +1112,53 @@ class DashboardService:
     async def _appointment_trend_tenant(
         self, tenant_id: str, today: datetime, days: int = 7
     ) -> List[TrendPoint]:
+        earliest_day = today - timedelta(days=days - 1)
+        overall_start, _ = self._day_range(earliest_day)
+        _, overall_end = self._day_range(today)
+
+        appointments = await Appointment.find(
+            {
+                "tenant_id": tenant_id,
+                "is_deleted": False,
+                "start_datetime": {"$gte": overall_start, "$lt": overall_end},
+            }
+        ).to_list()
+
         points: List[TrendPoint] = []
         for offset in range(days - 1, -1, -1):
             day = today - timedelta(days=offset)
             start, end = self._day_range(day)
-            count = await Appointment.find(
-                {
-                    "tenant_id": tenant_id,
-                    "is_deleted": False,
-                    "start_datetime": {"$gte": start, "$lt": end},
-                }
-            ).count()
+            count = sum(
+                1
+                for apt in appointments
+                if apt.start_datetime and start <= self._ensure_utc(apt.start_datetime) < end
+            )
             points.append(TrendPoint(label=day.strftime("%d/%m"), value=float(count)))
         return points
 
     async def _appointment_trend_global(
         self, today: datetime, days: int = 7
     ) -> List[TrendPoint]:
+        earliest_day = today - timedelta(days=days - 1)
+        overall_start, _ = self._day_range(earliest_day)
+        _, overall_end = self._day_range(today)
+
+        appointments = await Appointment.find(
+            {
+                "is_deleted": False,
+                "start_datetime": {"$gte": overall_start, "$lt": overall_end},
+            }
+        ).to_list()
+
         points: List[TrendPoint] = []
         for offset in range(days - 1, -1, -1):
             day = today - timedelta(days=offset)
             start, end = self._day_range(day)
-            count = await Appointment.find(
-                {
-                    "is_deleted": False,
-                    "start_datetime": {"$gte": start, "$lt": end},
-                }
-            ).count()
+            count = sum(
+                1
+                for apt in appointments
+                if apt.start_datetime and start <= self._ensure_utc(apt.start_datetime) < end
+            )
             points.append(TrendPoint(label=day.strftime("%d/%m"), value=float(count)))
         return points
 
@@ -1181,20 +1260,27 @@ class DashboardService:
             and item.stock_quantity <= item.min_threshold
         )
 
-    async def _count_low_stock_for_tenant(self, tenant_id: str) -> int:
+    async def _get_inventory_overview_and_count(
+        self, tenant_id: str
+    ) -> Tuple[Optional[Any], int]:
         try:
             overview = await self._inventory_service.overview(tenant_id)
-            return len(overview.warnings)
+            return overview, len(overview.warnings)
         except Exception:
-            return 0
+            return None, 0
+
+    async def _count_low_stock_for_tenant(self, tenant_id: str) -> int:
+        _, count = await self._get_inventory_overview_and_count(tenant_id)
+        return count
 
     async def _inventory_alerts_for_tenant(
-        self, tenant_id: str, low_stock: int
+        self, tenant_id: str, low_stock: int, overview: Optional[Any] = None
     ) -> List[DashboardAlert]:
         if low_stock <= 0:
             return []
         try:
-            overview = await self._inventory_service.overview(tenant_id)
+            if overview is None:
+                overview = await self._inventory_service.overview(tenant_id)
             names = ", ".join(
                 warning.get("product_name", "Product") for warning in overview.warnings[:3]
             )

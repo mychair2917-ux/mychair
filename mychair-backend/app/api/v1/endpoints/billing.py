@@ -170,10 +170,13 @@ async def list_bills(
     skip = (page - 1) * limit
     raw_invoices = await invoices_query.skip(skip).limit(limit).to_list()
 
+    inv_ids = [str(inv.id) for inv in raw_invoices if inv.id]
+    whatsapp_statuses = await whatsapp_service.latest_statuses_for_invoices(inv_ids)
+
     items = []
     for inv in raw_invoices:
         item = _invoice_to_dict(inv)
-        item["whatsapp_status"] = await whatsapp_service.latest_status_for_invoice(str(inv.id))
+        item["whatsapp_status"] = whatsapp_statuses.get(str(inv.id), "pending")
         items.append(item)
 
     pages = max(1, (total + limit - 1) // limit) if total > 0 else 1

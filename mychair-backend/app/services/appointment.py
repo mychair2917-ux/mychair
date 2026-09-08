@@ -66,24 +66,19 @@ class AppointmentService:
 
         return customer
 
-    async def build_history_response(
-        self,
+    @staticmethod
+    def _format_history_item(
         appointment: Appointment,
         customer: Optional[Customer] = None,
+        staff: Optional[User] = None,
+        invoice: Optional[Invoice] = None,
+        payments: Optional[List[Payment]] = None,
+        whatsapp_status: str = "pending",
     ) -> Dict[str, Any]:
-        customer = customer or await Customer.find_one(
-            Customer.id == PydanticObjectId(appointment.customer_id),
-            Customer.is_deleted == False,
-        )
-        staff = await User.find_one(User.id == appointment.staff_id, User.is_deleted == False)
         staff_name = None
         if staff:
             staff_name = user_display_name(staff)
-
-        invoice: Optional[Invoice] = await self.appointment_repo.get_appointment_invoice(str(appointment.id))
-        payments: List[Payment] = []
-        if invoice:
-            payments = await self.appointment_repo.get_invoice_payments(str(invoice.id))
+        payments = payments or []
 
         return {
             "id": str(appointment.id),
@@ -102,7 +97,7 @@ class AppointmentService:
             "payment_type": appointment.payment_type,
             "payment_status": appointment.payment_status,
             "paid_amount": appointment.paid_amount,
-            "whatsapp_status": await self.whatsapp_service.latest_status_for_appointment(str(appointment.id)),
+            "whatsapp_status": whatsapp_status,
             "services": [
                 {
                     "service_id": service.service_id,
@@ -162,6 +157,115 @@ class AppointmentService:
                 for item in appointment.status_history
             ],
         }
+
+    async def build_history_response(
+        self,
+        appointment: Appointment,
+        customer: Optional[Customer] = None,
+    ) -> Dict[str, Any]:
+        customer = customer or await Customer.find_one(
+            Customer.id == PydanticObjectId(appointment.customer_id),
+            Customer.is_deleted == False,
+        )
+        staff = await User.find_one(User.id == appointment.staff_id, User.is_deleted == False)
+        invoice: Optional[Invoice] = await self.appointment_repo.get_appointment_invoice(str(appointment.id))
+        payments: List[Payment] = []
+        if invoice:
+            payments = await self.appointment_repo.get_invoice_payments(str(invoice.id))
+        whatsapp_status = await self.whatsapp_service.latest_status_for_appointment(str(appointment.id))
+
+        return self._format_history_item(
+            appointment,
+            customer=customer,
+            staff=staff,
+            invoice=invoice,
+            payments=payments,
+            whatsapp_status=whatsapp_status,
+        )
+
+    async def build_history_responses_batch(
+        self,
+        appointments: List[Appointment],
+        customer: Optional[Customer] = None,
+    ) -> List[Dict[str, Any]]:
+        if not appointments:
+            return []
+
+        # 1. Batch Staff
+        staff_ids = {appt.staff_id for appt in appointments if appt.staff_id}
+        staff_map: Dict[str, User] = {}
+        if staff_ids:
+            staff_oids = []
+            for sid in staff_ids:
+                try:
+                    staff_oids.append(PydanticObjectId(sid))
+                except Exception:
+                    pass
+            users = await User.find(
+                {"_id": {"$in": staff_oids}, "is_deleted": False}
+            ).to_list() if staff_oids else []
+            for u in users:
+                staff_map[str(u.id)] = u
+
+        # 2. Batch Invoices
+        appt_ids = [str(appt.id) for appt in appointments if appt.id]
+        invoice_map: Dict[str, Invoice] = {}
+        invoice_ids = []
+        if appt_ids:
+            invoices = await Invoice.find(
+                {
+                    "appointment_id": {"$in": appt_ids},
+                    "is_deleted": False,
+                }
+            ).sort("-created_at").to_list()
+            for inv in invoices:
+                if inv.appointment_id and inv.appointment_id not in invoice_map:
+                    invoice_map[inv.appointment_id] = inv
+                    invoice_ids.append(str(inv.id))
+
+        # 3. Batch Payments
+        payment_map: Dict[str, List[Payment]] = {}
+        if invoice_ids:
+            payments = await Payment.find(
+                {
+                    "invoice_id": {"$in": invoice_ids},
+                    "is_deleted": False,
+                }
+            ).sort("payment_date").to_list()
+            for p in payments:
+                if p.invoice_id:
+                    payment_map.setdefault(p.invoice_id, []).append(p)
+
+        # 4. Batch WhatsApp Status
+        whatsapp_statuses = await self.whatsapp_service.latest_statuses_for_appointments(appt_ids)
+
+        # 5. Build responses in exact original order
+        results = []
+        for appt in appointments:
+            cust = customer
+            if not cust and appt.customer_id:
+                try:
+                    cust = await Customer.find_one(
+                        Customer.id == PydanticObjectId(appt.customer_id),
+                        Customer.is_deleted == False,
+                    )
+                except Exception:
+                    cust = None
+            stf = staff_map.get(str(appt.staff_id)) if appt.staff_id else None
+            inv = invoice_map.get(str(appt.id))
+            pmts = payment_map.get(str(inv.id), []) if inv else []
+            ws = whatsapp_statuses.get(str(appt.id), "pending")
+            results.append(
+                self._format_history_item(
+                    appt,
+                    customer=cust,
+                    staff=stf,
+                    invoice=inv,
+                    payments=pmts,
+                    whatsapp_status=ws,
+                )
+            )
+        return results
 
     async def create_appointment(
         self,

@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
@@ -170,25 +170,12 @@ def _customer_response(customer: Customer) -> dict:
     }
 
 
-async def _appointment_response(appointment: Appointment) -> dict:
-    customer = None
-    if appointment.customer_id:
-        try:
-            customer = await Customer.find_one(
-                {"_id": PydanticObjectId(appointment.customer_id), "is_deleted": False}
-            )
-        except Exception:
-            customer = None
-
-    staff = None
-    if appointment.staff_id:
-        try:
-            staff = await User.find_one(
-                {"_id": PydanticObjectId(appointment.staff_id), "is_deleted": False}
-            )
-        except Exception:
-            staff = None
-
+def _format_appointment_item(
+    appointment: Appointment,
+    customer: Optional[Customer] = None,
+    staff: Optional[User] = None,
+    whatsapp_status: str = "pending",
+) -> dict:
     staff_name = None
     if staff:
         staff_name = user_display_name(staff)
@@ -216,7 +203,7 @@ async def _appointment_response(appointment: Appointment) -> dict:
         "payment_type": appointment.payment_type,
         "payment_status": appointment.payment_status,
         "paid_amount": appointment.paid_amount,
-        "whatsapp_status": await whatsapp_service.latest_status_for_appointment(str(appointment.id)),
+        "whatsapp_status": whatsapp_status,
         "services": [
             {
                 "service_id": service.service_id,
@@ -243,6 +230,79 @@ async def _appointment_response(appointment: Appointment) -> dict:
             for product in appointment.products
         ],
     }
+
+
+async def _appointment_response(appointment: Appointment) -> dict:
+    customer = None
+    if appointment.customer_id:
+        try:
+            customer = await Customer.find_one(
+                {"_id": PydanticObjectId(appointment.customer_id), "is_deleted": False}
+            )
+        except Exception:
+            customer = None
+
+    staff = None
+    if appointment.staff_id:
+        try:
+            staff = await User.find_one(
+                {"_id": PydanticObjectId(appointment.staff_id), "is_deleted": False}
+            )
+        except Exception:
+            staff = None
+
+    whatsapp_status = await whatsapp_service.latest_status_for_appointment(str(appointment.id))
+    return _format_appointment_item(appointment, customer, staff, whatsapp_status)
+
+
+async def _batch_appointment_responses(appointments: List[Appointment]) -> List[dict]:
+    if not appointments:
+        return []
+
+    # 1. Batch fetch Customers
+    customer_oids = set()
+    for appt in appointments:
+        if appt.customer_id:
+            try:
+                customer_oids.add(PydanticObjectId(appt.customer_id))
+            except Exception:
+                pass
+    customer_map: Dict[str, Customer] = {}
+    if customer_oids:
+        customers = await Customer.find(
+            {"_id": {"$in": list(customer_oids)}, "is_deleted": False}
+        ).to_list()
+        for c in customers:
+            customer_map[str(c.id)] = c
+
+    # 2. Batch fetch Staff
+    staff_oids = set()
+    for appt in appointments:
+        if appt.staff_id:
+            try:
+                staff_oids.add(PydanticObjectId(appt.staff_id))
+            except Exception:
+                pass
+    staff_map: Dict[str, User] = {}
+    if staff_oids:
+        users = await User.find(
+            {"_id": {"$in": list(staff_oids)}, "is_deleted": False}
+        ).to_list()
+        for u in users:
+            staff_map[str(u.id)] = u
+
+    # 3. Batch fetch WhatsApp statuses
+    appt_ids = [str(appt.id) for appt in appointments if appt.id]
+    whatsapp_statuses = await whatsapp_service.latest_statuses_for_appointments(appt_ids)
+
+    # 4. Construct formatted responses in exact original order
+    results = []
+    for appt in appointments:
+        cust = customer_map.get(str(appt.customer_id)) if appt.customer_id else None
+        stf = staff_map.get(str(appt.staff_id)) if appt.staff_id else None
+        ws = whatsapp_statuses.get(str(appt.id), "pending")
+        results.append(_format_appointment_item(appt, cust, stf, ws))
+    return results
 
 
 @router.get("/clients")
@@ -497,7 +557,7 @@ async def get_client_history(
     )
     return success_response(
         "Client history retrieved successfully",
-        data=[await appointment_service.build_history_response(item, customer=customer) for item in history],
+        data=await appointment_service.build_history_responses_batch(history, customer=customer),
     )
 
 
@@ -719,7 +779,7 @@ async def get_frontdesk_today(
 
     return success_response(
         "Appointments retrieved successfully",
-        data=[await _appointment_response(item) for item in appointments],
+        data=await _batch_appointment_responses(appointments),
     )
 
 
@@ -1062,7 +1122,7 @@ async def list_appointments(
         date_to=date_to_aware,
     )
 
-    enriched = [await _appointment_response(appt) for appt in appointments]
+    enriched = await _batch_appointment_responses(appointments)
 
     # Prefer invoice number as stable bill reference across multi-row expansions.
     bill_refs: dict = {}

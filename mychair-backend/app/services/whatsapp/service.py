@@ -564,11 +564,35 @@ class WhatsAppService:
         ).sort("-created_at").first_or_none()
         return log.delivery_status or log.status if log else "pending"
 
+    async def latest_statuses_for_invoices(self, invoice_ids: List[str]) -> Dict[str, str]:
+        if not invoice_ids:
+            return {}
+        logs = await WhatsAppMessageLog.find(
+            {"invoice_id": {"$in": invoice_ids}, "is_deleted": False}
+        ).sort("-created_at").to_list()
+        statuses: Dict[str, str] = {}
+        for log in logs:
+            if log.invoice_id and log.invoice_id not in statuses:
+                statuses[log.invoice_id] = log.delivery_status or log.status or "pending"
+        return statuses
+
     async def latest_status_for_appointment(self, appointment_id: str) -> str:
         log = await WhatsAppMessageLog.find(
             {"appointment_id": appointment_id, "is_deleted": False}
         ).sort("-created_at").first_or_none()
         return log.delivery_status or log.status if log else "pending"
+
+    async def latest_statuses_for_appointments(self, appointment_ids: List[str]) -> Dict[str, str]:
+        if not appointment_ids:
+            return {}
+        logs = await WhatsAppMessageLog.find(
+            {"appointment_id": {"$in": appointment_ids}, "is_deleted": False}
+        ).sort("-created_at").to_list()
+        statuses: Dict[str, str] = {}
+        for log in logs:
+            if log.appointment_id and log.appointment_id not in statuses:
+                statuses[log.appointment_id] = log.delivery_status or log.status or "pending"
+        return statuses
 
     async def send_on_appointment_submit(self, appointment_id: str) -> Optional[WhatsAppMessageLog]:
         """

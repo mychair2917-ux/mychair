@@ -3,6 +3,7 @@ Customer CRUD endpoints for the Customer Analytics module.
 Provides full lifecycle management: list, detail (with history), create, update, delete.
 Also supports bulk client import (CSV / XLSX / XLS) with template download.
 """
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -457,25 +458,40 @@ async def get_customer(
     if not customer:
         raise ResourceNotFoundException("Customer not found")
 
-    # Appointment history (last 20)
+    # Fetch appointment history, billing history, and reward transactions concurrently
     appt_query: dict = {"customer_id": customer_id, "is_deleted": False}
+    inv_query: dict = {"customer_id": customer_id, "is_deleted": False}
+    txn_query: dict = {"customer_id": customer_id, "is_deleted": False}
     if tenant_id:
         appt_query["tenant_id"] = tenant_id
-    appointments = (
-        await Appointment.find(appt_query).sort("-start_datetime").limit(20).to_list()
+        inv_query["tenant_id"] = tenant_id
+        txn_query["tenant_id"] = tenant_id
+
+    appointments, invoices, txns = await asyncio.gather(
+        Appointment.find(appt_query).sort("-start_datetime").limit(20).to_list(),
+        Invoice.find(inv_query).sort("-created_at").limit(20).to_list(),
+        CustomerRewardTransaction.find(txn_query).sort("-created_at").limit(20).to_list(),
     )
+
+    # Batch load staff names for appointments
+    staff_oids = set()
+    for appt in appointments:
+        if appt.staff_id:
+            try:
+                staff_oids.add(PydanticObjectId(appt.staff_id))
+            except Exception:
+                pass
+    staff_map: dict[str, str] = {}
+    if staff_oids:
+        users = await User.find(
+            {"_id": {"$in": list(staff_oids)}, "is_deleted": False}
+        ).to_list()
+        for u in users:
+            staff_map[str(u.id)] = user_display_name(u)
 
     appointment_history = []
     for appt in appointments:
-        staff_name = ""
-        try:
-            staff = await User.find_one(
-                {"_id": PydanticObjectId(appt.staff_id), "is_deleted": False}
-            )
-            if staff:
-                staff_name = user_display_name(staff)
-        except Exception:
-            pass
+        staff_name = staff_map.get(str(appt.staff_id), "") if appt.staff_id else ""
         service_names = ", ".join(s.name for s in (appt.services or []))
         appointment_history.append({
             "id": str(appt.id),
@@ -486,12 +502,6 @@ async def get_customer(
         })
 
     # Billing history (last 20 invoices)
-    inv_query: dict = {"customer_id": customer_id, "is_deleted": False}
-    if tenant_id:
-        inv_query["tenant_id"] = tenant_id
-    invoices = (
-        await Invoice.find(inv_query).sort("-created_at").limit(20).to_list()
-    )
     billing_history = [
         {
             "id": str(inv.id),
@@ -503,15 +513,6 @@ async def get_customer(
     ]
 
     # Reward transactions (last 20)
-    txn_query: dict = {"customer_id": customer_id, "is_deleted": False}
-    if tenant_id:
-        txn_query["tenant_id"] = tenant_id
-    txns = (
-        await CustomerRewardTransaction.find(txn_query)
-        .sort("-created_at")
-        .limit(20)
-        .to_list()
-    )
     reward_transactions = [
         {
             "id": str(t.id),
