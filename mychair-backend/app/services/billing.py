@@ -37,6 +37,7 @@ class BillingService:
         payment_method: str,
         total_amount: float,
         paid_amount: float,
+        notes: Optional[str] = None,
     ) -> Invoice:
         """
         Auto-creates a finalized invoice from an appointment submission.
@@ -62,6 +63,7 @@ class BillingService:
                     payment_method=payment_method,
                     total_amount=total_amount,
                     paid_amount=paid_amount,
+                    notes=notes,
                 )
 
         invoice_items: List[InvoiceItem] = []
@@ -149,6 +151,7 @@ class BillingService:
             customer_phone=customer_phone,
             appointment_id=appointment_id,
             invoice_number=invoice_number,
+            notes=notes,
             status="FINALIZED",
             payment_status=payment_status,
             payment_method=payment_method,
@@ -403,6 +406,7 @@ class BillingService:
         payment_method: str,
         total_amount: float,
         paid_amount: float,
+        notes: Optional[str] = None,
     ) -> Optional[Invoice]:
         """
         Updates an existing Invoice record when an appointment is edited.
@@ -426,6 +430,7 @@ class BillingService:
                 payment_method=payment_method,
                 total_amount=total_amount,
                 paid_amount=paid_amount,
+                notes=notes,
             )
 
         invoice_items: List[InvoiceItem] = []
@@ -514,6 +519,8 @@ class BillingService:
             invoice.customer_name = customer_name
         if customer_phone:
             invoice.customer_phone = customer_phone
+        if notes is not None:
+            invoice.notes = notes
 
         await invoice.save()
         return invoice

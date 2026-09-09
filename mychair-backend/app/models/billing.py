@@ -102,6 +102,7 @@ class Invoice(BaseTenantDocument):
     # Payment tracking
     payment_status: str = Field(default="PENDING", index=True)  # PAID, PENDING, PARTIALLY_PAID
     payment_method: Optional[str] = Field(default=None)  # CASH, UPI, CARD
+    notes: Optional[str] = Field(default=None)
 
     items: List[InvoiceItem] = Field(default_factory=list)
 

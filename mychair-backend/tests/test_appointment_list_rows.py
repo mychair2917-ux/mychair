@@ -5,6 +5,7 @@ from app.services.appointment_list_rows import (
     format_product_display_name,
     group_products_by_identity_and_staff,
     group_services_by_staff,
+    row_matches_search,
 )
 
 
@@ -257,3 +258,20 @@ def test_group_services_helper_order():
     )
     assert [key for key, _ in groups] == ["B", "A"]
     assert len(groups[0][1]) == 2
+
+
+def test_appointment_row_preserves_and_searches_notes():
+    item = _appt(
+        notes="Allergic to ammonia hair dye",
+        services=[
+            {"service_id": "s1", "name": "Color", "staff_id": "A", "staff_name": "Alice"}
+        ],
+    )
+    rows = expand_appointment_item_to_list_rows(item, bill_reference="BILL-009")
+    assert len(rows) == 1
+    assert rows[0]["notes"] == "Allergic to ammonia hair dye"
+
+    # Search should match against notes
+    assert row_matches_search(rows[0], "ammonia") is True
+    assert row_matches_search(rows[0], "allergic") is True
+    assert row_matches_search(rows[0], "nonexistent-term") is False

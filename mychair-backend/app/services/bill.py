@@ -30,6 +30,7 @@ class BillService:
         payment_method: Optional[str],
         total_amount: float,
         paid_amount: float,
+        notes: Optional[str] = None,
     ) -> Bill:
         """
         Auto-creates a Bill record when an appointment is submitted.
@@ -55,6 +56,7 @@ class BillService:
                     payment_method=payment_method,
                     total_amount=total_amount,
                     paid_amount=paid_amount,
+                    notes=notes,
                 )
 
         items: List[BillItem] = []
@@ -168,6 +170,7 @@ class BillService:
             customer_name=customer_name,
             customer_phone=customer_phone,
             bill_number=bill_number,
+            notes=notes,
             category="APPOINTMENT",
             items=items,
             subtotal=round(subtotal, 2),
@@ -200,6 +203,7 @@ class BillService:
         payment_method: Optional[str],
         total_amount: float,
         paid_amount: float,
+        notes: Optional[str] = None,
     ) -> Optional[Bill]:
         """
         Updates an existing Bill record when an appointment is edited.
@@ -224,6 +228,7 @@ class BillService:
                 payment_method=payment_method,
                 total_amount=total_amount,
                 paid_amount=paid_amount,
+                notes=notes,
             )
 
         items: List[BillItem] = []
@@ -322,6 +327,8 @@ class BillService:
             bill.customer_name = customer_name
         if customer_phone:
             bill.customer_phone = customer_phone
+        if notes is not None:
+            bill.notes = notes
 
         await bill.save()
         return bill

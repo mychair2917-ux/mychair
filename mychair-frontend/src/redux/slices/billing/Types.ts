@@ -24,6 +24,7 @@ export interface BillListItem {
   payment_method?: string | null;
   payment_status: 'PAID' | 'PENDING' | 'PARTIALLY_PAID';
   status: string;
+  notes?: string | null;
   subtotal: number;
   tax_amount: number;
   discount_amount: number;

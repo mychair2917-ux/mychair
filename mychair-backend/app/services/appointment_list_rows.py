@@ -286,6 +286,7 @@ def row_matches_search(row: Dict[str, Any], term: str) -> bool:
         row.get("sold_by"),
         row.get("staff_name"),
         row.get("row_kind"),
+        row.get("notes"),
     ]
     for value in haystacks:
         if value is not None and needle in str(value).lower():

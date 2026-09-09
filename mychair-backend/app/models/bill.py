@@ -62,6 +62,7 @@ class Bill(BaseTenantDocument):
     # === Payment Tracking ===
     payment_status: str = Field(default="PENDING", index=True)  # PENDING, PAID, PARTIALLY_PAID
     payment_method: Optional[str] = Field(default=None)         # CASH, CARD, UPI
+    notes: Optional[str] = Field(default=None)
     payment_history: List[PaymentHistoryEntry] = Field(default_factory=list)
 
     # === Timestamps ===

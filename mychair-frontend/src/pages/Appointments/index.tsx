@@ -274,7 +274,7 @@ function formatTimeTo12Hour(timeStr?: string, startDatetime?: string): string {
 /* ─── List tab skeleton row ─────────────────────────────── */
 const SkeletonRow: React.FC = () => (
   <tr>
-    {Array.from({ length: 13 }).map((_, i) => (
+    {Array.from({ length: 14 }).map((_, i) => (
       <td key={i} className="px-3 py-3">
         <div className="h-4 animate-pulse rounded bg-gray-200" />
       </td>
@@ -1156,6 +1156,7 @@ const AppointmentListTab: React.FC<{
               <th className="px-4 py-3.5 text-left font-semibold">Service By</th>
               <th className="px-4 py-3.5 text-left font-semibold">Sold By</th>
               <th className="px-4 py-3.5 text-left font-semibold">Date & Time</th>
+              <th className="px-4 py-3.5 text-left font-semibold">Notes</th>
               <th className="px-4 py-3.5 text-left font-semibold">Payment Status</th>
               <th className="px-4 py-3.5 text-left font-semibold">Payment</th>
               <th className="px-4 py-3.5 text-right font-semibold">Bill</th>
@@ -1167,13 +1168,13 @@ const AppointmentListTab: React.FC<{
               Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
             ) : isError ? (
               <tr>
-                <td colSpan={13} className="px-3 py-12 text-center text-sm text-red-500">
+                <td colSpan={14} className="px-3 py-12 text-center text-sm text-red-500">
                   Failed to load billing history. Please try again.
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-3 py-16 text-center">
+                <td colSpan={14} className="px-3 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <CalendarDays className="h-10 w-10 text-gray-300" />
                     <p className="text-sm font-medium text-gray-500">No billing records found</p>
@@ -1221,6 +1222,24 @@ const AppointmentListTab: React.FC<{
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">
                     <p className="font-medium text-gray-900">{formatDateDMY(appt.start_datetime)}</p>
                     <p className="text-xs text-gray-500">{formatTime(appt.start_datetime)}</p>
+                  </td>
+                  <td className="px-3 py-3 text-gray-600 max-w-[160px] md:max-w-[200px]">
+                    {appt.notes ? (
+                      <div className="relative group inline-block max-w-full">
+                        <span
+                          className="block truncate font-normal text-gray-700 cursor-help"
+                          title={appt.notes}
+                        >
+                          {appt.notes}
+                        </span>
+                        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 hidden w-max max-w-xs rounded-xl bg-gray-900 px-3 py-2 text-xs font-normal text-white shadow-xl group-hover:block transition-all duration-150 break-words whitespace-normal">
+                          <div className="font-semibold text-amber-300 text-[10px] uppercase tracking-wider mb-0.5">Notes</div>
+                          {appt.notes}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
                   </td>
                   <td className="px-3 py-3">
                     <span
@@ -1422,6 +1441,7 @@ const Appointments: React.FC = () => {
     };
     setSelectedClient(clientObj);
     setClientSearch(`${appt.customer_name} (${appt.customer_phone})`);
+    setNotes(appt.notes || '');
     showToast('info', `Selected appointment for ${appt.customer_name} at ${appt.appointment_time}`);
 
     const formEl = document.getElementById('billing-form-section');
@@ -1447,6 +1467,7 @@ const Appointments: React.FC = () => {
     setClientSearchResults([]);
     setHasClientSearched(false);
     setShowDropdown(false);
+    setNotes('');
   };
 
   const [activeTab, setActiveTab] = useState<Tab>('entry');

@@ -46,6 +46,7 @@ def _invoice_to_dict(invoice: Invoice) -> Dict[str, Any]:
         "customer_phone": invoice.customer_phone,
         "payment_method": invoice.payment_method,
         "payment_status": invoice.payment_status,
+        "notes": getattr(invoice, "notes", None),
         "status": invoice.status,
         "subtotal": invoice.subtotal,
         "tax_amount": invoice.tax_amount,

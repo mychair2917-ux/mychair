@@ -689,7 +689,7 @@ class AppointmentService:
             existing_appt.products = product_snapshots
             existing_appt.total_price = effective_total_amount
             existing_appt.status = "COMPLETED"
-            existing_appt.notes = notes or existing_appt.notes
+            existing_appt.notes = notes if notes is not None else existing_appt.notes
             existing_appt.payment_type = payment_type
             existing_appt.payment_status = payment_status
             existing_appt.paid_amount = effective_paid
@@ -793,6 +793,7 @@ class AppointmentService:
                     payment_method=payment_type,
                     total_amount=effective_total_amount,
                     paid_amount=effective_paid,
+                    notes=appointment.notes,
                 )
             else:
                 await self.billing_service.create_invoice_from_appointment(
@@ -810,6 +811,7 @@ class AppointmentService:
                     payment_method=payment_type,
                     total_amount=effective_total_amount,
                     paid_amount=effective_paid,
+                    notes=appointment.notes,
                 )
         except Exception:
             # Invoice creation failure must not block appointment creation
@@ -834,6 +836,7 @@ class AppointmentService:
                     payment_method=payment_type,
                     total_amount=effective_total_amount,
                     paid_amount=effective_paid,
+                    notes=appointment.notes,
                 )
             else:
                 bill = await self.bill_service.create_bill_from_appointment(
@@ -851,6 +854,7 @@ class AppointmentService:
                     payment_method=payment_type,
                     total_amount=effective_total_amount,
                     paid_amount=effective_paid,
+                    notes=appointment.notes,
                 )
             if bill:
                 created_invoice_id = str(bill.id)
@@ -1198,6 +1202,7 @@ class AppointmentService:
                 payment_method=payment_type,
                 total_amount=effective_total_amount,
                 paid_amount=effective_paid,
+                notes=appointment.notes,
             )
         except Exception:
             pass
@@ -1218,6 +1223,7 @@ class AppointmentService:
                 payment_method=payment_type,
                 total_amount=effective_total_amount,
                 paid_amount=effective_paid,
+                notes=appointment.notes,
             )
         except Exception:
             pass
