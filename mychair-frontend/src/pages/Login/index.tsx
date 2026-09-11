@@ -188,7 +188,7 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
                     autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="mychair2918@gmail.com"
+                    placeholder="Enter your email"
                     className={fieldClassName}
                     required
                   />
@@ -221,7 +221,7 @@ const Login: React.FC<LoginProps> = ({ isLoggedOut }) => {
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     className={`${fieldClassName} pr-11`}
                     required
                   />

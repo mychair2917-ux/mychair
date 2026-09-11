@@ -118,7 +118,7 @@ const SalonOwnerLogin: React.FC = () => {
                   value={values.email}
                   onChange={handleChange}
                   onBlur={handleBlur}
-                  placeholder="owner@salon.com"
+                  placeholder="Enter email"
                 />
               </FormField>
               <FormField
