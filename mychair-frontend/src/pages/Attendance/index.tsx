@@ -41,9 +41,9 @@ const Attendance: React.FC = () => {
   });
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 p-4 md:p-6 lg:p-8">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-3.5 sm:space-y-6 sm:p-5 md:p-6 lg:p-8">
       {/* Header Banner aligned with app theme */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[var(--color-border-soft)] bg-white p-6 shadow-soft">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl sm:rounded-3xl border border-[var(--color-border-soft)] bg-white p-4 sm:p-6 shadow-soft">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 rounded-full bg-[var(--color-brand-gold)] animate-pulse" />
@@ -51,7 +51,7 @@ const Attendance: React.FC = () => {
               Workforce Management
             </span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text-primary)] sm:text-3xl">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">
             Attendance Dashboard
           </h1>
           <p className="text-sm text-[var(--color-text-secondary)] max-w-2xl">

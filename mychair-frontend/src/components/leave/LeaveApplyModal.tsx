@@ -62,15 +62,15 @@ const LeaveApplyModal: React.FC<LeaveApplyModalProps> = ({
               rows={4}
               maxLength={1000}
               placeholder="Describe the reason for your leave request"
-              className="w-full rounded-xl border border-[var(--color-border-soft)] bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-[var(--color-brand-gold)]"
+              className="w-full rounded-xl border border-[var(--color-border-soft)] bg-white px-3 py-2 text-base sm:text-sm text-gray-900 outline-none focus:border-[var(--color-brand-gold)]"
             />
           </FormField>
         </ModalBody>
-        <ModalFooter>
-          <Button type="button" variant="secondary" onClick={handleClose}>
+        <ModalFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+          <Button type="button" variant="secondary" onClick={handleClose} className="min-h-[44px] w-full sm:w-auto">
             Cancel
           </Button>
-          <Button type="submit" isLoading={isLoading}>
+          <Button type="submit" isLoading={isLoading} className="min-h-[44px] w-full sm:w-auto">
             Submit Request
           </Button>
         </ModalFooter>

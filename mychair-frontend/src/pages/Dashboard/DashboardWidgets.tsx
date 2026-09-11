@@ -61,7 +61,7 @@ const SectionCard: React.FC<{ children: React.ReactNode; className?: string }> =
 }) => (
   <div
     className={cn(
-      'rounded-2xl border border-[var(--color-border-soft)] bg-white p-5 shadow-soft md:p-6',
+      'rounded-2xl border border-[var(--color-border-soft)] bg-white p-3.5 sm:p-5 shadow-soft md:p-6',
       className
     )}
   >
@@ -75,7 +75,7 @@ const SectionHeading: React.FC<{ children: React.ReactNode; className?: string }
 }) => (
   <h2
     className={cn(
-      'text-base font-bold tracking-tight text-[var(--color-text-primary)] md:text-lg',
+      'text-sm font-bold tracking-tight text-[var(--color-text-primary)] sm:text-base md:text-lg',
       className
     )}
   >
@@ -90,7 +90,7 @@ export const KpiGrid: React.FC<{
   if (!kpis.length) return null;
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-4 md:gap-5">
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] sm:gap-4 md:gap-5">
       {kpis.map((kpi) => {
         const Icon = KPI_ICONS[kpi.key] || TrendingUp;
         const tone = KPI_TONES[kpi.tone] || KPI_TONES.blue;
@@ -98,7 +98,7 @@ export const KpiGrid: React.FC<{
         const Wrapper = isClickable ? 'button' : 'div';
 
         return (
-          <SectionCard key={kpi.key} className="flex h-full min-h-[148px] flex-col">
+          <SectionCard key={kpi.key} className="flex h-full min-h-[120px] sm:min-h-[148px] flex-col p-3 sm:p-5">
             <Wrapper
               type={isClickable ? 'button' : undefined}
               onClick={isClickable ? () => onKpiClick?.(kpi.key) : undefined}
@@ -108,25 +108,25 @@ export const KpiGrid: React.FC<{
                   'cursor-pointer transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-gold)]'
               )}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl', tone)}>
-                  <Icon className="h-5 w-5" />
+              <div className="flex items-start justify-between gap-2">
+                <div className={cn('flex h-9 w-9 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl', tone)}>
+                  <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
                 </div>
                 {kpi.sub && (
-                  <span className="shrink-0 rounded-full bg-[var(--color-surface-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
+                  <span className="shrink-0 rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[10px] sm:text-xs font-semibold text-[var(--color-text-secondary)]">
                     {kpi.sub}
                   </span>
                 )}
               </div>
-              <p className="mt-auto pt-4 text-sm font-medium text-[var(--color-text-secondary)]">
+              <p className="mt-auto pt-2.5 sm:pt-4 text-xs sm:text-sm font-medium text-[var(--color-text-secondary)] line-clamp-1">
                 {kpi.label}
               </p>
-              <h3 className="mt-1 text-2xl font-bold leading-tight text-[var(--color-text-primary)]">
+              <h3 className="mt-0.5 sm:mt-1 text-lg sm:text-2xl font-bold leading-tight text-[var(--color-text-primary)]">
                 {formatKpiValue(kpi.key, kpi.value)}
               </h3>
               {isClickable && (
-                <p className="mt-2 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
-                  View leave requests
+                <p className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs font-semibold text-[var(--color-brand-gold-dark)]">
+                  View requests
                 </p>
               )}
             </Wrapper>
@@ -145,14 +145,14 @@ export const QuickActionsBar: React.FC<{
 
   return (
     <SectionCard>
-      <SectionHeading className="mb-4">Quick Actions</SectionHeading>
-      <div className="flex flex-wrap gap-2.5">
+      <SectionHeading className="mb-3 sm:mb-4">Quick Actions</SectionHeading>
+      <div className="flex flex-wrap gap-2 sm:gap-2.5">
         {actions.map((action) => (
           <button
             key={action.key}
             type="button"
             onClick={() => onAction(action.key)}
-            className="rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-muted)] px-4 py-2.5 text-sm font-semibold text-[var(--color-text-primary)] transition-all hover:border-[var(--color-brand-gold-light)] hover:bg-white hover:text-[var(--color-brand-gold-dark)] hover:shadow-sm"
+            className="min-h-[44px] rounded-xl border border-[var(--color-border-soft)] bg-[var(--color-surface-muted)] px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-semibold text-[var(--color-text-primary)] transition-all hover:border-[var(--color-brand-gold-light)] hover:bg-white hover:text-[var(--color-brand-gold-dark)] hover:shadow-xs active:scale-[0.98]"
           >
             {action.label}
           </button>

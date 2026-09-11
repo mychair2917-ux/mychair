@@ -171,17 +171,17 @@ const LeaveManagement: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 md:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-4 p-3.5 sm:space-y-6 sm:p-5 md:p-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leave</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Leave</h1>
+          <p className="mt-1 text-xs sm:text-sm text-gray-500">
             {canApprove
               ? 'Review pending team leave requests, apply for your own leave, and track salon history.'
               : 'Apply for leave and track your request status.'}
           </p>
         </div>
-        <Button onClick={() => setIsApplyOpen(true)}>
+        <Button onClick={() => setIsApplyOpen(true)} className="min-h-[44px] self-start sm:self-auto">
           <CalendarPlus className="mr-2 h-4 w-4" />
           Apply Leave
         </Button>

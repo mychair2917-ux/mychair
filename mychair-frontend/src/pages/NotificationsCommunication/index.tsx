@@ -215,24 +215,24 @@ const NotificationsCommunication: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 md:p-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-4 p-3.5 sm:space-y-6 sm:p-6 md:p-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-brand-gold-dark)]">
+          <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-brand-gold-dark)]">
             Notification Center
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-gray-950">{pageTitle}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-gray-500">
+          <h1 className="mt-1 text-xl sm:text-2xl md:text-3xl font-bold text-gray-950">{pageTitle}</h1>
+          <p className="mt-1 max-w-3xl text-xs sm:text-sm text-gray-500">
             Real-time alerts, customer campaigns, reusable templates, delivery logs, and per-user notification preferences.
           </p>
         </div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+        <div className="self-start sm:self-auto rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 sm:px-5 sm:py-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Unread</p>
-          <p className="text-3xl font-bold text-amber-900">{notificationsQuery.data?.data.unread_count ?? 0}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-amber-900">{notificationsQuery.data?.data.unread_count ?? 0}</p>
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto rounded-2xl border border-[var(--color-border-soft)] bg-white p-2">
+      <div className="flex gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl border border-[var(--color-border-soft)] bg-white p-1.5 sm:p-2 custom-scrollbar">
         {tabs
           .filter((tab) => tab.id !== 'communication' || canCreateCampaign)
           .filter((tab) => tab.id !== 'templates' || role !== 'employee')
@@ -241,7 +241,7 @@ const NotificationsCommunication: React.FC = () => {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex min-w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+              className={`flex min-w-fit items-center gap-2 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition-colors ${
                 activeTab === tab.id
                   ? 'bg-[var(--color-brand-gold-dark)] text-white'
                   : 'text-gray-600 hover:bg-[var(--color-surface-bg)]'
@@ -255,7 +255,7 @@ const NotificationsCommunication: React.FC = () => {
 
       {activeTab === 'notifications' && (
         <CommonCard title="Notification History" subtitle="Filter, review, and mark notifications as read.">
-          <div className="mb-5 grid gap-3 md:grid-cols-5">
+          <div className="mb-5 grid gap-2.5 sm:gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-5">
             <Select
               value={notificationCategory}
               onChange={(event) => setNotificationCategory(event.target.value)}

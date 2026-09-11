@@ -320,10 +320,114 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
           </span>
         </div>
 
-        {/* Tab 1: Attendance Table View */}
+        {/* Tab 1: Attendance Table & Mobile Cards View */}
         {activeTab === 'table' && (
           <CommonCard className="!p-0 overflow-hidden !shadow-soft">
-            <div className="overflow-x-auto custom-scrollbar">
+            {/* Mobile Card List (Visible on mobile screens) */}
+            <div className="block md:hidden divide-y divide-[var(--color-border-soft)]">
+              {activeQuery.isLoading ? (
+                Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={idx} className="p-4 space-y-3 animate-pulse">
+                    <div className="flex justify-between">
+                      <div className="h-5 w-28 bg-[var(--color-surface-muted)] rounded-md" />
+                      <div className="h-5 w-16 bg-[var(--color-surface-muted)] rounded-full" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="h-10 bg-[var(--color-surface-muted)] rounded-xl" />
+                      <div className="h-10 bg-[var(--color-surface-muted)] rounded-xl" />
+                    </div>
+                  </div>
+                ))
+              ) : !itemsList.length ? (
+                <div className="py-12 px-4 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-surface-muted)] text-[var(--color-brand-gold-dark)] border border-[var(--color-border-soft)]">
+                    <AlertCircle className="h-6 w-6" />
+                  </div>
+                  <h4 className="mt-3 text-sm font-bold text-[var(--color-text-primary)]">
+                    No attendance records found
+                  </h4>
+                  <p className="mt-1 text-xs text-[var(--color-text-secondary)] max-w-sm mx-auto">
+                    Try expanding your date range filters or select another staff member.
+                  </p>
+                </div>
+              ) : (
+                itemsList.map((record) => {
+                  const workHours = formatWorkDuration(
+                    record.total_work_minutes,
+                    record.total_hours
+                  );
+                  return (
+                    <div key={record.id} className="p-4 space-y-3 hover:bg-[var(--color-surface-bg)] transition-colors">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-[var(--color-text-primary)]">
+                            {formatDateDMY(record.attendance_date)}
+                          </span>
+                          {!showMyOnly && record.employee_name && (
+                            <span className="text-xs text-[var(--color-text-secondary)]">
+                              • {record.employee_name}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border',
+                              statusTone(record.status)
+                            )}
+                          >
+                            {statusLabel(record.status)}
+                          </span>
+                          {canEditRecord && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingRecord(record)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border-strong)] bg-white px-2 py-1 text-[11px] font-semibold text-[var(--color-text-primary)] hover:border-[var(--color-brand-gold)]"
+                            >
+                              <Edit3 className="h-3 w-3 text-[var(--color-brand-gold-dark)]" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Check In</p>
+                          <p className="mt-1 flex items-center gap-1 font-bold text-emerald-700">
+                            <LogIn className="h-3.5 w-3.5 text-emerald-500" />
+                            {formatTime12h(record.check_in_time)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-800">Check Out</p>
+                          <p className="mt-1 flex items-center gap-1 font-bold text-rose-700">
+                            <LogOut className="h-3.5 w-3.5 text-rose-500" />
+                            {formatTime12h(record.check_out_time)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] pt-1">
+                        <span className="flex items-center gap-1">
+                          <Timer className="h-3.5 w-3.5 text-gray-400" />
+                          Duration: <strong className="text-[var(--color-text-primary)]">{workHours}</strong>
+                        </span>
+                        {record.late_minutes > 0 ? (
+                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
+                            {record.late_minutes}m late
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700 font-medium">On time</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Desktop Table (Preserved for md+ screens) */}
+            <div className="hidden md:block overflow-x-auto custom-scrollbar">
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-[var(--color-surface-muted)] border-b border-[var(--color-border-soft)] text-[var(--color-text-secondary)] font-semibold uppercase tracking-wider">
                   <tr>

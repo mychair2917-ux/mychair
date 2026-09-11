@@ -111,16 +111,16 @@ const Dashboard: React.FC = () => {
   const hasSideColumn = sidePanels.length > 0;
 
   return (
-    <div className="mx-auto max-w-[1600px] animate-in space-y-6 p-4 duration-500 fade-in md:space-y-8 md:p-6 lg:p-8">
-      <header className="flex flex-col justify-between gap-3 border-b border-[var(--color-border-soft)] pb-6 md:flex-row md:items-end">
+    <div className="mx-auto max-w-[1600px] animate-in space-y-4 p-3.5 duration-500 fade-in sm:space-y-6 sm:p-5 md:space-y-8 md:p-6 lg:p-8">
+      <header className="flex flex-col justify-between gap-3 border-b border-[var(--color-border-soft)] pb-4 sm:pb-6 md:flex-row md:items-end">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--color-brand-gold-dark)]">
+          <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-[var(--color-brand-gold-dark)]">
             Dashboard
           </p>
-          <h1 className="mt-1 text-3xl font-bold text-[var(--color-text-primary)]">
+          <h1 className="mt-1 text-2xl sm:text-3xl font-bold text-[var(--color-text-primary)]">
             {greeting}, {displayName}
           </h1>
-          <p className="mt-1.5 max-w-2xl text-[var(--color-text-secondary)]">
+          <p className="mt-1 max-w-2xl text-xs sm:text-sm text-[var(--color-text-secondary)]">
             {dashboard?.subtitle ?? 'Loading your dashboard...'}
           </p>
         </div>

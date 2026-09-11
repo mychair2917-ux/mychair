@@ -8,9 +8,10 @@ import NotificationRealtimeBridge from './components/notifications/NotificationR
 import SubscriptionExpiryBanner from './components/subscription/SubscriptionExpiryBanner';
 import SubscriptionGuard from './components/subscription/SubscriptionGuard';
 import { Header, Sidebar, SidebarProvider, useSidebar } from './components/layout';
+import { StaffMobileShell } from './components/layout/staff/StaffMobileShell';
 import ScrollToTop from './components/layout/ScrollToTop';
-import { isSuperAdmin, isTenantScopedRole } from './config/rbac';
-import { PUBLIC_ROUTES, ROUTE_PATHS } from './constants';
+import { isSuperAdmin, isTenantScopedRole, normalizeRole } from './config/rbac';
+import { PUBLIC_ROUTES, ROLES, ROUTE_PATHS } from './constants';
 import { useAppSelector } from './redux/hooks';
 import { cn } from './utils/cn';
 
@@ -66,6 +67,9 @@ function App() {
       : isTenantScopedRole(user?.role) &&
         (isOrgRoute || isSalonOwnerInviteRoute || location.pathname === `/${ROUTE_PATHS.SALON_OWNER_DASHBOARD}`));
 
+  const normalizedRole = normalizeRole(user?.role);
+  const isEmployee = normalizedRole === ROLES.EMPLOYEE;
+
   return (
     <div className="app-shell min-h-dvh bg-[var(--color-surface-bg)] text-[var(--color-text-primary)]">
       <ScrollToTop />
@@ -74,9 +78,13 @@ function App() {
       <SubscriptionGuard />
 
       {showLayout ? (
-        <SidebarProvider>
-          <AuthenticatedShell />
-        </SidebarProvider>
+        isEmployee ? (
+          <StaffMobileShell />
+        ) : (
+          <SidebarProvider>
+            <AuthenticatedShell />
+          </SidebarProvider>
+        )
       ) : (
         <div className="flex min-h-dvh min-w-0 w-full flex-col">
           <main

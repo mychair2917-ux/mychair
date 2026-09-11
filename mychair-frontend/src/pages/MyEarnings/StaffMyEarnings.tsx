@@ -297,7 +297,7 @@ const StaffMyEarnings: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-surface-bg)] p-4 md:p-6 xl:p-8">
+    <div className="min-h-screen bg-[var(--color-surface-bg)] p-3.5 sm:p-5 md:p-6 xl:p-8">
       <div className="mx-auto max-w-[1600px] space-y-5">
         <SectionCard className="bg-white/90 backdrop-blur">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -461,8 +461,13 @@ const StaffMyEarnings: React.FC = () => {
                   <ArrowUpRight className="h-5 w-5 text-[var(--color-brand-gold-dark)]" />
                 </div>
 
-                <div className="mt-5 rounded-2xl bg-[var(--color-surface-bg)] p-3">
-                  <ReactECharts option={growthChartOption} style={{ height: 280 }} />
+                <div className="mt-5 rounded-2xl bg-[var(--color-surface-bg)] p-2 sm:p-3" style={{ touchAction: 'pan-y' }}>
+                  <ReactECharts
+                    option={growthChartOption}
+                    style={{ height: 280, width: '100%' }}
+                    opts={{ renderer: 'canvas' }}
+                    notMerge={true}
+                  />
                 </div>
               </SectionCard>
 
@@ -673,71 +678,125 @@ const StaffMyEarnings: React.FC = () => {
 
         {tab === 'daily' && (
           <TableShell>
-            <table className="min-w-full text-sm">
-              <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Date</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service Incentive</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product Incentive</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Incentive Total</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Appointments</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-border-soft)]">
-                {dailyLoading ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-500">
-                      Loading daily earnings...
-                    </td>
-                  </tr>
-                ) : dailyRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10">
-                      <EmptyState
-                        title="No daily earnings yet"
-                        description="Eligible billed services and product commissions will appear date-wise here."
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  dailyRows.map((row) => (
-                    <tr key={row.date} className="transition hover:bg-[var(--color-surface-bg)]/70">
-                      <td className="whitespace-nowrap px-4 py-4 font-semibold text-[var(--color-text-primary)]">
+            {/* Mobile Cards (Visible on screens < md) */}
+            <div className="block md:hidden divide-y divide-[var(--color-border-soft)]">
+              {dailyLoading ? (
+                Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={idx} className="p-4 space-y-3 animate-pulse">
+                    <div className="h-5 w-28 bg-[var(--color-surface-bg)] rounded-md" />
+                    <div className="h-10 bg-[var(--color-surface-bg)] rounded-xl" />
+                  </div>
+                ))
+              ) : dailyRows.length === 0 ? (
+                <div className="p-6">
+                  <EmptyState
+                    title="No daily earnings yet"
+                    description="Eligible billed services and product commissions will appear date-wise here."
+                  />
+                </div>
+              ) : (
+                dailyRows.map((row) => (
+                  <div key={row.date} className="p-4 space-y-2.5 hover:bg-[var(--color-surface-bg)]/50 transition">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-[var(--color-text-primary)]">
                         {formatDateDMY(row.date)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-right">
-                        {formatCurrency(row.service_earnings)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-right">
-                        {formatCurrency(row.product_earnings)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-right text-emerald-700">
-                        {formatCurrency(row.service_incentive)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-right text-violet-700">
-                        {formatCurrency(row.product_incentive)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
+                      </span>
+                      <span className="font-bold text-base text-[var(--color-text-primary)]">
                         {formatCurrency(row.total_earnings)}
-                      </td>
-                      <td className="px-4 py-4 text-xs text-gray-500">
-                        {row.appointment_references.length
-                          ? row.appointment_references.join(', ')
-                          : '-'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-xl bg-[var(--color-surface-bg)] p-2.5 border border-[var(--color-border-soft)]">
+                        <p className="text-[10px] uppercase font-semibold text-gray-500">Services</p>
+                        <p className="mt-0.5 font-semibold text-gray-900">{formatCurrency(row.service_earnings)}</p>
+                        <p className="text-[11px] font-bold text-emerald-700">+{formatCurrency(row.service_incentive)} inc.</p>
+                      </div>
+                      <div className="rounded-xl bg-[var(--color-surface-bg)] p-2.5 border border-[var(--color-border-soft)]">
+                        <p className="text-[10px] uppercase font-semibold text-gray-500">Products</p>
+                        <p className="mt-0.5 font-semibold text-gray-900">{formatCurrency(row.product_earnings)}</p>
+                        <p className="text-[11px] font-bold text-violet-700">+{formatCurrency(row.product_incentive)} inc.</p>
+                      </div>
+                    </div>
+
+                    {row.appointment_references.length > 0 && (
+                      <p className="text-[11px] text-gray-500 truncate">
+                        Appointments: {row.appointment_references.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table (Preserved on md+ screens) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
+                  <tr>
+                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Date</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service Incentive</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product Incentive</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Incentive Total</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Appointments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--color-border-soft)]">
+                  {dailyLoading ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-500">
+                        Loading daily earnings...
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : dailyRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-10">
+                        <EmptyState
+                          title="No daily earnings yet"
+                          description="Eligible billed services and product commissions will appear date-wise here."
+                        />
+                      </td>
+                    </tr>
+                  ) : (
+                    dailyRows.map((row) => (
+                      <tr key={row.date} className="transition hover:bg-[var(--color-surface-bg)]/70">
+                        <td className="whitespace-nowrap px-4 py-4 font-semibold text-[var(--color-text-primary)]">
+                          {formatDateDMY(row.date)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-4 text-right">
+                          {formatCurrency(row.service_earnings)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-4 text-right">
+                          {formatCurrency(row.product_earnings)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-4 text-right text-emerald-700">
+                          {formatCurrency(row.service_incentive)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-4 text-right text-violet-700">
+                          {formatCurrency(row.product_incentive)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
+                          {formatCurrency(row.total_earnings)}
+                        </td>
+                        <td className="px-4 py-4 text-xs text-gray-500">
+                          {row.appointment_references.length
+                            ? row.appointment_references.join(', ')
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </TableShell>
         )}
 
         {tab === 'wallet' && (
-          <div className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-4">
+          <div className="space-y-4 sm:space-y-5">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
               <MetricCard
                 label="Wallet Balance"
                 value={formatCurrency(wallet?.balance ?? 0)}
@@ -769,163 +828,306 @@ const StaffMyEarnings: React.FC = () => {
             </div>
 
             <TableShell>
-              <table className="min-w-full text-sm">
-                <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
-                  <tr>
-                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Date</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Type</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Reference</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Item</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Amount</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Running Balance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border-soft)]">
-                  {walletLoading ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
-                        Loading wallet transactions...
-                      </td>
-                    </tr>
-                  ) : !(wallet?.transactions.length) ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-10">
-                        <EmptyState
-                          title="No wallet transactions yet"
-                          description="When you complete billed services or product sales, your incentive % is auto-added here. Wallet stays empty until then."
-                        />
-                      </td>
-                    </tr>
-                  ) : (
-                    wallet.transactions.map((transaction) => (
-                      <tr key={transaction.id} className="transition hover:bg-[var(--color-surface-bg)]/70">
-                        <td className="whitespace-nowrap px-4 py-4">
+              {/* Mobile Cards (Visible on screens < md) */}
+              <div className="block md:hidden divide-y divide-[var(--color-border-soft)]">
+                {walletLoading ? (
+                  Array.from({ length: 4 }).map((_, idx) => (
+                    <div key={idx} className="p-4 space-y-2 animate-pulse">
+                      <div className="h-5 w-24 bg-[var(--color-surface-bg)] rounded" />
+                      <div className="h-8 bg-[var(--color-surface-bg)] rounded" />
+                    </div>
+                  ))
+                ) : !(wallet?.transactions.length) ? (
+                  <div className="p-6">
+                    <EmptyState
+                      title="No wallet transactions yet"
+                      description="When you complete billed services or product sales, your incentive % is auto-added here. Wallet stays empty until then."
+                    />
+                  </div>
+                ) : (
+                  wallet.transactions.map((transaction) => (
+                    <div key={transaction.id} className="p-4 space-y-2 hover:bg-[var(--color-surface-bg)]/50 transition">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-sm text-[var(--color-text-primary)]">
                           {formatDateDMY(transaction.date)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4">
-                          <span
-                            className={cn(
-                              'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
-                              transaction.transaction_type === 'PAYOUT'
-                                ? 'bg-amber-50 text-amber-700'
-                                : transaction.category === 'SERVICE_INCENTIVE'
-                                  ? 'bg-emerald-50 text-emerald-700'
-                                  : 'bg-violet-50 text-violet-700'
-                            )}
-                          >
-                            {transaction.transaction_type === 'PAYOUT'
-                              ? 'Payout'
-                              : transaction.category === 'SERVICE_INCENTIVE'
-                                ? 'Service'
-                                : 'Product'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 text-xs text-gray-600">
-                          {transaction.reference_label || '-'}
-                        </td>
-                        <td className="px-4 py-4 text-xs text-gray-600">
-                          {transaction.item_name || transaction.note || '-'}
-                        </td>
-                        <td
+                        </span>
+                        <span
                           className={cn(
-                            'whitespace-nowrap px-4 py-4 text-right font-semibold',
+                            'text-base font-bold',
                             transaction.amount < 0 ? 'text-amber-700' : 'text-emerald-700'
                           )}
                         >
                           {formatCurrency(transaction.amount)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
-                          {formatCurrency(transaction.running_balance)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span
+                          className={cn(
+                            'inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                            transaction.transaction_type === 'PAYOUT'
+                              ? 'bg-amber-50 text-amber-700'
+                              : transaction.category === 'SERVICE_INCENTIVE'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-violet-50 text-violet-700'
+                          )}
+                        >
+                          {transaction.transaction_type === 'PAYOUT'
+                            ? 'Payout'
+                            : transaction.category === 'SERVICE_INCENTIVE'
+                              ? 'Service'
+                              : 'Product'}
+                        </span>
+                        <span className="text-gray-500 font-medium">
+                          Balance: <strong>{formatCurrency(transaction.running_balance)}</strong>
+                        </span>
+                      </div>
+
+                      {(transaction.item_name || transaction.reference_label || transaction.note) && (
+                        <p className="text-[11px] text-gray-500 truncate pt-0.5">
+                          {[transaction.reference_label, transaction.item_name || transaction.note].filter(Boolean).join(' • ')}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table (Preserved on md+ screens) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Date</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Type</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Reference</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Item</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Amount</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Running Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border-soft)]">
+                    {walletLoading ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
+                          Loading wallet transactions...
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : !(wallet?.transactions.length) ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10">
+                          <EmptyState
+                            title="No wallet transactions yet"
+                            description="When you complete billed services or product sales, your incentive % is auto-added here. Wallet stays empty until then."
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      wallet.transactions.map((transaction) => (
+                        <tr key={transaction.id} className="transition hover:bg-[var(--color-surface-bg)]/70">
+                          <td className="whitespace-nowrap px-4 py-4">
+                            {formatDateDMY(transaction.date)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4">
+                            <span
+                              className={cn(
+                                'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                                transaction.transaction_type === 'PAYOUT'
+                                  ? 'bg-amber-50 text-amber-700'
+                                  : transaction.category === 'SERVICE_INCENTIVE'
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-violet-50 text-violet-700'
+                              )}
+                            >
+                              {transaction.transaction_type === 'PAYOUT'
+                                ? 'Payout'
+                                : transaction.category === 'SERVICE_INCENTIVE'
+                                  ? 'Service'
+                                  : 'Product'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-xs text-gray-600">
+                            {transaction.reference_label || '-'}
+                          </td>
+                          <td className="px-4 py-4 text-xs text-gray-600">
+                            {transaction.item_name || transaction.note || '-'}
+                          </td>
+                          <td
+                            className={cn(
+                              'whitespace-nowrap px-4 py-4 text-right font-semibold',
+                              transaction.amount < 0 ? 'text-amber-700' : 'text-emerald-700'
+                            )}
+                          >
+                            {formatCurrency(transaction.amount)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
+                            {formatCurrency(transaction.running_balance)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </TableShell>
           </div>
         )}
 
         {tab === 'salary-history' && (
-          <div className="space-y-5">
+          <div className="space-y-4 sm:space-y-5">
             <TableShell>
-              <table className="min-w-full text-sm">
-                <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
-                  <tr>
-                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Month</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Base Salary</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service Incentive</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product Incentive</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Bonus</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Deductions</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Final Paid</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-center font-bold">Status</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Payment Date</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Slip</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border-soft)]">
-                  {historyLoading ? (
+              {/* Mobile Cards (Visible on screens < md) */}
+              <div className="block md:hidden divide-y divide-[var(--color-border-soft)]">
+                {historyLoading ? (
+                  Array.from({ length: 4 }).map((_, idx) => (
+                    <div key={idx} className="p-4 space-y-3 animate-pulse">
+                      <div className="h-5 w-28 bg-[var(--color-surface-bg)] rounded" />
+                      <div className="h-12 bg-[var(--color-surface-bg)] rounded-xl" />
+                    </div>
+                  ))
+                ) : !(history?.items.length) ? (
+                  <div className="p-6">
+                    <EmptyState
+                      title="No salary history found"
+                      description="Generated payroll records and salary slips will appear here month-wise."
+                    />
+                  </div>
+                ) : (
+                  history.items.map((item) => (
+                    <div key={item.id} className="p-4 space-y-3 hover:bg-[var(--color-surface-bg)]/50 transition">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-bold text-sm text-[var(--color-text-primary)]">
+                            {MONTH_OPTIONS.find((option) => Number(option.value) === item.month)?.label} {item.year}
+                          </p>
+                          <p className="text-[11px] text-gray-500">
+                            Paid on {formatDateDMY(item.payment_date)}
+                          </p>
+                        </div>
+                        <StatusPill status={item.payment_status} />
+                      </div>
+
+                      <div className="rounded-xl bg-[var(--color-surface-bg)] p-3 border border-[var(--color-border-soft)] space-y-2">
+                        <div className="flex items-center justify-between border-b border-[var(--color-border-soft)] pb-1.5">
+                          <span className="text-xs text-gray-600 font-medium">Final Paid Net</span>
+                          <span className="text-base font-bold text-gray-900">{formatCurrency(item.final_paid_amount)}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                          <div>
+                            <span className="text-[10px] text-gray-500 block uppercase">Base Salary</span>
+                            <span className="font-semibold text-gray-800">{formatCurrency(item.base_salary)}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-gray-500 block uppercase">Incentives</span>
+                            <span className="font-semibold text-emerald-700">+{formatCurrency((item.service_incentive || 0) + (item.product_incentive || 0))}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-gray-500 block uppercase">Bonus</span>
+                            <span className="font-semibold text-gray-800">{formatCurrency(item.bonus)}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-gray-500 block uppercase">Deductions</span>
+                            <span className="font-semibold text-amber-700">-{formatCurrency(item.deduction)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={activeSlipId === item.id}
+                          onClick={() => handleDownloadSlip(item.id)}
+                          icon={<Download className="h-3.5 w-3.5" />}
+                        >
+                          {activeSlipId === item.id ? 'Loading...' : 'Download Slip'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Desktop Table (Preserved on md+ screens) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-[var(--color-surface-bg)] text-xs uppercase tracking-wide text-gray-500">
                     <tr>
-                      <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-500">
-                        Loading salary history...
-                      </td>
+                      <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Month</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Base Salary</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Service Incentive</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Product Incentive</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Bonus</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Deductions</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Final Paid</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-center font-bold">Status</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left font-bold">Payment Date</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right font-bold">Slip</th>
                     </tr>
-                  ) : !(history?.items.length) ? (
-                    <tr>
-                      <td colSpan={10} className="px-4 py-10">
-                        <EmptyState
-                          title="No salary history found"
-                          description="Generated payroll records and salary slips will appear here month-wise."
-                        />
-                      </td>
-                    </tr>
-                  ) : (
-                    history.items.map((item) => (
-                      <tr key={item.id} className="transition hover:bg-[var(--color-surface-bg)]/70">
-                        <td className="whitespace-nowrap px-4 py-4 font-semibold text-[var(--color-text-primary)]">
-                          {MONTH_OPTIONS.find((option) => Number(option.value) === item.month)?.label} {item.year}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right">
-                          {formatCurrency(item.base_salary)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right text-emerald-700">
-                          {formatCurrency(item.service_incentive)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right text-violet-700">
-                          {formatCurrency(item.product_incentive)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right">
-                          {formatCurrency(item.bonus)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right text-amber-700">
-                          {formatCurrency(item.deduction)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
-                          {formatCurrency(item.final_paid_amount)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-center">
-                          <StatusPill status={item.payment_status} />
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-xs text-gray-500">
-                          {formatDateDMY(item.payment_date)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-right">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={activeSlipId === item.id}
-                            onClick={() => handleDownloadSlip(item.id)}
-                            icon={<Download className="h-3.5 w-3.5" />}
-                          >
-                            {activeSlipId === item.id ? 'Loading...' : 'Slip'}
-                          </Button>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border-soft)]">
+                    {historyLoading ? (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-10 text-center text-sm text-gray-500">
+                          Loading salary history...
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : !(history?.items.length) ? (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-10">
+                          <EmptyState
+                            title="No salary history found"
+                            description="Generated payroll records and salary slips will appear here month-wise."
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      history.items.map((item) => (
+                        <tr key={item.id} className="transition hover:bg-[var(--color-surface-bg)]/70">
+                          <td className="whitespace-nowrap px-4 py-4 font-semibold text-[var(--color-text-primary)]">
+                            {MONTH_OPTIONS.find((option) => Number(option.value) === item.month)?.label} {item.year}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right">
+                            {formatCurrency(item.base_salary)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right text-emerald-700">
+                            {formatCurrency(item.service_incentive)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right text-violet-700">
+                            {formatCurrency(item.product_incentive)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right">
+                            {formatCurrency(item.bonus)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right text-amber-700">
+                            {formatCurrency(item.deduction)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right font-bold text-gray-900">
+                            {formatCurrency(item.final_paid_amount)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-center">
+                            <StatusPill status={item.payment_status} />
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-xs text-gray-500">
+                            {formatDateDMY(item.payment_date)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={activeSlipId === item.id}
+                              onClick={() => handleDownloadSlip(item.id)}
+                              icon={<Download className="h-3.5 w-3.5" />}
+                            >
+                              {activeSlipId === item.id ? 'Loading...' : 'Slip'}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </TableShell>
 
             {(history?.pages ?? 1) > 1 && (

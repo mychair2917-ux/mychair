@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Camera,
+  Download,
+  LogOut,
   Mail,
   Phone,
   Save,
@@ -8,6 +10,8 @@ import {
   Trash2,
 } from 'lucide-react';
 
+import { useAuthActions } from '../../hooks/useAuthActions';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { Button, CommonCard, EmptyState, FormField, Input, PageLoader, PasswordInput, Select } from '../../components/common';
 import { showToast } from '../../components/common/Toast/toastService';
 import { useAppSelector } from '../../redux/hooks';
@@ -105,6 +109,8 @@ const Profile: React.FC = () => {
   const [changePassword, { isLoading: isChangingPassword }] = useChangePasswordMutation();
   const [uploadAvatar, { isLoading: isUploadingAvatar }] = useUploadAvatarMutation();
   const [removeAvatar, { isLoading: isRemovingAvatar }] = useRemoveAvatarMutation();
+  const { isLoggingOut, logoutUser } = useAuthActions();
+  const { canInstall, install } = usePWAInstall();
 
   const profile = data?.data;
 
@@ -350,7 +356,7 @@ const Profile: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 md:p-8">
+    <div className="space-y-4 p-3.5 sm:space-y-6 sm:p-6 md:p-8">
       <CommonCard className="overflow-hidden">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -399,7 +405,7 @@ const Profile: React.FC = () => {
               <span>{isUploadingAvatar ? 'Uploading...' : profile.avatar || avatarPreview ? 'Change photo' : 'Upload photo'}</span>
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/jpg,image/webp"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/*"
                 className="hidden"
                 disabled={isAvatarBusy}
                 onChange={handleAvatarSelect}
@@ -493,6 +499,7 @@ const Profile: React.FC = () => {
                   isLoading={isSavingProfile}
                   disabled={!hasProfileChanges && !isProfessionalEditable}
                   leftIcon={<Save className="h-4 w-4" />}
+                  className="min-h-[44px] w-full sm:w-auto"
                 >
                   Save profile
                 </Button>
@@ -522,10 +529,36 @@ const Profile: React.FC = () => {
               <FormField label="Confirm New Password" name="confirm_password" error={passwordErrors.confirm_password} touched={!!passwordErrors.confirm_password} required>
                 <PasswordInput value={passwordState.confirm_password} onChange={(e) => handlePasswordFieldChange('confirm_password', e.target.value)} autoComplete="new-password" />
               </FormField>
-              <Button type="submit" variant="primary" fullWidth isLoading={isChangingPassword}>
+              <Button type="submit" variant="primary" fullWidth isLoading={isChangingPassword} className="min-h-[44px]">
                 Update password
               </Button>
             </form>
+          </CommonCard>
+
+          <CommonCard title="Account Actions" subtitle="Session & Application Controls">
+            <div className="space-y-3">
+              {canInstall && (
+                <button
+                  type="button"
+                  onClick={install}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--color-brand-gold)] bg-amber-50/70 p-3 text-sm font-semibold text-[var(--color-brand-gold-dark)] hover:bg-amber-100/70 transition min-h-[44px]"
+                >
+                  <Download className="h-4 w-4" />
+                  Install MyChair App
+                </button>
+              )}
+              <Button
+                type="button"
+                variant="danger"
+                fullWidth
+                onClick={logoutUser}
+                isLoading={isLoggingOut}
+                leftIcon={<LogOut className="h-4 w-4" />}
+                className="min-h-[44px]"
+              >
+                Sign Out
+              </Button>
+            </div>
           </CommonCard>
         </div>
       </div>
