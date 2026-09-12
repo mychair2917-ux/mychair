@@ -43,6 +43,10 @@ async def lifespan(app: FastAPI):
     logger.info("Environment: %s", settings.ENV)
     logger.info("JWT fingerprint: %s", Settings.secret_fingerprint(settings.SECRET_KEY))
     logger.info("Refresh fingerprint: %s", Settings.secret_fingerprint(settings.REFRESH_SECRET_KEY))
+    wa_mode = (settings.WHATSAPP_SENDER_MODE or "platform").lower().strip()
+    logger.info("WhatsApp sender mode: %s", wa_mode)
+    for warning in settings.validate_whatsapp_platform_config():
+        logger.warning("[WhatsApp Config] %s", warning)
 
     logger.info("Connecting to MongoDB...")
     await init_db()

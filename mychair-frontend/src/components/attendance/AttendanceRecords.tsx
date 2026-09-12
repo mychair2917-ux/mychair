@@ -31,7 +31,13 @@ import AttendanceMonthCalendar from './AttendanceMonthCalendar';
 import AttendanceSummaryCards from './AttendanceSummaryCards';
 import AttendanceTimeline from './AttendanceTimeline';
 import AttendanceModal from './AttendanceModal';
-import { formatTime12h, formatWorkDuration, statusLabel, statusTone } from './attendanceUtils';
+import {
+  formatShiftDisplay,
+  formatTime12h,
+  formatWorkDuration,
+  statusLabel,
+  statusTone,
+} from './attendanceUtils';
 
 interface AttendanceRecordsProps {
   selectedEmployee?: EmployeeListItem | null;
@@ -390,6 +396,12 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
                         </div>
                       </div>
 
+                      {/* Shift Row */}
+                      <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                        <Clock className="h-3.5 w-3.5 text-[var(--color-brand-gold)] shrink-0" />
+                        <span>Shift: <strong className="text-[var(--color-text-primary)]">{formatShiftDisplay(record.shift_start, record.shift_end, record.shift_timing)}</strong></span>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-2.5">
                           <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800">Check In</p>
@@ -407,18 +419,25 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] pt-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--color-text-secondary)] pt-1">
                         <span className="flex items-center gap-1">
                           <Timer className="h-3.5 w-3.5 text-gray-400" />
                           Duration: <strong className="text-[var(--color-text-primary)]">{workHours}</strong>
                         </span>
-                        {record.late_minutes > 0 ? (
-                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
-                            {record.late_minutes}m late
-                          </span>
-                        ) : (
-                          <span className="text-emerald-700 font-medium">On time</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {record.late_minutes > 0 ? (
+                            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
+                              {record.late_minutes}m late
+                            </span>
+                          ) : record.check_in_time ? (
+                            <span className="text-emerald-700 font-medium">On time</span>
+                          ) : null}
+                          {record.overtime_minutes && record.overtime_minutes > 0 ? (
+                            <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700 border border-purple-200">
+                              {record.overtime_minutes}m OT
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   );
@@ -431,13 +450,15 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 z-10 bg-[var(--color-surface-muted)] border-b border-[var(--color-border-soft)] text-[var(--color-text-secondary)] font-semibold uppercase tracking-wider">
                   <tr>
+                    <th className="py-3.5 px-4">Staff</th>
                     <th className="py-3.5 px-4">Date</th>
-                    <th className="py-3.5 px-4">Staff Member</th>
-                    <th className="py-3.5 px-4">Attendance Status</th>
+                    <th className="py-3.5 px-4">Shift</th>
                     <th className="py-3.5 px-4">Check In</th>
                     <th className="py-3.5 px-4">Check Out</th>
-                    <th className="py-3.5 px-4">Work Duration</th>
-                    <th className="py-3.5 px-4">Late Delay</th>
+                    <th className="py-3.5 px-4">Worked</th>
+                    <th className="py-3.5 px-4">Late</th>
+                    <th className="py-3.5 px-4">Overtime</th>
+                    <th className="py-3.5 px-4">Status</th>
                     {canEditRecord && <th className="py-3.5 px-4 text-right">Action</th>}
                   </tr>
                 </thead>
@@ -445,14 +466,14 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
                   {activeQuery.isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        <td colSpan={canEditRecord ? 8 : 7} className="p-4">
+                        <td colSpan={canEditRecord ? 10 : 9} className="p-4">
                           <div className="h-6 rounded-lg bg-[var(--color-surface-muted)]" />
                         </td>
                       </tr>
                     ))
                   ) : !itemsList.length ? (
                     <tr>
-                      <td colSpan={canEditRecord ? 8 : 7} className="py-12 px-4 text-center">
+                      <td colSpan={canEditRecord ? 10 : 9} className="py-12 px-4 text-center">
                         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-surface-muted)] text-[var(--color-brand-gold-dark)] border border-[var(--color-border-soft)]">
                           <AlertCircle className="h-6 w-6" />
                         </div>
@@ -475,9 +496,6 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
                           key={record.id}
                           className="transition-colors duration-150 hover:bg-[var(--color-surface-bg)]"
                         >
-                          <td className="py-3.5 px-4 font-bold text-[var(--color-text-primary)] whitespace-nowrap">
-                            {formatDateDMY(record.attendance_date)}
-                          </td>
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2.5">
                               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-muted)] text-[var(--color-brand-gold-dark)] text-[11px] font-bold border border-[var(--color-border-soft)]">
@@ -493,14 +511,13 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
                               </div>
                             </div>
                           </td>
-                          <td className="py-3.5 px-4">
-                            <span
-                              className={cn(
-                                'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border',
-                                statusTone(record.status)
-                              )}
-                            >
-                              {statusLabel(record.status)}
+                          <td className="py-3.5 px-4 font-bold text-[var(--color-text-primary)] whitespace-nowrap">
+                            {formatDateDMY(record.attendance_date)}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap text-[var(--color-text-secondary)]">
+                            <span className="inline-flex items-center gap-1 font-medium">
+                              <Clock className="h-3 w-3 text-[var(--color-brand-gold)]" />
+                              {formatShiftDisplay(record.shift_start, record.shift_end, record.shift_timing)}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 whitespace-nowrap">
@@ -526,9 +543,32 @@ const AttendanceRecords: React.FC<AttendanceRecordsProps> = ({
                               <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
                                 {record.late_minutes}m late
                               </span>
+                            ) : record.check_in_time ? (
+                              <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-100">
+                                On time
+                              </span>
                             ) : (
-                              <span className="text-[var(--color-text-tertiary)]">On time</span>
+                              <span className="text-[var(--color-text-tertiary)]">---</span>
                             )}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {record.overtime_minutes && record.overtime_minutes > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700 border border-purple-200">
+                                {record.overtime_minutes}m overtime
+                              </span>
+                            ) : (
+                              <span className="text-[var(--color-text-tertiary)]">---</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span
+                              className={cn(
+                                'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border',
+                                statusTone(record.status)
+                              )}
+                            >
+                              {statusLabel(record.status)}
+                            </span>
                           </td>
                           {canEditRecord && (
                             <td className="py-3.5 px-4 text-right whitespace-nowrap">

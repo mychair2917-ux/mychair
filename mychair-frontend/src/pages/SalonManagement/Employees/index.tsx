@@ -100,6 +100,7 @@ const Employees: React.FC = () => {
     role: string;
     branch_name: string;
     weekly_off: string[];
+    shift?: string;
   }) => {
     if (!editEmployee) return;
     try {

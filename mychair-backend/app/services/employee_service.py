@@ -45,6 +45,7 @@ class EmployeeService:
             created_by=user.created_by,
             created_by_name=created_by_name,
             weekly_off=user.weekly_off or [],
+            shift=user.shift,
         )
 
     async def _creator_names_by_id(self, users: List[User]) -> Dict[str, str]:
@@ -260,6 +261,8 @@ class EmployeeService:
             update_data["status"] = "ACTIVE" if payload.is_active else "INACTIVE"
         if payload.weekly_off is not None:
             update_data["weekly_off"] = payload.weekly_off
+        if payload.shift is not None:
+            update_data["shift"] = payload.shift
 
         updated = await self.repo.update_fields(
             user_id, target.tenant_id, update_data

@@ -14,6 +14,9 @@ class WhatsAppMessageLog(BaseTenantDocument):
     original_customer_phone: Optional[str] = Field(default=None)
     test_override_used: bool = Field(default=False)
     
+    # Sender origin: PLATFORM (central MyChair number) or SALON (per-salon WABA)
+    sender_type: str = Field(default="PLATFORM", index=True)
+
     # Message categorization: BILL_RECEIPT, APPOINTMENT_CONFIRMATION, APPOINTMENT_REMINDER, APPOINTMENT_CANCEL, BIRTHDAY_WISH, OFFER_MARKETING, TEST_MESSAGE, INCOMING
     message_type: str = Field(default="BILL_RECEIPT", index=True)
     
@@ -74,5 +77,6 @@ class WhatsAppMessageLog(BaseTenantDocument):
             "reference_type",
             "reference_id",
             "deduplication_key",
+            "sender_type",
             "is_deleted",
         ]

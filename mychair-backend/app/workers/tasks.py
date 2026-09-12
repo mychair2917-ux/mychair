@@ -164,11 +164,11 @@ async def process_birthday_whatsapp_automation(ctx: Dict[str, Any]) -> int:
 
             # Determine salon_id from tenant/metadata
             salon_id = cust.metadata.get("salon_id") or "default"
-            is_connected = await whatsapp_service.is_salon_connected(salon_id)
-            if not is_connected:
+            creds = await whatsapp_service.resolve_sender_credentials(salon_id)
+            if not creds.is_valid:
                 continue
 
-            account = await whatsapp_service.get_salon_account(salon_id)
+            account = creds.salon_account or await whatsapp_service.get_salon_account(salon_id)
             if account and not account.features.get("birthday_messages_enabled", True):
                 continue
 

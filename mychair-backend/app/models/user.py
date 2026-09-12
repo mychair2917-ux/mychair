@@ -43,6 +43,8 @@ class User(BaseTenantDocument):
     department: Optional[str] = Field(default=None, max_length=100)
     designation: Optional[str] = Field(default=None, max_length=100)
     shift: Optional[str] = Field(default=None, max_length=100)
+    shift_start: Optional[str] = Field(default=None, max_length=10)
+    shift_end: Optional[str] = Field(default=None, max_length=10)
     branch_id: Optional[str] = Field(default=None, index=True)
     employee_code: Optional[str] = Field(default=None, max_length=50, index=True)
 

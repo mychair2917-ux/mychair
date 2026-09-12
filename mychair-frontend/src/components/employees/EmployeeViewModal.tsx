@@ -61,6 +61,12 @@ const EmployeeViewModal: React.FC<EmployeeViewModalProps> = ({ open, employee, o
               {employee.created_by_name || '—'}
             </dd>
           </div>
+          <div>
+            <dt className="text-gray-500">Assigned Shift</dt>
+            <dd className="font-medium text-gray-900">
+              {employee.shift || 'Salon default'}
+            </dd>
+          </div>
         </dl>
       </ModalBody>
     </Modal>

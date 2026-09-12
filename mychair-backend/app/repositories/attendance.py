@@ -20,6 +20,24 @@ class AttendanceRepository(BaseRepository[Attendance]):
             }
         )
 
+    async def get_open_session_for_employee(
+        self, tenant_id: str, staff_id: str
+    ) -> Optional[Attendance]:
+        """Find the most recent open attendance session (clock_in set, clock_out not set)."""
+        return (
+            await Attendance.find(
+                {
+                    "tenant_id": tenant_id,
+                    "staff_id": staff_id,
+                    "clock_in": {"$ne": None},
+                    "clock_out": None,
+                    "is_deleted": False,
+                }
+            )
+            .sort("-clock_in")
+            .first_or_none()
+        )
+
     async def list_paginated(
         self,
         filters: Dict[str, Any],

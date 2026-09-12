@@ -8,6 +8,7 @@ import {
   LogOut,
   MapPin,
   ShieldCheck,
+  Timer,
 } from 'lucide-react';
 
 import { useSelector } from 'react-redux';
@@ -25,21 +26,16 @@ import { getApiErrorMessage } from '../../utils/apiErrors';
 import { getCurrentPosition } from '../../utils/geolocation';
 import { cn } from '../../utils/cn';
 import { Button, CommonCard, showToast } from '../common';
-import { statusTone } from './attendanceUtils';
+import {
+  formatShiftDisplay,
+  formatTime12h,
+  formatWorkDuration,
+  statusTone,
+} from './attendanceUtils';
 
 interface MarkAttendanceCardProps {
   employee?: EmployeeListItem | null;
 }
-
-const formatTimeHM = (iso?: string | null): string => {
-  if (!iso) return '---';
-  const date = new Date(iso);
-  return date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-};
 
 const MarkAttendanceCard: React.FC<MarkAttendanceCardProps> = ({ employee }) => {
   const role = useSelector((state: RootState) => state.auth.user?.role);
@@ -131,7 +127,7 @@ const MarkAttendanceCard: React.FC<MarkAttendanceCardProps> = ({ employee }) => 
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)]">Shift</p>
               <p className="mt-0.5 text-base font-bold text-[var(--color-text-primary)]">
-                {status?.shift_timing || '09:00 - 18:00'}
+                {formatShiftDisplay(status?.shift_start, status?.shift_end, status?.shift_timing)}
               </p>
             </div>
           </div>
@@ -206,14 +202,14 @@ const MarkAttendanceCard: React.FC<MarkAttendanceCardProps> = ({ employee }) => 
         )}
 
         {/* Punch Time Details */}
-        <div className="grid gap-4 rounded-3xl border border-[var(--color-border-soft)] bg-white p-5 sm:grid-cols-3">
+        <div className="grid gap-4 rounded-3xl border border-[var(--color-border-soft)] bg-white p-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/60">
               <LogIn className="h-4.5 w-4.5" />
             </div>
             <div>
               <p className="text-xs font-semibold text-[var(--color-text-secondary)]">Check-In Time</p>
-              <p className="mt-0.5 font-bold text-[var(--color-text-primary)]">{formatTimeHM(status?.check_in_time)}</p>
+              <p className="mt-0.5 font-bold text-[var(--color-text-primary)]">{formatTime12h(status?.check_in_time)}</p>
             </div>
           </div>
 
@@ -223,7 +219,7 @@ const MarkAttendanceCard: React.FC<MarkAttendanceCardProps> = ({ employee }) => 
             </div>
             <div>
               <p className="text-xs font-semibold text-[var(--color-text-secondary)]">Check-Out Time</p>
-              <p className="mt-0.5 font-bold text-[var(--color-text-primary)]">{formatTimeHM(status?.check_out_time)}</p>
+              <p className="mt-0.5 font-bold text-[var(--color-text-primary)]">{formatTime12h(status?.check_out_time)}</p>
             </div>
           </div>
 
@@ -232,10 +228,35 @@ const MarkAttendanceCard: React.FC<MarkAttendanceCardProps> = ({ employee }) => 
               <Clock3 className="h-4.5 w-4.5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-[var(--color-text-secondary)]">Total Duration</p>
+              <p className="text-xs font-semibold text-[var(--color-text-secondary)]">Total Worked</p>
               <p className="mt-0.5 font-bold text-[var(--color-text-primary)]">
-                {status?.total_hours ? `${status.total_hours.toFixed(2)} hrs` : '---'}
+                {formatWorkDuration(status?.total_work_minutes, status?.total_hours)}
               </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 border border-amber-200/60">
+              <Timer className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[var(--color-text-secondary)]">Punctuality & OT</p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                {status?.late_minutes && status.late_minutes > 0 ? (
+                  <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
+                    {status.late_minutes}m late
+                  </span>
+                ) : status?.is_checked_in ? (
+                  <span className="text-xs font-bold text-emerald-700">On time</span>
+                ) : (
+                  <span className="text-xs text-[var(--color-text-tertiary)]">---</span>
+                )}
+                {status?.overtime_minutes && status.overtime_minutes > 0 ? (
+                  <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700 border border-purple-200">
+                    +{status.overtime_minutes}m OT
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

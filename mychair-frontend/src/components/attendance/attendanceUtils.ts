@@ -2,12 +2,50 @@ import { AttendanceRecord } from '../../redux/slices/attendance/attendanceApi';
 
 export const formatTime12h = (iso?: string | null): string => {
   if (!iso) return '---';
-  const date = new Date(iso);
-  return date.toLocaleTimeString('en-GB', {
+  const trimmed = iso.trim();
+  const timeMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1], 10);
+    const minute = parseInt(timeMatch[2], 10);
+    const meridiem = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour === 0) hour = 12;
+    const hourStr = String(hour).padStart(2, '0');
+    const minStr = String(minute).padStart(2, '0');
+    return `${hourStr}:${minStr} ${meridiem}`;
+  }
+  const date = new Date(trimmed);
+  if (isNaN(date.getTime())) return '---';
+  return date.toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Kolkata',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
   });
+};
+
+export const formatShiftDisplay = (
+  start?: string | null,
+  end?: string | null,
+  timing?: string | null
+): string => {
+  if (timing && timing.trim()) return timing.trim();
+  if (start && end) {
+    return `${formatTime12h(start)} – ${formatTime12h(end)}`;
+  }
+  if (start) {
+    return `From ${formatTime12h(start)}`;
+  }
+  return 'Shift not recorded';
+};
+
+export const formatMinutesDuration = (minutes?: number | null): string => {
+  if (minutes == null || minutes <= 0) return '---';
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hrs === 0) return `${mins}m`;
+  if (mins === 0) return `${hrs}h`;
+  return `${hrs}h ${mins}m`;
 };
 
 export const formatWorkDuration = (minutes?: number, hours?: number): string => {

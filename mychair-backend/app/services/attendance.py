@@ -1,7 +1,7 @@
 import logging
 import math
 from calendar import monthrange
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from beanie import PydanticObjectId
@@ -28,8 +28,11 @@ from app.constants.attendance_options import (
     ATTENDANCE_STATUS_WEEK_OFF,
     DEFAULT_ATTENDANCE_RADIUS_METERS,
     DEFAULT_SHIFT_START,
+    DEFAULT_SHIFT_END,
+    EVENT_ATTENDANCE_CHECK_IN,
     HALF_DAY_THRESHOLD_MINUTES,
-    LATE_GRACE_MINUTES,
+    NOTIFICATION_CATEGORY_ATTENDANCE,
+    NOTIFICATION_TYPE_LATE_ATTENDANCE,
 )
 from app.core import tenant_context
 from app.core.exceptions import (
@@ -45,6 +48,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.repositories.attendance import AttendanceRepository
 from app.services.leave import AttendanceReconciliationService, LeaveService
+from app.services.notifications import notification_service
 from app.schemas.attendance import (
     AttendanceItem,
     AttendanceSummary,
@@ -55,9 +59,98 @@ from app.schemas.attendance import (
     TodayAttendanceStatus,
 )
 from app.utils.geo import is_within_radius, validate_coordinates
-from app.utils.timezone import make_aware, now_utc
+from app.utils.timezone import (
+    KOLKATA_TZ,
+    combine_ist_datetime,
+    make_aware,
+    now_ist,
+    now_utc,
+    to_ist,
+    today_ist_str,
+    yesterday_ist_str,
+)
 from app.utils.week_off import is_week_off_day, week_off_dates_in_range
 from fastapi import status
+
+
+def format_time_12h(time_str: Optional[str]) -> Optional[str]:
+    """Converts HH:MM (e.g. 10:00, 19:00) into 10:00 AM, 7:00 PM."""
+    if not time_str:
+        return None
+    try:
+        parts = time_str.strip().split(":")
+        h, m = int(parts[0]), int(parts[1])
+        meridiem = "AM" if h < 12 else "PM"
+        h12 = h % 12
+        if h12 == 0:
+            h12 = 12
+        return f"{h12}:{m:02d} {meridiem}"
+    except Exception:
+        return time_str
+
+
+def format_shift_range(start: Optional[str], end: Optional[str]) -> Optional[str]:
+    """Formats shift range nicely: 10:00 AM – 7:00 PM or None."""
+    if not start and not end:
+        return None
+    start_12 = format_time_12h(start) if start else ""
+    end_12 = format_time_12h(end) if end else ""
+    if start_12 and end_12:
+        return f"{start_12} – {end_12}"
+    return start_12 or end_12 or None
+
+
+def _normalize_hhmm(val: str) -> Optional[str]:
+    """Converts 10:00, 7:00 PM, 10:00 AM, 19:00 to HH:MM format."""
+    val = val.strip().upper()
+    is_pm = "PM" in val
+    is_am = "AM" in val
+    cleaned = val.replace("AM", "").replace("PM", "").strip()
+    parts = cleaned.split(":")
+    if len(parts) >= 2:
+        try:
+            h = int(parts[0])
+            m = int(parts[1][:2])
+            if is_pm and h < 12:
+                h += 12
+            elif is_am and h == 12:
+                h = 0
+            return f"{h:02d}:{m:02d}"
+        except Exception:
+            return None
+    elif len(parts) == 1 and parts[0].isdigit():
+        try:
+            h = int(parts[0])
+            if is_pm and h < 12:
+                h += 12
+            elif is_am and h == 12:
+                h = 0
+            return f"{h:02d}:00"
+        except Exception:
+            return None
+    return None
+
+
+def parse_shift_string(raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Parses various shift string formats:
+    "10:00 - 19:00", "10:00-19:00", "10:00 AM - 7:00 PM", "20:00 - 05:00"
+    Returns (start_hh_mm, end_hh_mm).
+    """
+    if not raw or not isinstance(raw, str):
+        return None, None
+    raw = raw.strip()
+    for sep in [" - ", " – ", "-", " to "]:
+        if sep in raw:
+            parts = raw.split(sep, 1)
+            start_str = _normalize_hhmm(parts[0].strip())
+            end_str = _normalize_hhmm(parts[1].strip())
+            if start_str:
+                return start_str, end_str
+    norm = _normalize_hhmm(raw)
+    if norm:
+        return norm, None
+    return None, None
 
 
 class LocationOutsidePremisesException(SalonERPException):
@@ -101,7 +194,46 @@ class AttendanceService:
 
     @staticmethod
     def _today_date() -> str:
-        return now_utc().strftime("%Y-%m-%d")
+        return today_ist_str()
+
+    @staticmethod
+    def _yesterday_date() -> str:
+        return yesterday_ist_str()
+
+    def _resolve_shift(
+        self, user: Optional[User], tenant: Optional[Tenant]
+    ) -> Tuple[str, str, str]:
+        """
+        Resolves effective shift:
+        staff shift -> salon default shift -> safe fallback
+        Returns (shift_start, shift_end, shift_display)
+        """
+        shift_start = None
+        shift_end = None
+
+        if user:
+            if getattr(user, "shift_start", None) and getattr(user, "shift_end", None):
+                shift_start = user.shift_start
+                shift_end = user.shift_end
+            elif getattr(user, "shift", None):
+                s, e = parse_shift_string(user.shift)
+                if s:
+                    shift_start = s
+                if e:
+                    shift_end = e
+
+        if not shift_start and tenant:
+            shift_start = tenant.shift_start
+        if not shift_end and tenant:
+            shift_end = getattr(tenant, "shift_end", None)
+
+        if not shift_start:
+            shift_start = DEFAULT_SHIFT_START
+        if not shift_end:
+            shift_end = DEFAULT_SHIFT_END
+
+        shift_display = format_shift_range(shift_start, shift_end) or f"{shift_start} – {shift_end}"
+        return shift_start, shift_end, shift_display
 
     def _location_required(self, actor: User) -> bool:
         role = normalize_role(actor.role)
@@ -113,10 +245,10 @@ class AttendanceService:
 
     async def _resolve_branch(
         self, actor: User, salon_id: str
-    ) -> Tuple[Optional[str], Optional[float], Optional[float], int, str, str, Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[float], Optional[float], int, str, str, str, Optional[str]]:
         """
-        Resolve branch coordinates and shift start.
-        Returns: branch_id, lat, lon, radius, branch_name, shift_start, address
+        Resolve branch coordinates and shift start/end.
+        Returns: branch_id, lat, lon, radius, branch_name, shift_start, shift_end, address
         """
         branch_id = actor.branch_id
         branch_name = actor.branch_name
@@ -124,11 +256,13 @@ class AttendanceService:
         lon: Optional[float] = None
         radius = DEFAULT_ATTENDANCE_RADIUS_METERS
         shift_start = DEFAULT_SHIFT_START
+        shift_end = DEFAULT_SHIFT_END
         address: Optional[str] = None
 
         tenant = await Tenant.get(salon_id)
         if tenant:
             shift_start = tenant.shift_start or DEFAULT_SHIFT_START
+            shift_end = getattr(tenant, "shift_end", None) or DEFAULT_SHIFT_END
             if tenant.latitude is not None and tenant.longitude is not None:
                 lat = tenant.latitude
                 lon = tenant.longitude
@@ -159,7 +293,7 @@ class AttendanceService:
                     lon = default_branch.longitude
                     radius = default_branch.attendance_radius or DEFAULT_ATTENDANCE_RADIUS_METERS
 
-        return branch_id, lat, lon, radius, branch_name or "", shift_start, address
+        return branch_id, lat, lon, radius, branch_name or "", shift_start, shift_end, address
 
     @staticmethod
     def _format_salon_address(address: Optional[dict]) -> Optional[str]:
@@ -211,25 +345,102 @@ class AttendanceService:
         return distance
 
     def _compute_late_minutes(
-        self, check_in: datetime, shift_start: str
+        self, check_in: datetime, shift_date: str, shift_start: str
     ) -> Tuple[str, int]:
-        check_in_aware = make_aware(check_in)
+        """
+        Calculates late minutes by comparing check-in against assigned shift start
+        in the Asia/Kolkata timezone.
+        """
+        check_in_ist = to_ist(check_in)
         try:
-            hour, minute = map(int, shift_start.split(":"))
-        except (ValueError, AttributeError):
-            hour, minute = 9, 0
+            shift_start_dt = combine_ist_datetime(shift_date, shift_start)
+        except Exception:
+            shift_start_dt = combine_ist_datetime(shift_date, DEFAULT_SHIFT_START)
 
-        shift_dt = check_in_aware.replace(
-            hour=hour, minute=minute, second=0, microsecond=0, tzinfo=timezone.utc
-        )
-        if check_in_aware <= shift_dt:
+        if check_in_ist <= shift_start_dt:
             return ATTENDANCE_STATUS_PRESENT, 0
 
-        late_seconds = (check_in_aware - shift_dt).total_seconds()
+        late_seconds = (check_in_ist - shift_start_dt).total_seconds()
         late_minutes = int(late_seconds // 60)
-        if late_minutes <= LATE_GRACE_MINUTES:
-            return ATTENDANCE_STATUS_PRESENT, 0
-        return ATTENDANCE_STATUS_LATE, late_minutes
+        if late_minutes > 0:
+            return ATTENDANCE_STATUS_LATE, late_minutes
+        return ATTENDANCE_STATUS_PRESENT, 0
+
+    async def _send_late_notification(
+        self,
+        record: Attendance,
+        employee: User,
+        tenant_id: str,
+        shift_start: str,
+        shift_end: str,
+        branch_name: Optional[str] = None,
+    ) -> None:
+        """
+        Sends an in-app late attendance alert to the Salon Owner and relevant Salon Manager(s).
+        Deduplicated per attendance session. Never sent to other staff or unrelated users.
+        """
+        if record.late_notified or record.late_minutes <= 0:
+            return
+
+        try:
+            record.late_notified = True
+            await record.save()
+
+            candidate_users = await User.find(
+                {
+                    "tenant_id": tenant_id,
+                    "is_deleted": False,
+                    "is_active": True,
+                    "role": {"$in": [ROLE_SALON_OWNER, ROLE_SALON_ADMIN, ROLE_SALON_MANAGER]},
+                }
+            ).to_list()
+
+            recipients: List[User] = []
+            for u in candidate_users:
+                if str(u.id) == str(employee.id):
+                    continue
+                role_norm = normalize_role(u.role)
+                if role_norm in {ROLE_SALON_OWNER, ROLE_SALON_ADMIN}:
+                    recipients.append(u)
+                elif role_norm == ROLE_SALON_MANAGER:
+                    if record.branch_id and u.branch_id and u.branch_id != record.branch_id:
+                        continue
+                    recipients.append(u)
+
+            if not recipients:
+                return
+
+            employee_name = self._full_name(employee)
+            shift_display = format_shift_range(shift_start, shift_end) or f"{shift_start} – {shift_end}"
+            check_in_ist = to_ist(record.clock_in) if record.clock_in else now_ist()
+            check_in_str = check_in_ist.strftime("%I:%M %p").lstrip("0")
+            date_display = check_in_ist.strftime("%d %b %Y")
+
+            body = (
+                f"{employee_name} checked in {record.late_minutes} minutes late.\n\n"
+                f"Shift: {shift_display}\n"
+                f"Check In: {check_in_str}\n"
+                f"Date: {date_display}"
+            )
+
+            await notification_service.create_event_notifications(
+                tenant_id=tenant_id,
+                salon_id=tenant_id,
+                recipients=recipients,
+                title="Late Attendance",
+                body=body,
+                category=NOTIFICATION_CATEGORY_ATTENDANCE,
+                notification_type=NOTIFICATION_TYPE_LATE_ATTENDANCE,
+                priority="NORMAL",
+                source_event=EVENT_ATTENDANCE_CHECK_IN,
+                metadata={
+                    "attendance_id": str(record.id),
+                    "employee_id": str(employee.id),
+                    "late_minutes": record.late_minutes,
+                },
+            )
+        except Exception as exc:
+            self.logger.warning("Failed to send late attendance notification: %s", exc)
 
     async def _write_log(
         self,
@@ -254,7 +465,7 @@ class AttendanceService:
     def _default_date_range(
         date_from: Optional[str], date_to: Optional[str]
     ) -> Tuple[str, str]:
-        today = now_utc().strftime("%Y-%m-%d")
+        today = today_ist_str()
         if date_from and date_to:
             return date_from, date_to
         if date_from:
@@ -270,7 +481,7 @@ class AttendanceService:
         if date_from or date_to:
             start, end = AttendanceService._default_date_range(date_from, date_to)
             return start, end
-        now = now_utc()
+        now = now_ist()
         last_day = monthrange(now.year, now.month)[1]
         return (
             f"{now.year:04d}-{now.month:02d}-01",
@@ -292,6 +503,7 @@ class AttendanceService:
             branch_name=branch_name or None,
             attendance_date=date_str,
             status=ATTENDANCE_STATUS_WEEK_OFF,
+            shift_timing="Week Off",
             attendance_method=ATTENDANCE_METHOD_MANUAL,
             created_at=now,
             updated_at=now,
@@ -360,6 +572,7 @@ class AttendanceService:
         return {str(user.id): user for user in users}
 
     def _to_item(self, record: Attendance, employee_name: str, branch_name: str = "") -> AttendanceItem:
+        shift_display = format_shift_range(record.shift_start, record.shift_end)
         return AttendanceItem(
             id=str(record.id),
             employee_id=record.staff_id,
@@ -369,8 +582,13 @@ class AttendanceService:
             attendance_date=record.date,
             check_in_time=record.clock_in,
             check_out_time=record.clock_out,
+            shift_start=record.shift_start,
+            shift_end=record.shift_end,
+            shift_timing=shift_display,
             status=record.status,
             late_minutes=record.late_minutes,
+            overtime_minutes=record.overtime_minutes,
+            early_leave_minutes=record.early_leave_minutes,
             total_work_minutes=record.total_work_minutes,
             total_hours=record.working_hours,
             latitude=record.latitude,
@@ -446,7 +664,10 @@ class AttendanceService:
         if existing and existing.clock_in:
             raise BookingConflictException(detail="Attendance already marked for today")
 
-        branch_id, branch_lat, branch_lon, radius, branch_name, shift_start, _ = (
+        tenant = await Tenant.get(target_salon_id)
+        shift_start, shift_end, shift_display = self._resolve_shift(target_user, tenant)
+
+        branch_id, branch_lat, branch_lon, radius, branch_name, _, _, _ = (
             await self._resolve_branch(target_user, target_salon_id)
         )
         distance = self._validate_location(
@@ -454,16 +675,20 @@ class AttendanceService:
         )
 
         now = now_utc()
-        status_value, late_minutes = self._compute_late_minutes(now, shift_start)
+        status_value, late_minutes = self._compute_late_minutes(now, today, shift_start)
 
         if existing:
             existing.clock_in = now
             existing.status = status_value
             existing.late_minutes = late_minutes
+            existing.shift_start = shift_start
+            existing.shift_end = shift_end
             existing.latitude = latitude
             existing.longitude = longitude
             existing.distance_from_branch = distance
-            existing.attendance_method = ATTENDANCE_METHOD_LOCATION if not self._can_skip_location(actor) else ATTENDANCE_METHOD_MANUAL
+            existing.attendance_method = (
+                ATTENDANCE_METHOD_LOCATION if not self._can_skip_location(actor) else ATTENDANCE_METHOD_MANUAL
+            )
             existing.branch_id = branch_id
             await existing.save()
             record = existing
@@ -475,16 +700,30 @@ class AttendanceService:
                 salon_id=target_salon_id,
                 date=today,
                 status=status_value,
+                shift_start=shift_start,
+                shift_end=shift_end,
                 clock_in=now,
                 late_minutes=late_minutes,
                 latitude=latitude,
                 longitude=longitude,
                 distance_from_branch=distance,
-                attendance_method=ATTENDANCE_METHOD_LOCATION if not self._can_skip_location(actor) else ATTENDANCE_METHOD_MANUAL,
+                attendance_method=(
+                    ATTENDANCE_METHOD_LOCATION if not self._can_skip_location(actor) else ATTENDANCE_METHOD_MANUAL
+                ),
                 created_by=str(actor.id),
                 updated_by=str(actor.id),
             )
             await record.insert()
+
+        if late_minutes > 0:
+            await self._send_late_notification(
+                record=record,
+                employee=target_user,
+                tenant_id=target_salon_id,
+                shift_start=shift_start,
+                shift_end=shift_end,
+                branch_name=branch_name,
+            )
 
         await self._write_log(
             str(record.id),
@@ -525,6 +764,12 @@ class AttendanceService:
             today = date_str or self._today_date()
 
             record = await self.repo.get_by_employee_and_date(target_salon_id, staff_id, today)
+            if not record or not record.clock_in or record.clock_out:
+                # Check for recent open session (e.g. overnight shift started yesterday)
+                open_session = await self.repo.get_open_session_for_employee(target_salon_id, staff_id)
+                if open_session:
+                    record = open_session
+
             if not record or not record.clock_in:
                 raise SalonERPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -533,7 +778,10 @@ class AttendanceService:
             if record.clock_out:
                 raise BookingConflictException(detail="Checkout already completed")
 
-            _, branch_lat, branch_lon, radius, branch_name, _, _ = (
+            tenant = await Tenant.get(target_salon_id)
+            shift_start, shift_end, _ = self._resolve_shift(target_user, tenant)
+
+            _, branch_lat, branch_lon, radius, branch_name, _, _, _ = (
                 await self._resolve_branch(target_user, target_salon_id)
             )
             distance = self._validate_location(
@@ -541,7 +789,11 @@ class AttendanceService:
             )
 
             now = now_utc()
-            record.record_clock_out(now)
+            record.record_clock_out(
+                now,
+                shift_end=record.shift_end or shift_end,
+                shift_start=record.shift_start or shift_start,
+            )
             if record.total_work_minutes < HALF_DAY_THRESHOLD_MINUTES and record.status not in {
                 ATTENDANCE_STATUS_WEEK_OFF,
                 ATTENDANCE_STATUS_ABSENT,
@@ -599,10 +851,18 @@ class AttendanceService:
         await self._ensure_reconciled(actor, salon_id=target_salon_id)
         today = self._today_date()
 
-        _, branch_lat, branch_lon, _, _, shift_start, _ = await self._resolve_branch(
+        tenant = await Tenant.get(target_salon_id)
+        shift_start, shift_end, shift_display = self._resolve_shift(target_user, tenant)
+
+        _, branch_lat, branch_lon, _, _, _, _, _ = await self._resolve_branch(
             target_user, target_salon_id
         )
         record = await self.repo.get_by_employee_and_date(target_salon_id, staff_id, today)
+        if not record or not record.clock_in or record.clock_out:
+            open_session = await self.repo.get_open_session_for_employee(target_salon_id, staff_id)
+            if open_session:
+                record = open_session
+
         is_week_off_today = is_week_off_day(target_user.weekly_off or [], today)
         on_approved_leave = await self.leave_service.has_approved_leave_on_date(
             target_salon_id, staff_id, today
@@ -611,10 +871,16 @@ class AttendanceService:
         is_checked_in = bool(record and record.clock_in)
         is_checked_out = bool(record and record.clock_out)
 
+        eff_shift_start = (record.shift_start if record and record.shift_start else shift_start)
+        eff_shift_end = (record.shift_end if record and record.shift_end else shift_end)
+        eff_shift_timing = format_shift_range(eff_shift_start, eff_shift_end) or shift_display
+
         if on_approved_leave and not record:
             return TodayAttendanceStatus(
                 attendance_date=today,
-                shift_timing=target_user.shift or shift_start,
+                shift_start=eff_shift_start,
+                shift_end=eff_shift_end,
+                shift_timing=eff_shift_timing,
                 status=ATTENDANCE_STATUS_LEAVE,
                 can_check_in=False,
                 can_check_out=False,
@@ -627,7 +893,9 @@ class AttendanceService:
         if is_week_off_today and not record:
             return TodayAttendanceStatus(
                 attendance_date=today,
-                shift_timing=target_user.shift or shift_start,
+                shift_start=eff_shift_start,
+                shift_end=eff_shift_end,
+                shift_timing=eff_shift_timing,
                 status=ATTENDANCE_STATUS_WEEK_OFF,
                 can_check_in=False,
                 can_check_out=False,
@@ -640,15 +908,20 @@ class AttendanceService:
         loc_required = False if self._can_skip_location(actor) else self._location_required(target_user)
 
         return TodayAttendanceStatus(
-            attendance_date=today,
-            shift_timing=target_user.shift or shift_start,
+            attendance_date=record.date if record else today,
+            shift_start=eff_shift_start,
+            shift_end=eff_shift_end,
+            shift_timing=eff_shift_timing,
             status=record.status if record else None,
             check_in_time=record.clock_in if record else None,
             check_out_time=record.clock_out if record else None,
+            late_minutes=record.late_minutes if record else 0,
+            overtime_minutes=record.overtime_minutes if record else 0,
+            early_leave_minutes=record.early_leave_minutes if record else 0,
             total_work_minutes=record.total_work_minutes if record else 0,
             total_hours=record.working_hours if record else 0.0,
             can_check_in=not is_checked_in and not is_week_off_today and not on_approved_leave,
-            can_check_out=is_checked_in and not is_checked_out and not is_week_off_today and not on_approved_leave,
+            can_check_out=is_checked_in and not is_checked_out,
             is_checked_in=is_checked_in,
             is_checked_out=is_checked_out,
             location_required=loc_required and not is_week_off_today and not on_approved_leave,
@@ -979,7 +1252,9 @@ class AttendanceService:
             date_val = payload.attendance_date or self._today_date()
             record = await self.repo.get_by_employee_and_date(target_salon, str(target_user.id), date_val)
             if not record:
-                branch_id, _, _, _, _, _, _ = await self._resolve_branch(target_user, target_salon)
+                branch_id, _, _, _, _, _, _, _ = await self._resolve_branch(target_user, target_salon)
+                tenant = await Tenant.get(target_salon)
+                shift_start, shift_end, _ = self._resolve_shift(target_user, tenant)
                 record = Attendance(
                     tenant_id=target_salon,
                     staff_id=str(target_user.id),
@@ -989,11 +1264,19 @@ class AttendanceService:
                     status=payload.status or ATTENDANCE_STATUS_PRESENT,
                     clock_in=payload.check_in_time,
                     clock_out=payload.check_out_time,
+                    shift_start=shift_start,
+                    shift_end=shift_end,
                     attendance_method=ATTENDANCE_METHOD_MANUAL,
                     notes=payload.notes,
                     created_by=str(actor.id),
                     updated_by=str(actor.id),
                 )
+                if payload.check_out_time:
+                    record.record_clock_out(
+                        payload.check_out_time,
+                        shift_end=shift_end,
+                        shift_start=shift_start,
+                    )
                 await record.insert()
                 await self._write_log(
                     str(record.id),
@@ -1035,7 +1318,14 @@ class AttendanceService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Check-out cannot be before check-in",
                 )
-            record.record_clock_out(payload.check_out_time)
+            target_employee = await User.get(record.staff_id)
+            tenant = await Tenant.get(record.tenant_id or salon_id)
+            shift_start, shift_end, _ = self._resolve_shift(target_employee, tenant)
+            record.record_clock_out(
+                payload.check_out_time,
+                shift_end=record.shift_end or shift_end,
+                shift_start=record.shift_start or shift_start,
+            )
         if payload.notes is not None:
             record.notes = payload.notes
 
@@ -1061,7 +1351,7 @@ class AttendanceService:
     # ------------------------------------------------------------------ #
     async def get_branch_location(self, actor: User) -> BranchLocationResponse:
         salon_id = self._resolve_salon_id(actor)
-        branch_id, lat, lon, radius, branch_name, shift_start, address = (
+        branch_id, lat, lon, radius, branch_name, shift_start, shift_end, address = (
             await self._resolve_branch(actor, salon_id)
         )
         return BranchLocationResponse(
@@ -1072,6 +1362,7 @@ class AttendanceService:
             longitude=lon,
             attendance_radius=radius,
             shift_start=shift_start,
+            shift_end=shift_end,
             is_configured=lat is not None and lon is not None,
         )
 
@@ -1104,6 +1395,8 @@ class AttendanceService:
             tenant.attendance_radius = payload.attendance_radius
             if payload.shift_start:
                 tenant.shift_start = payload.shift_start
+            if payload.shift_end:
+                tenant.shift_end = payload.shift_end
             await tenant.save()
             default_branch = await Salon.find_one(
                 {"tenant_id": salon_id, "is_deleted": False, "is_active": True}
@@ -1129,5 +1422,6 @@ class AttendanceService:
             longitude=payload.longitude,
             attendance_radius=payload.attendance_radius,
             shift_start=payload.shift_start or tenant.shift_start,
+            shift_end=payload.shift_end or getattr(tenant, "shift_end", DEFAULT_SHIFT_END),
             is_configured=True,
         )

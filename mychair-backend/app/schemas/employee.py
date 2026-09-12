@@ -20,6 +20,7 @@ class EmployeeListItem(BaseModel):
     created_by: Optional[str] = None
     created_by_name: Optional[str] = None
     weekly_off: List[str] = Field(default_factory=list)
+    shift: Optional[str] = None
 
 
 class SalonEmployeeGroup(BaseModel):
@@ -39,6 +40,7 @@ class EmployeeUpdate(BaseModel):
     branch_name: Optional[str] = Field(default=None, max_length=150)
     is_active: Optional[bool] = None
     weekly_off: Optional[List[str]] = None
+    shift: Optional[str] = Field(default=None, max_length=100)
 
     @field_validator("weekly_off")
     @classmethod

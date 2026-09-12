@@ -357,6 +357,13 @@ export const formatDateDMY = (
   fallback: string = '---'
 ): string => {
   if (!dateInput) return fallback;
+  if (typeof dateInput === 'string') {
+    const trimmed = dateInput.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [year, month, day] = trimmed.split('-');
+      return `${day}/${month}/${year}`;
+    }
+  }
   let date: Date;
   if (dateInput instanceof Date) {
     date = dateInput;
@@ -371,9 +378,15 @@ export const formatDateDMY = (
     date = new Date(rawIso);
   }
   if (isNaN(date.getTime())) return fallback;
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).formatToParts(date);
+  const day = parts.find((p) => p.type === 'day')?.value || String(date.getDate()).padStart(2, '0');
+  const month = parts.find((p) => p.type === 'month')?.value || String(date.getMonth() + 1).padStart(2, '0');
+  const year = parts.find((p) => p.type === 'year')?.value || String(date.getFullYear());
   return `${day}/${month}/${year}`;
 };
 

@@ -47,8 +47,13 @@ class AttendanceItem(BaseModel):
     attendance_date: str
     check_in_time: Optional[datetime] = None
     check_out_time: Optional[datetime] = None
+    shift_start: Optional[str] = None
+    shift_end: Optional[str] = None
+    shift_timing: Optional[str] = None
     status: str
     late_minutes: int = 0
+    overtime_minutes: int = 0
+    early_leave_minutes: int = 0
     total_work_minutes: int = 0
     total_hours: float = 0.0
     latitude: Optional[float] = None
@@ -62,10 +67,15 @@ class AttendanceItem(BaseModel):
 
 class TodayAttendanceStatus(BaseModel):
     attendance_date: str
+    shift_start: Optional[str] = None
+    shift_end: Optional[str] = None
     shift_timing: Optional[str] = None
     status: Optional[str] = None
     check_in_time: Optional[datetime] = None
     check_out_time: Optional[datetime] = None
+    late_minutes: int = 0
+    overtime_minutes: int = 0
+    early_leave_minutes: int = 0
     total_work_minutes: int = 0
     total_hours: float = 0.0
     can_check_in: bool = True
@@ -90,6 +100,7 @@ class BranchLocationUpdate(BaseModel):
     attendance_radius: int = Field(default=100, ge=10, le=5000)
     branch_id: Optional[str] = Field(default=None)
     shift_start: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    shift_end: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
 
 
 class AttendanceSummary(BaseModel):
@@ -111,4 +122,5 @@ class BranchLocationResponse(BaseModel):
     longitude: Optional[float] = None
     attendance_radius: int = 100
     shift_start: str = "09:00"
+    shift_end: str = "18:00"
     is_configured: bool = False

@@ -24,6 +24,7 @@ class Tenant(Document):
     longitude: Optional[float] = Field(default=None)
     attendance_radius: int = Field(default=100, ge=10, le=5000)
     shift_start: str = Field(default="09:00", description="Default shift start HH:MM")
+    shift_end: str = Field(default="18:00", description="Default shift end HH:MM")
 
     # Legacy alias kept for existing clients
     subscription_tier: str = Field(default="FREE")

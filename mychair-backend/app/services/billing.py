@@ -207,14 +207,16 @@ class BillingService:
 
         # Decoupled WhatsApp notification trigger — billing completion is never blocked by WhatsApp failures
         try:
+            from app.core.config import settings
             from app.services.whatsapp import whatsapp_service
-            is_connected = await whatsapp_service.is_salon_connected(salon_id)
-            if is_connected:
-                account = await whatsapp_service.get_salon_account(salon_id)
+
+            creds = await whatsapp_service.resolve_sender_credentials(salon_id)
+            if creds.is_valid:
+                account = creds.salon_account if creds.sender_type == "SALON" else None
                 if not account or account.features.get("billing_enabled", True):
-                    template_name = "hello_world"
-                    if account and account.templates and "bill_receipt" in account.templates:
-                        template_name = account.templates.get("bill_receipt", "hello_world")
+                    template_name = settings.WHATSAPP_BILLING_TEMPLATE or "hello_world"
+                    if creds.sender_type == "SALON" and account and account.templates and "bill_receipt" in account.templates:
+                        template_name = account.templates.get("bill_receipt", template_name)
 
                     await whatsapp_service.send_template_message(
                         salon_id=salon_id,
@@ -315,6 +317,43 @@ class BillingService:
             
         invoice.finalize()
         await invoice.save()
+
+        # Decoupled WhatsApp notification trigger on draft invoice finalization
+        try:
+            from app.core.config import settings
+            from app.services.whatsapp import whatsapp_service
+
+            creds = await whatsapp_service.resolve_sender_credentials(invoice.salon_id)
+            if creds.is_valid and invoice.customer_phone:
+                account = creds.salon_account if creds.sender_type == "SALON" else None
+                if not account or account.features.get("billing_enabled", True):
+                    template_name = settings.WHATSAPP_BILLING_TEMPLATE or "hello_world"
+                    if creds.sender_type == "SALON" and account and account.templates and "bill_receipt" in account.templates:
+                        template_name = account.templates.get("bill_receipt", template_name)
+
+                    await whatsapp_service.send_template_message(
+                        salon_id=invoice.salon_id,
+                        customer_id=invoice.customer_id,
+                        recipient_phone=invoice.customer_phone,
+                        message_type="BILL_RECEIPT",
+                        template_name=template_name,
+                        template_variables={
+                            "1": invoice.customer_name or "Valued Customer",
+                            "2": invoice.salon_name or "Salon",
+                            "3": invoice.invoice_number,
+                            "4": f"{invoice.total_amount:.2f}",
+                        },
+                        reference_type="BILL",
+                        reference_id=str(invoice.id),
+                    )
+        except Exception as exc:
+            import logging
+            logging.getLogger("billing").warning(
+                "WhatsApp bill notification dispatch exception on finalize for invoice %s (invoice remains finalized): %s",
+                invoice.id,
+                exc,
+            )
+
         return invoice
 
     async def record_payment(

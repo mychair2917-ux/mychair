@@ -40,10 +40,11 @@ from app.models.attendance import Attendance
 from app.models.attendance_log import AttendanceLog
 from app.models.leave_log import LeaveLog
 from app.models.leave_request import LeaveRequest
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.repositories.attendance import AttendanceRepository
 from app.repositories.leave import LeaveRepository
-from app.utils.timezone import now_utc
+from app.utils.timezone import now_utc, yesterday_ist_str
 from app.utils.week_off import is_week_off_day
 from fastapi import status
 
@@ -493,7 +494,7 @@ class AttendanceReconciliationService:
 
     @staticmethod
     def _previous_day() -> str:
-        return (now_utc() - timedelta(days=1)).strftime("%Y-%m-%d")
+        return yesterday_ist_str()
 
     async def _write_attendance_log(
         self,
@@ -520,6 +521,8 @@ class AttendanceReconciliationService:
         status: str,
         source: str,
         notes: Optional[str] = None,
+        shift_start: Optional[str] = None,
+        shift_end: Optional[str] = None,
     ) -> Attendance:
         record = Attendance(
             tenant_id=tenant_id,
@@ -528,6 +531,8 @@ class AttendanceReconciliationService:
             branch_id=user.branch_id,
             date=date_str,
             status=status,
+            shift_start=shift_start,
+            shift_end=shift_end,
             attendance_method=ATTENDANCE_METHOD_MANUAL,
             source=source,
             notes=notes,
@@ -563,6 +568,8 @@ class AttendanceReconciliationService:
             }
         ).to_list()
 
+        tenant = await Tenant.get(salon_id)
+
         created = 0
         for user in staff:
             staff_id = str(user.id)
@@ -575,6 +582,11 @@ class AttendanceReconciliationService:
             if existing:
                 continue
 
+            # Check if user had an overnight shift on target_date that is still open right now
+            open_session = await self.attendance_repo.get_open_session_for_employee(salon_id, staff_id)
+            if open_session and open_session.date == target_date:
+                continue
+
             approved_leave = await self.leave_service.get_approved_leave_for_date(
                 salon_id, staff_id, target_date
             )
@@ -583,6 +595,10 @@ class AttendanceReconciliationService:
                 created += 1
                 continue
 
+            # Resolve scheduled shift snapshot for historical record
+            shift_start = getattr(user, "shift_start", None) or (tenant.shift_start if tenant else "09:00")
+            shift_end = getattr(user, "shift_end", None) or (getattr(tenant, "shift_end", None) if tenant else "18:00")
+
             await self._create_system_attendance(
                 salon_id,
                 user,
@@ -590,6 +606,8 @@ class AttendanceReconciliationService:
                 ATTENDANCE_STATUS_ABSENT,
                 ATTENDANCE_SOURCE_AUTO_ABSENT,
                 notes="Auto-marked absent (no attendance recorded)",
+                shift_start=shift_start,
+                shift_end=shift_end,
             )
             created += 1
 

@@ -36,6 +36,7 @@ const AttendanceLocationSettings: React.FC = () => {
   const [longitude, setLongitude] = useState(DEFAULT_LNG);
   const [radius, setRadius] = useState(100);
   const [shiftStart, setShiftStart] = useState('09:00');
+  const [shiftEnd, setShiftEnd] = useState('18:00');
   const [searchQuery, setSearchQuery] = useState('');
   const [address, setAddress] = useState('');
   const [isResolvingCoords, setIsResolvingCoords] = useState(false);
@@ -47,6 +48,7 @@ const AttendanceLocationSettings: React.FC = () => {
     if (location.longitude != null) setLongitude(location.longitude);
     setRadius(location.attendance_radius || 100);
     setShiftStart(location.shift_start || '09:00');
+    setShiftEnd(location.shift_end || '18:00');
     setAddress(location.address || '');
   }, [data]);
 
@@ -77,6 +79,7 @@ const AttendanceLocationSettings: React.FC = () => {
           longitude: place.lon,
           attendance_radius: location.attendance_radius || 100,
           shift_start: location.shift_start || '09:00',
+          shift_end: location.shift_end || '18:00',
         }).unwrap();
         if (!cancelled) refetch();
       } catch {
@@ -114,6 +117,7 @@ const AttendanceLocationSettings: React.FC = () => {
         longitude,
         attendance_radius: radius,
         shift_start: shiftStart,
+        shift_end: shiftEnd,
       }).unwrap();
       showToast('success', 'Attendance location saved');
       refetch();
@@ -157,19 +161,35 @@ const AttendanceLocationSettings: React.FC = () => {
     >
       <div className="space-y-5 p-5 sm:p-6">
         <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
-          <FormField label="Standard Shift Start Time (HH:MM)" name="shift_start">
-            <div className="relative max-w-xs">
-              <Clock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                id="shift_start"
-                type="time"
-                value={shiftStart}
-                onChange={(event) => setShiftStart(event.target.value)}
-                placeholder="09:00"
-                className="pl-9.5 rounded-xl border-gray-200 bg-white"
-              />
-            </div>
-          </FormField>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 mb-3">Salon Default Shift Hours</h4>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Standard Shift Start Time (HH:MM)" name="shift_start">
+              <div className="relative">
+                <Clock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  id="shift_start"
+                  type="time"
+                  value={shiftStart}
+                  onChange={(event) => setShiftStart(event.target.value)}
+                  placeholder="09:00"
+                  className="pl-9.5 rounded-xl border-gray-200 bg-white"
+                />
+              </div>
+            </FormField>
+            <FormField label="Standard Shift End Time (HH:MM)" name="shift_end">
+              <div className="relative">
+                <Clock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  id="shift_end"
+                  type="time"
+                  value={shiftEnd}
+                  onChange={(event) => setShiftEnd(event.target.value)}
+                  placeholder="18:00"
+                  className="pl-9.5 rounded-xl border-gray-200 bg-white"
+                />
+              </div>
+            </FormField>
+          </div>
         </div>
 
         <LocationSetupPanel

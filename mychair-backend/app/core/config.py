@@ -122,6 +122,30 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("META_OAUTH_REDIRECT_URI", "META_REDIRECT_URI", "FACEBOOK_REDIRECT_URI", "OAUTH_REDIRECT_URI"),
     )
     WHATSAPP_REVIEW_URL: str = Field(default="")
+    WHATSAPP_SENDER_MODE: str = Field(
+        default="platform",
+        description="WhatsApp sender mode: 'platform' (central MyChair number), 'hybrid', or 'salon'",
+    )
+    WHATSAPP_BILLING_TEMPLATE: str = Field(
+        default="hello_world",
+        description="Meta-approved template for outbound billing receipts",
+    )
+
+    def validate_whatsapp_platform_config(self) -> List[str]:
+        """
+        Validates platform mode credentials safely without leaking secrets.
+        Returns a list of human-readable warnings if required vars are missing.
+        """
+        warnings: List[str] = []
+        mode = (self.WHATSAPP_SENDER_MODE or "platform").lower().strip()
+        if mode == "platform":
+            if not self.WHATSAPP_PHONE_NUMBER_ID or not self.WHATSAPP_PHONE_NUMBER_ID.strip():
+                warnings.append("WhatsApp platform sender is enabled but WHATSAPP_PHONE_NUMBER_ID is missing.")
+            if not self.whatsapp_bearer_token or not self.whatsapp_bearer_token.strip():
+                warnings.append("WhatsApp platform sender is enabled but WHATSAPP_ACCESS_TOKEN is missing.")
+            if not self.WHATSAPP_BUSINESS_ACCOUNT_ID or not self.WHATSAPP_BUSINESS_ACCOUNT_ID.strip():
+                warnings.append("WhatsApp platform sender is enabled but WHATSAPP_BUSINESS_ACCOUNT_ID is missing.")
+        return warnings
 
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")

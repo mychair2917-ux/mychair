@@ -11,6 +11,7 @@ export interface EmployeeListItem {
   created_by?: string | null;
   created_by_name?: string | null;
   weekly_off?: string[];
+  shift?: string | null;
 }
 
 export interface EmployeeUpdateRequest {
@@ -22,6 +23,7 @@ export interface EmployeeUpdateRequest {
   branch_name?: string;
   is_active?: boolean;
   weekly_off?: string[];
+  shift?: string;
 }
 
 export interface EmployeeStatusRequest {

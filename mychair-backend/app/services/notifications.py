@@ -611,7 +611,7 @@ class NotificationService:
         if log.channel == "EMAIL":
             success, error, provider_message_id = await self._send_email(address, campaign.subject or campaign.name, campaign.body)
         elif log.channel == "WHATSAPP":
-            success, error, provider_message_id = await self._send_whatsapp(address, campaign.body)
+            success, error, provider_message_id = await self._send_whatsapp(address, campaign.body, getattr(campaign, "salon_id", None))
         else:
             success, error, provider_message_id = False, f"Unsupported channel {log.channel}", None
         if success:
@@ -738,7 +738,7 @@ class NotificationService:
         if channel == "EMAIL":
             success, error, provider_message_id = await self._send_email(address, campaign.subject or campaign.name, campaign.body)
         elif channel == "WHATSAPP":
-            success, error, provider_message_id = await self._send_whatsapp(address, campaign.body)
+            success, error, provider_message_id = await self._send_whatsapp(address, campaign.body, getattr(campaign, "salon_id", None))
         else:
             success, error, provider_message_id = False, f"Unsupported channel {channel}", None
         if success:
@@ -760,33 +760,24 @@ class NotificationService:
             html=body.replace("\n", "<br />"),
         )
 
-    async def _send_whatsapp(self, phone: str, body: str) -> Tuple[bool, Optional[str], Optional[str]]:
-        # Provider layer is intentionally isolated here. Free-form outbound text may require an active
-        # WhatsApp customer service window, so unconfigured environments produce auditable failures.
-        if not settings.WHATSAPP_PHONE_NUMBER_ID or not settings.whatsapp_bearer_token:
+    async def _send_whatsapp(self, phone: str, body: str, salon_id: Optional[str] = None) -> Tuple[bool, Optional[str], Optional[str]]:
+        # Provider layer is intentionally isolated here. Reuses unified sender credentials and Meta provider.
+        from app.services.whatsapp import whatsapp_service
+
+        creds = await whatsapp_service.resolve_sender_credentials(salon_id)
+        if not creds.is_valid:
             return False, "WhatsApp Cloud API is not configured.", None
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": phone,
-            "type": "text",
-            "text": {"body": body},
-        }
+
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"https://graph.facebook.com/v20.0/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages",
-                    headers={
-                        "Authorization": f"Bearer {settings.whatsapp_bearer_token}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                )
-                if 200 <= response.status_code < 300:
-                    response_data = response.json()
-                    messages = response_data.get("messages") or []
-                    provider_message_id = messages[0].get("id") if messages else None
-                    return True, None, provider_message_id
-                return False, response.text, None
+            res = await whatsapp_service.provider.send_text_message(
+                phone_number_id=creds.phone_number_id,
+                access_token=creds.access_token,
+                to_phone=phone,
+                message_body=body,
+            )
+            if res.get("success"):
+                return True, None, res.get("wamid")
+            return False, res.get("error_message") or "WhatsApp service unavailable", None
         except Exception as exc:
             return False, f"WhatsApp service unavailable: {exc}", None
 

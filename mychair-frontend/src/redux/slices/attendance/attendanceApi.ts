@@ -6,11 +6,16 @@ import type { ApiResponse } from '../api/Types';
 export interface TodayAttendanceStatus {
   attendance_date: string;
   shift_timing?: string | null;
+  shift_start?: string | null;
+  shift_end?: string | null;
   status?: string | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
   total_work_minutes: number;
   total_hours: number;
+  late_minutes?: number;
+  overtime_minutes?: number;
+  early_leave_minutes?: number;
   can_check_in: boolean;
   can_check_out: boolean;
   is_checked_in: boolean;
@@ -26,10 +31,15 @@ export interface AttendanceRecord {
   branch_id?: string | null;
   branch_name?: string | null;
   attendance_date: string;
+  shift_start?: string | null;
+  shift_end?: string | null;
+  shift_timing?: string | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
   status: string;
   late_minutes: number;
+  overtime_minutes?: number;
+  early_leave_minutes?: number;
   total_work_minutes: number;
   total_hours: number;
   attendance_method: string;
@@ -52,6 +62,7 @@ export interface BranchLocation {
   longitude?: number | null;
   attendance_radius: number;
   shift_start: string;
+  shift_end?: string;
   is_configured: boolean;
 }
 
@@ -68,6 +79,7 @@ export interface BranchLocationUpdate {
   attendance_radius: number;
   branch_id?: string | null;
   shift_start?: string;
+  shift_end?: string;
 }
 
 export interface ManualAttendanceUpdate {

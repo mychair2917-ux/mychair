@@ -21,6 +21,7 @@ interface EmployeeEditModalProps {
     role: string;
     branch_name: string;
     weekly_off: string[];
+    shift?: string;
   }) => Promise<void>;
 }
 
@@ -49,6 +50,7 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
   const [role, setRole] = useState('employee');
   const [branchName, setBranchName] = useState('');
   const [weeklyOff, setWeeklyOff] = useState<string[]>([]);
+  const [shift, setShift] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -61,6 +63,7 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
       setRole(employee.role);
       setBranchName(employee.branch_name ?? '');
       setWeeklyOff(employee.weekly_off ?? []);
+      setShift(employee.shift ?? '');
       setError('');
     }
   }, [employee]);
@@ -87,6 +90,7 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
       role,
       branch_name: branchName,
       weekly_off: weeklyOff,
+      shift: shift.trim() || undefined,
     });
   };
 
@@ -120,6 +124,13 @@ const EmployeeEditModal: React.FC<EmployeeEditModalProps> = ({
           </FormField>
           <FormField label="Branch" name="branch_name">
             <Input value={branchName} onChange={(e) => setBranchName(e.target.value)} />
+          </FormField>
+          <FormField label="Assigned Shift (e.g. 10:00 - 19:00)" name="shift">
+            <Input
+              value={shift}
+              onChange={(e) => setShift(e.target.value)}
+              placeholder="10:00 - 19:00 (leave blank to use salon default)"
+            />
           </FormField>
           <WeekOffSelector value={weeklyOff} onChange={setWeeklyOff} />
         </ModalBody>

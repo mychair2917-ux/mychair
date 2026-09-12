@@ -1,6 +1,7 @@
+from dataclasses import dataclass
+from datetime import datetime
 import logging
 import re
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from beanie import PydanticObjectId
 
@@ -10,16 +11,47 @@ from app.models.salon_whatsapp_account import SalonWhatsAppAccount
 from app.models.whatsapp_message import WhatsAppMessageLog
 from app.services.whatsapp.base_provider import WhatsAppProvider
 from app.services.whatsapp.meta_provider import MetaCloudApiProvider
+from app.utils.phone import is_client_reference_id
 from app.utils.timezone import now_utc
 
 logger = logging.getLogger("whatsapp.service")
 
 
+def is_valid_whatsapp_phone(phone: Optional[str]) -> bool:
+    """
+    Validates whether the input is a real, usable mobile phone number for WhatsApp.
+    Rejects:
+    - None or empty string
+    - Client reference IDs (e.g. 'CL-XXXXXX')
+    - Placeholders or strings with non-digits that aren't phone characters
+    - Numbers with digit count < 10 or > 15
+    - Dummy numbers like all zeros or single repeated digit
+    """
+    if not phone or not isinstance(phone, str):
+        return False
+    stripped = phone.strip()
+    if not stripped:
+        return False
+    if is_client_reference_id(stripped):
+        return False
+    if stripped.upper().startswith("CL-") or stripped.upper().startswith("GEN_"):
+        return False
+    digits = re.sub(r"\D+", "", stripped)
+    if len(digits) < 10 or len(digits) > 15:
+        return False
+    if len(set(digits)) == 1:
+        return False
+    return True
+
+
 def normalize_phone_number(phone: Optional[str]) -> str:
     """Normalizes raw input phone string into standard E.164 digits without leading '+' or spaces."""
-    if not phone:
+    if not phone or not isinstance(phone, str):
         return ""
-    digits = re.sub(r"\D+", "", phone)
+    stripped = phone.strip()
+    if is_client_reference_id(stripped) or stripped.upper().startswith("CL-") or stripped.upper().startswith("GEN_"):
+        return ""
+    digits = re.sub(r"\D+", "", stripped)
     if digits.startswith("0") and len(digits) == 11:
         digits = digits[1:]
     if len(digits) == 10:
@@ -41,6 +73,28 @@ def is_real_value(val: Optional[str]) -> bool:
         "pending",
     }
     return stripped.lower() not in placeholders
+
+
+@dataclass
+class SenderCredentials:
+    phone_number_id: Optional[str]
+    access_token: Optional[str]
+    waba_id: Optional[str] = None
+    sender_type: str = "PLATFORM"  # "PLATFORM" or "SALON"
+    salon_account: Optional[SalonWhatsAppAccount] = None
+
+    @property
+    def is_valid(self) -> bool:
+        return bool(
+            self.phone_number_id
+            and is_real_value(self.phone_number_id)
+            and self.access_token
+            and is_real_value(self.access_token)
+        )
+
+    def __iter__(self):
+        """Allows tuple unpacking as (phone_number_id, access_token, salon_account) for backward compatibility."""
+        return iter((self.phone_number_id, self.access_token, self.salon_account))
 
 
 class WhatsAppService:
@@ -171,6 +225,7 @@ class WhatsAppService:
                     "client_secret": app_secret,
                     "code": code,
                     "redirect_uri": settings.META_OAUTH_REDIRECT_URI,
+                    "grant_type": "authorization_code",
                 }
                 
                 try:
@@ -331,6 +386,102 @@ class WhatsAppService:
 
         return None, None, account
 
+    async def resolve_sender_credentials(
+        self, salon_id: Optional[str] = None, sender_mode: Optional[str] = None
+    ) -> SenderCredentials:
+        """
+        Authoritative WhatsApp sender credential resolver.
+        Supports:
+          - 'platform': Always use central MyChair WhatsApp credentials.
+                        Does NOT require SalonWhatsAppAccount or is_salon_connected.
+          - 'hybrid': Future use: use salon WhatsApp credentials when connected,
+                      otherwise fallback to MyChair platform credentials.
+          - 'salon': Require salon-specific WhatsApp credentials.
+        """
+        mode = (sender_mode or settings.WHATSAPP_SENDER_MODE or "platform").lower().strip()
+
+        if mode == "platform":
+            phone_id = settings.WHATSAPP_PHONE_NUMBER_ID if is_real_value(settings.WHATSAPP_PHONE_NUMBER_ID) else None
+            token = settings.whatsapp_bearer_token if is_real_value(settings.whatsapp_bearer_token) else None
+            waba_id = settings.WHATSAPP_BUSINESS_ACCOUNT_ID if is_real_value(settings.WHATSAPP_BUSINESS_ACCOUNT_ID) else None
+
+            # If platform credentials are set in environment, use them strictly as PLATFORM sender
+            if phone_id and token:
+                return SenderCredentials(
+                    phone_number_id=phone_id,
+                    access_token=token,
+                    waba_id=waba_id,
+                    sender_type="PLATFORM",
+                    salon_account=None,
+                )
+
+            # In unconfigured environments (e.g. unit tests where platform vars are unset),
+            # check if salon credentials exist as a fallback so mocked salon accounts continue to work
+            if salon_id:
+                try:
+                    s_phone, s_token, s_acc = await self._resolve_credentials(salon_id)
+                    if s_phone and s_token:
+                        return SenderCredentials(
+                            phone_number_id=s_phone,
+                            access_token=s_token,
+                            waba_id=s_acc.waba_id if s_acc else None,
+                            sender_type="SALON",
+                            salon_account=s_acc,
+                        )
+                except Exception:
+                    pass
+
+            return SenderCredentials(
+                phone_number_id=phone_id,
+                access_token=token,
+                waba_id=waba_id,
+                sender_type="PLATFORM",
+                salon_account=None,
+            )
+
+        if mode == "hybrid":
+            if salon_id:
+                salon_phone, salon_token, account = await self._resolve_credentials(salon_id)
+                if salon_phone and salon_token:
+                    return SenderCredentials(
+                        phone_number_id=salon_phone,
+                        access_token=salon_token,
+                        waba_id=account.waba_id if account else None,
+                        sender_type="SALON",
+                        salon_account=account,
+                    )
+            # Fallback to platform credentials
+            phone_id = settings.WHATSAPP_PHONE_NUMBER_ID if is_real_value(settings.WHATSAPP_PHONE_NUMBER_ID) else None
+            token = settings.whatsapp_bearer_token if is_real_value(settings.whatsapp_bearer_token) else None
+            waba_id = settings.WHATSAPP_BUSINESS_ACCOUNT_ID if is_real_value(settings.WHATSAPP_BUSINESS_ACCOUNT_ID) else None
+            salon_account = await self.get_salon_account(salon_id) if salon_id else None
+            return SenderCredentials(
+                phone_number_id=phone_id,
+                access_token=token,
+                waba_id=waba_id,
+                sender_type="PLATFORM",
+                salon_account=salon_account,
+            )
+
+        # 'salon' mode: require salon credentials only
+        if not salon_id:
+            return SenderCredentials(
+                phone_number_id=None,
+                access_token=None,
+                waba_id=None,
+                sender_type="SALON",
+                salon_account=None,
+            )
+
+        salon_phone, salon_token, account = await self._resolve_credentials(salon_id)
+        return SenderCredentials(
+            phone_number_id=salon_phone,
+            access_token=salon_token,
+            waba_id=account.waba_id if account else None,
+            sender_type="SALON",
+            salon_account=account,
+        )
+
     async def check_customer_opt_in(self, customer_id: Optional[str]) -> bool:
         """Verifies if customer has opted out of WhatsApp messages."""
         if not customer_id:
@@ -359,13 +510,12 @@ class WhatsAppService:
     ) -> WhatsAppMessageLog:
         """
         Generic, reusable multi-tenant message sending method.
-        Resolves WABA configuration per salon_id.
-        Enforces deduplication key, customer opt-in check, and complete audit logging.
+        Resolves credentials using unified resolve_sender_credentials(salon_id).
+        Enforces phone validation, deduplication key, customer opt-in check, and complete audit logging.
         """
-        normalized_phone = normalize_phone_number(
-            settings.WHATSAPP_TEST_RECIPIENT_PHONE or recipient_phone
-        )
-        test_override_used = bool(settings.WHATSAPP_TEST_RECIPIENT_PHONE)
+        is_override = bool(settings.WHATSAPP_TEST_RECIPIENT_PHONE and settings.WHATSAPP_TEST_RECIPIENT_PHONE.strip())
+        target_raw = settings.WHATSAPP_TEST_RECIPIENT_PHONE.strip() if is_override else (recipient_phone or "").strip()
+        normalized_phone = normalize_phone_number(target_raw)
 
         deduplication_key = None
         if reference_type and reference_id and message_type:
@@ -376,22 +526,110 @@ class WhatsAppService:
             existing = await WhatsAppMessageLog.find_one({
                 "deduplication_key": deduplication_key,
                 "status": {"$in": ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"]},
-                "is_deleted": False
+                "is_deleted": False,
             })
             if existing:
                 logger.info("Skipping duplicate WhatsApp message send for key=%s", deduplication_key)
                 return existing
 
-        # Initialize audit log
+        # Resolve credentials using centralized resolver
+        creds = await self.resolve_sender_credentials(salon_id)
+
+        # Phone validation: reject non-phone client IDs (CL-XXXXXX) or blank/invalid formats
+        if not is_valid_whatsapp_phone(target_raw) or not normalized_phone:
+            log = WhatsAppMessageLog(
+                tenant_id=tenant_id or "default",
+                salon_id=salon_id,
+                customer_id=customer_id or "",
+                phone_number="",
+                original_customer_phone=recipient_phone,
+                test_override_used=is_override,
+                sender_type=creds.sender_type,
+                message_type=message_type,
+                status="FAILED",
+                delivery_status="FAILED",
+                error_message="NO_VALID_WHATSAPP_NUMBER",
+                template_name=template_name,
+                template_language=language_code,
+                template_variables=template_variables,
+                reference_type=reference_type,
+                reference_id=reference_id,
+                deduplication_key=deduplication_key,
+                bill_id=reference_id if reference_type == "BILL" else None,
+                appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
+                failed_at=now_utc(),
+            )
+            await log.insert()
+            logger.info("Skipping WhatsApp dispatch: NO_VALID_WHATSAPP_NUMBER for salon=%s recipient=%s", salon_id, recipient_phone)
+            return log
+
+        # Check customer opt-in status
+        is_opted_in = await self.check_customer_opt_in(customer_id)
+        if not is_opted_in:
+            log = WhatsAppMessageLog(
+                tenant_id=tenant_id or "default",
+                salon_id=salon_id,
+                customer_id=customer_id or "",
+                phone_number=normalized_phone,
+                original_customer_phone=recipient_phone,
+                test_override_used=is_override,
+                sender_type=creds.sender_type,
+                message_type=message_type,
+                status="CANCELLED",
+                delivery_status="CANCELLED",
+                error_message="Customer has opted out of receiving WhatsApp messages.",
+                template_name=template_name,
+                template_language=language_code,
+                template_variables=template_variables,
+                reference_type=reference_type,
+                reference_id=reference_id,
+                deduplication_key=deduplication_key,
+                bill_id=reference_id if reference_type == "BILL" else None,
+                appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
+            )
+            await log.insert()
+            logger.info("Customer %s opted out of WhatsApp messages.", customer_id)
+            return log
+
+        # Check sender credentials
+        if not creds.is_valid:
+            log = WhatsAppMessageLog(
+                tenant_id=tenant_id or "default",
+                salon_id=salon_id,
+                customer_id=customer_id or "",
+                phone_number=normalized_phone,
+                original_customer_phone=recipient_phone,
+                test_override_used=is_override,
+                sender_type=creds.sender_type,
+                message_type=message_type,
+                status="FAILED",
+                delivery_status="FAILED",
+                error_message="WhatsApp credentials not configured for sender.",
+                template_name=template_name,
+                template_language=language_code,
+                template_variables=template_variables,
+                reference_type=reference_type,
+                reference_id=reference_id,
+                deduplication_key=deduplication_key,
+                bill_id=reference_id if reference_type == "BILL" else None,
+                appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
+                failed_at=now_utc(),
+            )
+            await log.insert()
+            logger.warning("WhatsApp credentials missing or invalid for salon=%s sender_type=%s", salon_id, creds.sender_type)
+            return log
+
+        # Create audit log with SENDING status
         log = WhatsAppMessageLog(
             tenant_id=tenant_id or "default",
             salon_id=salon_id,
             customer_id=customer_id or "",
             phone_number=normalized_phone,
             original_customer_phone=recipient_phone,
-            test_override_used=test_override_used,
+            test_override_used=is_override,
+            sender_type=creds.sender_type,
             message_type=message_type,
-            status="QUEUED",
+            status="SENDING",
             template_name=template_name,
             template_language=language_code,
             template_variables=template_variables,
@@ -403,41 +641,10 @@ class WhatsAppService:
         )
         await log.insert()
 
-        if not normalized_phone:
-            log.status = "FAILED"
-            log.delivery_status = "FAILED"
-            log.error_message = "Invalid or missing customer phone number."
-            log.failed_at = now_utc()
-            await log.save()
-            return log
-
-        # Check customer opt-in status
-        is_opted_in = await self.check_customer_opt_in(customer_id)
-        if not is_opted_in:
-            log.status = "CANCELLED"
-            log.delivery_status = "CANCELLED"
-            log.error_message = "Customer has opted out of receiving WhatsApp messages."
-            await log.save()
-            logger.info("Customer %s opted out of WhatsApp messages.", customer_id)
-            return log
-
-        # Resolve salon credentials
-        phone_number_id, access_token, salon_account = await self._resolve_credentials(salon_id)
-        if not phone_number_id or not access_token:
-            log.status = "FAILED"
-            log.delivery_status = "FAILED"
-            log.error_message = "WhatsApp is not connected for this salon. Please connect WhatsApp in Settings."
-            log.failed_at = now_utc()
-            await log.save()
-            return log
-
-        log.status = "SENDING"
-        await log.save()
-
         # Send via provider
         res = await self.provider.send_template_message(
-            phone_number_id=phone_number_id,
-            access_token=access_token,
+            phone_number_id=creds.phone_number_id,
+            access_token=creds.access_token,
             to_phone=normalized_phone,
             template_name=template_name,
             language_code=language_code,
@@ -452,7 +659,7 @@ class WhatsAppService:
             log.sent_at = now_utc()
             log.api_response = res.get("response_body")
             await log.save()
-            logger.info("WhatsApp message sent successfully salon=%s wamid=%s recipient=%s", salon_id, res.get("wamid"), normalized_phone)
+            logger.info("WhatsApp message sent successfully salon=%s wamid=%s recipient=%s sender=%s", salon_id, res.get("wamid"), normalized_phone, creds.sender_type)
         else:
             log.status = "FAILED"
             log.delivery_status = "failed"
@@ -465,8 +672,9 @@ class WhatsAppService:
         return log
 
     async def send_test_message(self, salon_id: str, test_phone: str) -> WhatsAppMessageLog:
-        """Sends a test message using salon's configured WABA to verify integration."""
-        account = await self.get_salon_account(salon_id)
+        """Sends a test message using resolved credentials to verify integration."""
+        creds = await self.resolve_sender_credentials(salon_id)
+        account = creds.salon_account or await self.get_salon_account(salon_id)
         template_name = "hello_world"
         if account and account.templates and "bill_receipt" in account.templates:
             template_name = account.templates.get("bill_receipt", "hello_world")
@@ -480,6 +688,10 @@ class WhatsAppService:
             reference_type="TEST",
             reference_id=f"test-{now_utc().strftime('%Y%m%d%H%M%S')}",
         )
+
+    async def process_status_webhook(self, payload: Dict[str, Any]) -> int:
+        """Alias for process_webhook_payload to handle webhook status callbacks."""
+        return await self.process_webhook_payload(payload)
 
     async def process_webhook_payload(self, payload: Dict[str, Any]) -> int:
         """
@@ -597,7 +809,7 @@ class WhatsAppService:
     async def send_on_appointment_submit(self, appointment_id: str) -> Optional[WhatsAppMessageLog]:
         """
         Sends an automatic WhatsApp confirmation when an appointment is submitted/booked.
-        Safely handles lookup failures, disconnected WABA status, and exceptions.
+        Safely handles lookup failures, credential resolution, and exceptions.
         """
         try:
             from app.models.appointment import Appointment
@@ -612,14 +824,17 @@ class WhatsAppService:
             if not appt or not appt.salon_id or not appt.customer_phone:
                 return None
 
-            is_connected = await self.is_salon_connected(appt.salon_id)
-            if not is_connected:
+            creds = await self.resolve_sender_credentials(appt.salon_id)
+            if not creds.is_valid:
                 return None
 
-            account = await self.get_salon_account(appt.salon_id)
-            template_name = "hello_world"
+            account = creds.salon_account or await self.get_salon_account(appt.salon_id)
+            if account and not account.features.get("appointment_confirmations_enabled", True):
+                return None
+
+            template_name = settings.WHATSAPP_APPOINTMENT_TEMPLATE or "hello_world"
             if account and account.templates and "appointment_booking" in account.templates:
-                template_name = account.templates.get("appointment_booking", "hello_world")
+                template_name = account.templates.get("appointment_booking", template_name)
 
             cust_name = appt.customer_name or "Valued Customer"
             appt_time = appt.start_datetime.strftime("%Y-%m-%d %H:%M") if appt.start_datetime else ""
@@ -649,7 +864,7 @@ class WhatsAppService:
     async def send_invoice_review_after_completion(self, appointment_id: str) -> Optional[WhatsAppMessageLog]:
         """
         Sends a WhatsApp feedback/review request after appointment completion.
-        Safely handles lookup failures, disconnected WABA status, and exceptions.
+        Safely handles lookup failures, credential resolution, and exceptions.
         """
         try:
             from app.models.appointment import Appointment
@@ -664,11 +879,14 @@ class WhatsAppService:
             if not appt or not appt.salon_id or not appt.customer_phone:
                 return None
 
-            is_connected = await self.is_salon_connected(appt.salon_id)
-            if not is_connected:
+            creds = await self.resolve_sender_credentials(appt.salon_id)
+            if not creds.is_valid:
                 return None
 
-            account = await self.get_salon_account(appt.salon_id)
+            account = creds.salon_account or await self.get_salon_account(appt.salon_id)
+            if account and not account.features.get("feedback_requests_enabled", True):
+                return None
+
             template_name = "hello_world"
             if account and account.templates and "feedback_request" in account.templates:
                 template_name = account.templates.get("feedback_request", "hello_world")
