@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from typing import List
+from typing import Dict, List, Optional
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -135,9 +135,45 @@ class Settings(BaseSettings):
         description="Meta-approved template for outbound billing receipts with invoice PDF document header",
     )
     WHATSAPP_TEMPLATE_LANGUAGE: str = Field(
-        default="en_US",
-        description="Language code for Meta-approved templates (e.g. en_US or en)",
+        default="en",
+        description="Language code for Meta-approved templates (e.g. en or en_US)",
     )
+
+    def _evaluate_secret_presence(self, env_key: str, attr_val: Optional[str]) -> str:
+        import os
+        raw_val = (attr_val or "").strip()
+        if raw_val:
+            return "SET"
+        candidates = [env_key]
+        if env_key == "WHATSAPP_ACCESS_TOKEN":
+            candidates.append("WHATSAPP_TOKEN")
+        elif env_key == "WHATSAPP_BUSINESS_ACCOUNT_ID":
+            candidates.append("WABA_ID")
+
+        for key in candidates:
+            if key in os.environ:
+                val = os.environ[key]
+                return "SET" if val and val.strip() else "EMPTY"
+
+        return "MISSING"
+
+    def get_whatsapp_runtime_diagnostics(self) -> Dict[str, str]:
+        """
+        Returns safe runtime diagnostics dictionary for WhatsApp configuration.
+        Config values are returned as string literals, sensitive values only as SET/MISSING/EMPTY.
+        Secrets are NEVER returned.
+        """
+        token_val = self.whatsapp_bearer_token
+        return {
+            "WHATSAPP_SENDER_MODE": str(self.WHATSAPP_SENDER_MODE or "platform"),
+            "WHATSAPP_BILLING_TEMPLATE": str(self.WHATSAPP_BILLING_TEMPLATE or ""),
+            "WHATSAPP_BILLING_PDF_TEMPLATE": str(self.WHATSAPP_BILLING_PDF_TEMPLATE or ""),
+            "WHATSAPP_TEMPLATE_LANGUAGE": str(self.WHATSAPP_TEMPLATE_LANGUAGE or "en"),
+            "WHATSAPP_PHONE_NUMBER_ID": self._evaluate_secret_presence("WHATSAPP_PHONE_NUMBER_ID", self.WHATSAPP_PHONE_NUMBER_ID),
+            "WHATSAPP_BUSINESS_ACCOUNT_ID": self._evaluate_secret_presence("WHATSAPP_BUSINESS_ACCOUNT_ID", self.WHATSAPP_BUSINESS_ACCOUNT_ID),
+            "WHATSAPP_ACCESS_TOKEN": self._evaluate_secret_presence("WHATSAPP_ACCESS_TOKEN", token_val),
+            "WHATSAPP_TEST_RECIPIENT_PHONE": self._evaluate_secret_presence("WHATSAPP_TEST_RECIPIENT_PHONE", self.WHATSAPP_TEST_RECIPIENT_PHONE),
+        }
 
     def validate_whatsapp_platform_config(self) -> List[str]:
         """

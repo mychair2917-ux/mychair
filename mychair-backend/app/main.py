@@ -45,6 +45,26 @@ async def lifespan(app: FastAPI):
     logger.info("Refresh fingerprint: %s", Settings.secret_fingerprint(settings.REFRESH_SECRET_KEY))
     wa_mode = (settings.WHATSAPP_SENDER_MODE or "platform").lower().strip()
     logger.info("WhatsApp sender mode: %s", wa_mode)
+    wa_diag = settings.get_whatsapp_runtime_diagnostics()
+    logger.info(
+        "WhatsApp runtime config:\n"
+        "sender_mode=%s\n"
+        "billing_template=%s\n"
+        "billing_pdf_template=%s\n"
+        "template_language=%s\n"
+        "phone_number_id=%s\n"
+        "waba_id=%s\n"
+        "access_token=%s\n"
+        "test_recipient=%s",
+        wa_diag["WHATSAPP_SENDER_MODE"],
+        wa_diag["WHATSAPP_BILLING_TEMPLATE"],
+        wa_diag["WHATSAPP_BILLING_PDF_TEMPLATE"],
+        wa_diag["WHATSAPP_TEMPLATE_LANGUAGE"],
+        wa_diag["WHATSAPP_PHONE_NUMBER_ID"],
+        wa_diag["WHATSAPP_BUSINESS_ACCOUNT_ID"],
+        wa_diag["WHATSAPP_ACCESS_TOKEN"],
+        wa_diag["WHATSAPP_TEST_RECIPIENT_PHONE"],
+    )
     for warning in settings.validate_whatsapp_platform_config():
         logger.warning("[WhatsApp Config] %s", warning)
 

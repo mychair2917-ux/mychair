@@ -25,7 +25,7 @@ class WhatsAppMessageLog(BaseTenantDocument):
     delivery_status: Optional[str] = Field(default=None, index=True)
     
     template_name: Optional[str] = Field(default=None)
-    template_language: str = Field(default="en_US")
+    template_language: str = Field(default="en")
     template_variables: Optional[Dict[str, Any]] = Field(default=None)
     
     # Meta Graph API message ID (wamid)

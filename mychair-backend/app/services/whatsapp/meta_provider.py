@@ -21,6 +21,27 @@ META_ERROR_MAP: Dict[int, str] = {
     2655122: "This WhatsApp number is already connected to another WhatsApp account. Please complete the Meta connection flow to migrate/connect it to MYCHAIR.",
 }
 
+def mask_phone_number(phone: Optional[str]) -> str:
+    """Masks a phone number for safe logging to prevent PII leaks."""
+    if not phone:
+        return ""
+    p = str(phone).strip()
+    if not p:
+        return ""
+    n = len(p)
+    if n <= 6:
+        return "*" * n
+
+    prefix_len = 5 if p.startswith("+") else 4
+    suffix_len = 2
+
+    if n <= (prefix_len + suffix_len):
+        return "*" * n
+
+    masked_len = n - prefix_len - suffix_len
+    return f"{p[:prefix_len]}{'*' * masked_len}{p[-suffix_len:]}"
+
+
 class MetaCloudApiProvider(WhatsAppProvider):
     """
     Direct Meta WhatsApp Cloud API Provider.
@@ -64,7 +85,7 @@ class MetaCloudApiProvider(WhatsAppProvider):
         access_token: str,
         to_phone: str,
         template_name: str,
-        language_code: str = "en_US",
+        language_code: Optional[str] = None,
         components: Optional[List[Dict[str, Any]]] = None,
         document_header: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -74,6 +95,13 @@ class MetaCloudApiProvider(WhatsAppProvider):
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }
+
+        # Resolve effective language code without forcing en_US default
+        effective_language = (
+            language_code
+            or getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", None)
+            or "en"
+        ).strip()
 
         # If document_header is provided, ensure a document header component is injected
         final_components = list(components) if components is not None else []
@@ -92,7 +120,7 @@ class MetaCloudApiProvider(WhatsAppProvider):
 
         template_payload: Dict[str, Any] = {
             "name": template_name,
-            "language": {"code": language_code},
+            "language": {"code": effective_language},
         }
         if final_components and template_name != "hello_world":
             template_payload["components"] = final_components
@@ -105,7 +133,19 @@ class MetaCloudApiProvider(WhatsAppProvider):
             "template": template_payload,
         }
 
-        logger.info("[Meta Cloud API] Outbound template send to=%s template=%s phone_id=%s", to_phone, template_name, phone_number_id)
+        masked_to = mask_phone_number(to_phone)
+        actual_lang = template_payload["language"]["code"]
+        logger.info(
+            "[Meta Cloud API] Outbound template send\n"
+            "to=%s\n"
+            "template=%s\n"
+            "language=%s\n"
+            "phone_id=%s",
+            masked_to,
+            template_name,
+            actual_lang,
+            phone_number_id,
+        )
         
         try:
             async with httpx.AsyncClient(timeout=12.0) as client:
@@ -121,9 +161,12 @@ class MetaCloudApiProvider(WhatsAppProvider):
             }
 
         try:
+            import inspect
             body = response.json()
-        except ValueError:
-            body = {"raw": response.text}
+            if inspect.isawaitable(body):
+                body = await body
+        except (ValueError, TypeError):
+            body = {"raw": getattr(response, "text", "")}
 
         status_code = response.status_code
         wamid = None

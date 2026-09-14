@@ -14,7 +14,7 @@ class WhatsAppProvider(ABC):
         access_token: str,
         to_phone: str,
         template_name: str,
-        language_code: str = "en_US",
+        language_code: Optional[str] = None,
         components: Optional[list] = None,
         document_header: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:

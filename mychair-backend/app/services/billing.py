@@ -117,6 +117,7 @@ class BillingService:
         salon_name: Optional[str] = None,
         send_whatsapp: bool = False,
         send_bill_pdf: bool = False,
+        language_code: Optional[str] = None,
     ) -> Optional[Any]:
         """
         Unified helper for dispatching billing WhatsApp notifications.
@@ -210,7 +211,11 @@ class BillingService:
                 document_filename=f"{getattr(invoice, 'invoice_number', 'invoice')}.pdf",
             )
 
-            language_code = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", None) or "en_US"
+            resolved_language = (
+                language_code
+                or getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", None)
+                or "en"
+            ).strip()
 
             return await whatsapp_service.send_template_message(
                 salon_id=salon_id,
@@ -218,7 +223,7 @@ class BillingService:
                 recipient_phone=phone,
                 message_type="BILL_RECEIPT",
                 template_name=template_name,
-                language_code=language_code,
+                language_code=resolved_language,
                 template_variables=template_variables,
                 components=components,
                 reference_type="BILL",

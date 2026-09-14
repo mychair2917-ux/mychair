@@ -100,7 +100,7 @@ async def process_whatsapp_message_job(
     recipient_phone: str,
     message_type: str,
     template_name: str,
-    language_code: str = "en_US",
+    language_code: Optional[str] = None,
     template_variables: Optional[Dict[str, Any]] = None,
     reference_type: Optional[str] = None,
     reference_id: Optional[str] = None,

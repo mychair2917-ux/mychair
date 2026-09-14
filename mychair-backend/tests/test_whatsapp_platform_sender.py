@@ -1,3 +1,4 @@
+import logging
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -498,7 +499,7 @@ def test_access_token_never_returned_in_sanitized_account_dict():
 # TEST N: Existing appointment WhatsApp flow uses platform sender in platform mode
 # ==============================================================================
 @pytest.mark.asyncio
-async def test_appointment_flow_uses_platform_sender_in_platform_mode(monkeypatch):
+async def test_appointment_flow_uses_platform_sender_in_platform_mode(monkeypatch, caplog):
     monkeypatch.setattr(settings, "WHATSAPP_SENDER_MODE", "platform")
     monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "central-phone-id")
     monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "central-token")
@@ -523,6 +524,15 @@ async def test_appointment_flow_uses_platform_sender_in_platform_mode(monkeypatc
         with patch.object(service, "send_template_message", new_callable=AsyncMock) as mock_send_tpl:
             mock_send_tpl.return_value = MagicMock(status="SENT")
 
+            # 1. hello_world is skipped in platform mode
+            with caplog.at_level(logging.INFO, logger="whatsapp"):
+                log_skipped = await service.send_on_appointment_submit("507f1f77bcf86cd799439011")
+            assert log_skipped is None
+            mock_send_tpl.assert_not_called()
+            assert any("Appointment WhatsApp skipped: no production-approved appointment template configured" in r.message for r in caplog.records)
+
+            # 2. Approved appointment template is dispatched
+            monkeypatch.setattr(settings, "WHATSAPP_APPOINTMENT_TEMPLATE", "appointment_booking")
             log = await service.send_on_appointment_submit("507f1f77bcf86cd799439011")
             assert log is not None
             mock_send_tpl.assert_called_once()
@@ -530,6 +540,7 @@ async def test_appointment_flow_uses_platform_sender_in_platform_mode(monkeypatc
             assert call_kwargs["salon_id"] == "salon-unconnected"
             assert call_kwargs["recipient_phone"] == "9876543210"
             assert call_kwargs["message_type"] == "APPOINTMENT_BOOKING"
+            assert call_kwargs["template_name"] == "appointment_booking"
 
 
 # ==============================================================================

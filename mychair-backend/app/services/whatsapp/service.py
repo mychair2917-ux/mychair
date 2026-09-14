@@ -581,7 +581,7 @@ class WhatsAppService:
         Resolves credentials using unified resolve_sender_credentials(salon_id).
         Enforces phone validation, deduplication key, customer opt-in check, and complete audit logging.
         """
-        effective_language = (language_code or getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", None) or "en_US").strip()
+        effective_language = (language_code or getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", None) or "en").strip()
 
         is_override = bool(settings.WHATSAPP_TEST_RECIPIENT_PHONE and settings.WHATSAPP_TEST_RECIPIENT_PHONE.strip())
         target_raw = settings.WHATSAPP_TEST_RECIPIENT_PHONE.strip() if is_override else (recipient_phone or "").strip()
@@ -1087,9 +1087,14 @@ class WhatsAppService:
             if account and not account.features.get("appointment_confirmations_enabled", True):
                 return None
 
-            template_name = settings.WHATSAPP_APPOINTMENT_TEMPLATE or "hello_world"
+            template_name = (settings.WHATSAPP_APPOINTMENT_TEMPLATE or "").strip()
             if account and account.templates and "appointment_booking" in account.templates:
-                template_name = account.templates.get("appointment_booking", template_name)
+                template_name = (account.templates.get("appointment_booking") or template_name).strip()
+
+            sender_mode = (settings.WHATSAPP_SENDER_MODE or "platform").lower().strip()
+            if sender_mode == "platform" and (not template_name or template_name.lower() == "hello_world"):
+                logger.info("Appointment WhatsApp skipped: no production-approved appointment template configured")
+                return None
 
             cust_name = appt.customer_name or "Valued Customer"
             appt_time = appt.start_datetime.strftime("%Y-%m-%d %H:%M") if appt.start_datetime else ""
