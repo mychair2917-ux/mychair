@@ -134,6 +134,10 @@ class Settings(BaseSettings):
         default="service_completion_thank_you_with_bill",
         description="Meta-approved template for outbound billing receipts with invoice PDF document header",
     )
+    WHATSAPP_TEMPLATE_LANGUAGE: str = Field(
+        default="en_US",
+        description="Language code for Meta-approved templates (e.g. en_US or en)",
+    )
 
     def validate_whatsapp_platform_config(self) -> List[str]:
         """
@@ -149,6 +153,10 @@ class Settings(BaseSettings):
                 warnings.append("WhatsApp platform sender is enabled but WHATSAPP_ACCESS_TOKEN is missing.")
             if not self.WHATSAPP_BUSINESS_ACCOUNT_ID or not self.WHATSAPP_BUSINESS_ACCOUNT_ID.strip():
                 warnings.append("WhatsApp platform sender is enabled but WHATSAPP_BUSINESS_ACCOUNT_ID is missing.")
+        if self.WHATSAPP_ACCESS_TOKEN and self.WHATSAPP_TOKEN:
+            warnings.append(
+                "Both WHATSAPP_ACCESS_TOKEN and legacy WHATSAPP_TOKEN are configured; WHATSAPP_ACCESS_TOKEN will be used."
+            )
         return warnings
 
 
@@ -252,7 +260,7 @@ class Settings(BaseSettings):
 
     @property
     def whatsapp_bearer_token(self) -> str:
-        return self.WHATSAPP_TOKEN or self.WHATSAPP_ACCESS_TOKEN
+        return self.WHATSAPP_ACCESS_TOKEN or self.WHATSAPP_TOKEN
 
     @staticmethod
     def mask_uri(uri: str) -> str:

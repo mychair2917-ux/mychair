@@ -378,12 +378,16 @@ const paymentStatusLabel: Record<string, string> = {
 
 const whatsappStatusTone: Record<string, StatusTone> = {
   sent: 'approved',
+  delivered: 'approved',
+  read: 'approved',
   failed: 'danger',
   pending: 'pending',
 };
 
 const whatsappStatusLabel: Record<string, string> = {
   sent: 'Sent',
+  delivered: 'Delivered',
+  read: 'Read',
   failed: 'Failed',
   pending: 'Pending',
 };

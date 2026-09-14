@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+import inspect
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -494,6 +495,72 @@ class WhatsAppService:
             pass
         return True
 
+    async def _claim_stale_sending_log(self, existing: Any, cutoff_time: datetime) -> bool:
+        """
+        Atomically claim a stale SENDING log using a conditional update.
+        Succeeds only if the record is still:
+        - status = SENDING
+        - no wamid / meta_message_id
+        - older than 15 minutes (created_at <= cutoff_time)
+        - is_deleted = False
+
+        Only the request that successfully claims/updates that stale record
+        may continue with the new send. All other concurrent requests stop and return.
+        """
+        log_id = getattr(existing, "id", None) or getattr(existing, "_id", None)
+        if not log_id:
+            return False
+
+        st = (getattr(existing, "status", "") or "").upper()
+        claim_filter = {
+            "_id": log_id,
+            "status": "SENDING" if st == "SENDING" else st,
+            "wamid": {"$in": [None, ""]},
+            "meta_message_id": {"$in": [None, ""]},
+            "created_at": {"$lte": cutoff_time},
+            "is_deleted": False,
+        }
+        update_doc = {
+            "$set": {
+                "status": "FAILED",
+                "delivery_status": "failed",
+                "failed_at": now_utc(),
+                "error_message": "STALE_SENDING_RECOVERED",
+            }
+        }
+
+        try:
+            query = WhatsAppMessageLog.find(claim_filter)
+            update_fn = getattr(query, "update", None)
+            if callable(update_fn):
+                res = update_fn(update_doc)
+                if inspect.isawaitable(res):
+                    res = await res
+            else:
+                return False
+
+            mod_count = getattr(res, "modified_count", None)
+            if isinstance(mod_count, int):
+                claimed = mod_count > 0
+            else:
+                matched_count = getattr(res, "matched_count", None)
+                if isinstance(matched_count, int):
+                    claimed = matched_count > 0
+                else:
+                    claimed = bool(res)
+
+            if claimed:
+                existing.status = "FAILED"
+                existing.delivery_status = "failed"
+                existing.failed_at = now_utc()
+                existing.error_message = "STALE_SENDING_RECOVERED"
+                return True
+
+            return False
+        except Exception as claim_err:
+            logger.warning("Failed to atomically claim stale SENDING log %s: %s", log_id, claim_err)
+            return False
+
     async def send_template_message(
         self,
         salon_id: str,
@@ -501,7 +568,7 @@ class WhatsAppService:
         recipient_phone: str,
         message_type: str,
         template_name: str,
-        language_code: str = "en_US",
+        language_code: Optional[str] = None,
         template_variables: Optional[Dict[str, Any]] = None,
         reference_type: Optional[str] = None,
         reference_id: Optional[str] = None,
@@ -514,6 +581,8 @@ class WhatsAppService:
         Resolves credentials using unified resolve_sender_credentials(salon_id).
         Enforces phone validation, deduplication key, customer opt-in check, and complete audit logging.
         """
+        effective_language = (language_code or getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", None) or "en_US").strip()
+
         is_override = bool(settings.WHATSAPP_TEST_RECIPIENT_PHONE and settings.WHATSAPP_TEST_RECIPIENT_PHONE.strip())
         target_raw = settings.WHATSAPP_TEST_RECIPIENT_PHONE.strip() if is_override else (recipient_phone or "").strip()
         normalized_phone = normalize_phone_number(target_raw)
@@ -524,14 +593,58 @@ class WhatsAppService:
 
         # Deduplication check: prevent sending duplicate WhatsApp messages for same bill/appointment
         if deduplication_key:
-            existing = await WhatsAppMessageLog.find_one({
-                "deduplication_key": deduplication_key,
-                "status": {"$in": ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ"]},
-                "is_deleted": False,
-            })
+            existing = await WhatsAppMessageLog.find_one(
+                {
+                    "deduplication_key": deduplication_key,
+                    "is_deleted": False,
+                },
+                sort=[("created_at", -1)],
+            )
+
             if existing:
-                logger.info("Skipping duplicate WhatsApp message send for key=%s", deduplication_key)
-                return existing
+                st = (getattr(existing, "status", "") or "").upper()
+                # SENT / DELIVERED / READ -> always treat as already sent; never resend automatically
+                if st in ("SENT", "DELIVERED", "READ"):
+                    logger.info("Skipping duplicate WhatsApp message send for key=%s (already %s)", deduplication_key, st)
+                    return existing
+
+                # QUEUED / SENDING -> check if in progress or stale
+                if st in ("QUEUED", "SENDING"):
+                    has_wamid = bool(getattr(existing, "wamid", None) or getattr(existing, "meta_message_id", None))
+                    if has_wamid:
+                        logger.info("Skipping duplicate WhatsApp message send for key=%s (already dispatched with wamid=%s)", deduplication_key, getattr(existing, "wamid", None) or getattr(existing, "meta_message_id", None))
+                        return existing
+
+                    # Check age: timeout of 15 minutes (900 seconds)
+                    created_at = getattr(existing, "created_at", None)
+                    is_stale = False
+                    if created_at and isinstance(created_at, datetime):
+                        now = now_utc()
+                        if created_at.tzinfo is None:
+                            from datetime import timezone
+                            created_at = created_at.replace(tzinfo=timezone.utc)
+                        is_stale = (now - created_at).total_seconds() >= 900
+
+                    if not is_stale:
+                        logger.info("Skipping duplicate WhatsApp message send for key=%s (in-flight %s)", deduplication_key, st)
+                        return existing
+
+                    # Old/stale SENDING without wamid -> atomically claim before retrying
+                    cutoff_time = now_utc() - timedelta(minutes=15)
+                    claimed = await self._claim_stale_sending_log(existing, cutoff_time)
+                    if not claimed:
+                        logger.info(
+                            "Skipping duplicate WhatsApp message send for key=%s (concurrent request already claimed stale log)",
+                            deduplication_key,
+                        )
+                        return existing
+
+                    logger.warning(
+                        "Recovered stale %s log id=%s for key=%s; marked FAILED and allowing retry",
+                        st,
+                        getattr(existing, "id", None),
+                        deduplication_key,
+                    )
 
         # Resolve credentials using centralized resolver
         creds = await self.resolve_sender_credentials(salon_id)
@@ -551,11 +664,12 @@ class WhatsAppService:
                 delivery_status="FAILED",
                 error_message="NO_VALID_WHATSAPP_NUMBER",
                 template_name=template_name,
-                template_language=language_code,
+                template_language=effective_language,
                 template_variables=template_variables,
                 reference_type=reference_type,
                 reference_id=reference_id,
                 deduplication_key=deduplication_key,
+                invoice_id=reference_id if reference_type == "BILL" else None,
                 bill_id=reference_id if reference_type == "BILL" else None,
                 appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
                 attachment_type=attachment_type,
@@ -581,11 +695,12 @@ class WhatsAppService:
                 delivery_status="CANCELLED",
                 error_message="Customer has opted out of receiving WhatsApp messages.",
                 template_name=template_name,
-                template_language=language_code,
+                template_language=effective_language,
                 template_variables=template_variables,
                 reference_type=reference_type,
                 reference_id=reference_id,
                 deduplication_key=deduplication_key,
+                invoice_id=reference_id if reference_type == "BILL" else None,
                 bill_id=reference_id if reference_type == "BILL" else None,
                 appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
                 attachment_type=attachment_type,
@@ -609,11 +724,12 @@ class WhatsAppService:
                 delivery_status="FAILED",
                 error_message="WhatsApp credentials not configured for sender.",
                 template_name=template_name,
-                template_language=language_code,
+                template_language=effective_language,
                 template_variables=template_variables,
                 reference_type=reference_type,
                 reference_id=reference_id,
                 deduplication_key=deduplication_key,
+                invoice_id=reference_id if reference_type == "BILL" else None,
                 bill_id=reference_id if reference_type == "BILL" else None,
                 appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
                 attachment_type=attachment_type,
@@ -696,44 +812,58 @@ class WhatsAppService:
             message_type=message_type,
             status="SENDING",
             template_name=template_name,
-            template_language=language_code,
+            template_language=effective_language,
             template_variables=template_variables,
             reference_type=reference_type,
             reference_id=reference_id,
             deduplication_key=deduplication_key,
+            invoice_id=reference_id if reference_type == "BILL" else None,
             bill_id=reference_id if reference_type == "BILL" else None,
             appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
             attachment_type=attachment_type,
         )
         await log.insert()
 
-        # Send via provider
-        res = await self.provider.send_template_message(
-            phone_number_id=creds.phone_number_id,
-            access_token=creds.access_token,
-            to_phone=normalized_phone,
-            template_name=template_name,
-            language_code=language_code,
-            components=components,
-        )
+        # Send via provider wrapped in exception safety
+        try:
+            res = await self.provider.send_template_message(
+                phone_number_id=creds.phone_number_id,
+                access_token=creds.access_token,
+                to_phone=normalized_phone,
+                template_name=template_name,
+                language_code=effective_language,
+                components=components,
+            )
 
-        if res.get("success"):
-            log.status = "SENT"
-            log.delivery_status = "sent"
-            log.wamid = res.get("wamid")
-            log.meta_message_id = res.get("wamid")
-            log.sent_at = now_utc()
-            log.api_response = res.get("response_body")
-            await log.save()
-            logger.info("WhatsApp message sent successfully salon=%s wamid=%s recipient=%s sender=%s", salon_id, res.get("wamid"), normalized_phone, creds.sender_type)
-        else:
+            if res.get("success"):
+                log.status = "SENT"
+                log.delivery_status = "sent"
+                log.wamid = res.get("wamid")
+                log.meta_message_id = res.get("wamid")
+                log.sent_at = now_utc()
+                log.api_response = res.get("response_body")
+                await log.save()
+                logger.info("WhatsApp message sent successfully salon=%s wamid=%s recipient=%s sender=%s", salon_id, res.get("wamid"), normalized_phone, creds.sender_type)
+            else:
+                log.status = "FAILED"
+                log.delivery_status = "failed"
+                log.error_message = res.get("error_message") or "WhatsApp API error"
+                log.failed_at = now_utc()
+                log.api_response = res.get("response_body")
+                await log.save()
+                logger.error("WhatsApp message send failed salon=%s recipient=%s: %s", salon_id, normalized_phone, log.error_message)
+        except Exception as exc:
+            # Prevent log from remaining permanently in SENDING status on unexpected dispatch exception
+            safe_err = f"Provider dispatch error: {type(exc).__name__}: {str(exc)[:150]}"
             log.status = "FAILED"
             log.delivery_status = "failed"
-            log.error_message = res.get("error_message") or "WhatsApp API error"
             log.failed_at = now_utc()
-            log.api_response = res.get("response_body")
-            await log.save()
-            logger.error("WhatsApp message send failed salon=%s recipient=%s: %s", salon_id, normalized_phone, log.error_message)
+            log.error_message = safe_err
+            try:
+                await log.save()
+            except Exception as save_err:
+                logger.error("Failed to save failed WhatsApp message log: %s", save_err)
+            logger.error("Unexpected exception during WhatsApp dispatch for salon=%s recipient=%s: %s", salon_id, normalized_phone, safe_err)
 
         return log
 
@@ -830,46 +960,105 @@ class WhatsAppService:
 
         return updated_count
 
+    @staticmethod
+    def normalize_ui_status(raw_status: Optional[str]) -> str:
+        if not raw_status:
+            return "pending"
+        s = str(raw_status).lower().strip()
+        if s in ("queued", "sending", "pending"):
+            return "pending"
+        if s == "sent":
+            return "sent"
+        if s == "delivered":
+            return "delivered"
+        if s == "read":
+            return "read"
+        if s in ("failed", "cancelled"):
+            return "failed"
+        return s
+
     async def latest_status_for_bill(self, bill_id: str) -> str:
         log = await WhatsAppMessageLog.find(
-            {"bill_id": bill_id, "is_deleted": False}
+            {
+                "$or": [
+                    {"invoice_id": bill_id},
+                    {"bill_id": bill_id},
+                ],
+                "is_deleted": False,
+            }
         ).sort("-created_at").first_or_none()
-        return log.delivery_status or log.status if log else "pending"
+        if not log:
+            return "pending"
+        return self.normalize_ui_status(log.delivery_status or log.status)
 
     async def latest_status_for_invoice(self, invoice_id: str) -> str:
         log = await WhatsAppMessageLog.find(
-            {"invoice_id": invoice_id, "is_deleted": False}
+            {
+                "$or": [
+                    {"invoice_id": invoice_id},
+                    {"bill_id": invoice_id},
+                ],
+                "is_deleted": False,
+            }
         ).sort("-created_at").first_or_none()
-        return log.delivery_status or log.status if log else "pending"
+        if not log:
+            return "pending"
+        return self.normalize_ui_status(log.delivery_status or log.status)
 
     async def latest_statuses_for_invoices(self, invoice_ids: List[str]) -> Dict[str, str]:
         if not invoice_ids:
             return {}
+        target_ids = [str(x) for x in invoice_ids if x]
         logs = await WhatsAppMessageLog.find(
-            {"invoice_id": {"$in": invoice_ids}, "is_deleted": False}
+            {
+                "$or": [
+                    {"invoice_id": {"$in": target_ids}},
+                    {"bill_id": {"$in": target_ids}},
+                ],
+                "is_deleted": False,
+            }
         ).sort("-created_at").to_list()
         statuses: Dict[str, str] = {}
         for log in logs:
-            if log.invoice_id and log.invoice_id not in statuses:
-                statuses[log.invoice_id] = log.delivery_status or log.status or "pending"
+            inv_id = getattr(log, "invoice_id", None)
+            bill_id = getattr(log, "bill_id", None)
+            if not isinstance(inv_id, str):
+                inv_id = None
+            if not isinstance(bill_id, str):
+                bill_id = None
+
+            ref = inv_id or bill_id
+            norm_status = self.normalize_ui_status(log.delivery_status or log.status)
+            if ref and ref in target_ids and ref not in statuses:
+                statuses[ref] = norm_status
+            if inv_id and inv_id in target_ids and inv_id not in statuses:
+                statuses[inv_id] = norm_status
+            if bill_id and bill_id in target_ids and bill_id not in statuses:
+                statuses[bill_id] = norm_status
         return statuses
 
     async def latest_status_for_appointment(self, appointment_id: str) -> str:
         log = await WhatsAppMessageLog.find(
             {"appointment_id": appointment_id, "is_deleted": False}
         ).sort("-created_at").first_or_none()
-        return log.delivery_status or log.status if log else "pending"
+        if not log:
+            return "pending"
+        return self.normalize_ui_status(log.delivery_status or log.status)
 
     async def latest_statuses_for_appointments(self, appointment_ids: List[str]) -> Dict[str, str]:
         if not appointment_ids:
             return {}
+        target_ids = [str(x) for x in appointment_ids if x]
         logs = await WhatsAppMessageLog.find(
-            {"appointment_id": {"$in": appointment_ids}, "is_deleted": False}
+            {"appointment_id": {"$in": target_ids}, "is_deleted": False}
         ).sort("-created_at").to_list()
         statuses: Dict[str, str] = {}
         for log in logs:
-            if log.appointment_id and log.appointment_id not in statuses:
-                statuses[log.appointment_id] = log.delivery_status or log.status or "pending"
+            appt_id = getattr(log, "appointment_id", None)
+            if not isinstance(appt_id, str):
+                appt_id = None
+            if appt_id and appt_id in target_ids and appt_id not in statuses:
+                statuses[appt_id] = self.normalize_ui_status(log.delivery_status or log.status)
         return statuses
 
     async def send_on_appointment_submit(self, appointment_id: str) -> Optional[WhatsAppMessageLog]:

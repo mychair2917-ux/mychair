@@ -107,6 +107,133 @@ class BillingService:
             }
             return template_variables, None
 
+    async def _dispatch_billing_whatsapp(
+        self,
+        salon_id: str,
+        invoice: Invoice,
+        customer_id: Optional[str] = None,
+        customer_name: Optional[str] = None,
+        customer_phone: Optional[str] = None,
+        salon_name: Optional[str] = None,
+        send_whatsapp: bool = False,
+        send_bill_pdf: bool = False,
+    ) -> Optional[Any]:
+        """
+        Unified helper for dispatching billing WhatsApp notifications.
+        Decoupled safely so billing completion is never blocked by WhatsApp failures.
+        """
+        effective_send_whatsapp = bool(send_whatsapp)
+        effective_send_bill_pdf = bool(send_bill_pdf) if effective_send_whatsapp else False
+
+        if not effective_send_whatsapp:
+            import logging
+            logging.getLogger("billing").info(
+                "WhatsApp billing notification skipped for invoice %s (send_whatsapp is False)",
+                getattr(invoice, "id", None),
+            )
+            return None
+
+        phone = (customer_phone or getattr(invoice, "customer_phone", "") or "").strip()
+        if not phone:
+            import logging
+            logging.getLogger("billing").info(
+                "WhatsApp billing notification skipped for invoice %s: no recipient phone",
+                getattr(invoice, "id", None),
+            )
+            return None
+
+        try:
+            from app.core.config import settings
+            from app.services.whatsapp import whatsapp_service
+
+            creds = await whatsapp_service.resolve_sender_credentials(salon_id)
+            if not creds.is_valid:
+                import logging
+                logging.getLogger("billing").warning(
+                    "WhatsApp billing credentials invalid for salon %s (invoice %s)",
+                    salon_id,
+                    getattr(invoice, "id", None),
+                )
+                return None
+
+            account = creds.salon_account if creds.sender_type == "SALON" else None
+            if account and not account.features.get("billing_enabled", True):
+                return None
+
+            # Template selection
+            if not effective_send_bill_pdf:
+                template_name = settings.WHATSAPP_BILLING_TEMPLATE or "service_completion_thank_you"
+                attachment_type = "NONE"
+                document_url = None
+            else:
+                template_name = settings.WHATSAPP_BILLING_PDF_TEMPLATE or "service_completion_thank_you_with_bill"
+                attachment_type = "BILL_PDF"
+                from app.services.invoice_pdf import InvoicePDFService
+                pdf_svc = InvoicePDFService()
+                document_url = await pdf_svc.ensure_invoice_pdf_url(invoice)
+
+            if creds.sender_type == "SALON" and account and account.templates:
+                custom_key = "bill_receipt_pdf" if effective_send_bill_pdf else "bill_receipt"
+                if custom_key in account.templates:
+                    template_name = account.templates.get(custom_key, template_name)
+
+            real_client_name = (customer_name or getattr(invoice, "customer_name", "") or "").strip()
+            cid = customer_id or getattr(invoice, "customer_id", None)
+            if not real_client_name and cid:
+                try:
+                    from app.models.customer import Customer
+                    from beanie import PydanticObjectId
+                    cust = await Customer.find_one({"_id": PydanticObjectId(cid), "is_deleted": False})
+                    if cust:
+                        real_client_name = (cust.full_name or cust.first_name or "").strip()
+                except Exception:
+                    pass
+
+            real_salon_name = (salon_name or getattr(invoice, "salon_name", "") or "").strip()
+            if not real_salon_name and salon_id:
+                try:
+                    from app.models.salon import Salon
+                    from beanie import PydanticObjectId
+                    sal = await Salon.find_one({"_id": PydanticObjectId(salon_id), "is_deleted": False})
+                    if sal and sal.name:
+                        real_salon_name = sal.name.strip()
+                except Exception:
+                    pass
+
+            template_variables, components = self._build_billing_whatsapp_payload(
+                template_name=template_name,
+                client_name=real_client_name,
+                salon_name=real_salon_name,
+                invoice_number=getattr(invoice, "invoice_number", None),
+                total_amount=getattr(invoice, "total_amount", None),
+                document_url=document_url,
+                document_filename=f"{getattr(invoice, 'invoice_number', 'invoice')}.pdf",
+            )
+
+            language_code = getattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", None) or "en_US"
+
+            return await whatsapp_service.send_template_message(
+                salon_id=salon_id,
+                customer_id=cid,
+                recipient_phone=phone,
+                message_type="BILL_RECEIPT",
+                template_name=template_name,
+                language_code=language_code,
+                template_variables=template_variables,
+                components=components,
+                reference_type="BILL",
+                reference_id=str(getattr(invoice, "id", "")),
+                attachment_type=attachment_type,
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger("billing").warning(
+                "WhatsApp bill notification async dispatch exception for invoice %s (billing remains successful): %s",
+                getattr(invoice, "id", None),
+                exc,
+            )
+            return None
+
     async def create_invoice_from_appointment(
         self,
         appointment_id: str,
@@ -287,94 +414,16 @@ class BillingService:
                 continue
 
         # Decoupled WhatsApp notification trigger — billing completion is never blocked by WhatsApp failures
-        effective_send_whatsapp = bool(send_whatsapp)
-        effective_send_bill_pdf = bool(send_bill_pdf) if effective_send_whatsapp else False
-
-        if not effective_send_whatsapp:
-            import logging
-            logging.getLogger("billing").info(
-                "WhatsApp billing notification skipped for invoice %s (send_whatsapp is False)",
-                invoice.id,
-            )
-            return invoice
-
-        try:
-            from app.core.config import settings
-            from app.services.whatsapp import whatsapp_service
-
-            creds = await whatsapp_service.resolve_sender_credentials(salon_id)
-            if creds.is_valid:
-                account = creds.salon_account if creds.sender_type == "SALON" else None
-                if not account or account.features.get("billing_enabled", True):
-                    # Template selection
-                    if not effective_send_bill_pdf:
-                        template_name = settings.WHATSAPP_BILLING_TEMPLATE or "service_completion_thank_you"
-                        attachment_type = "NONE"
-                        document_url = None
-                    else:
-                        template_name = settings.WHATSAPP_BILLING_PDF_TEMPLATE or "service_completion_thank_you_with_bill"
-                        attachment_type = "BILL_PDF"
-                        # Generate actual invoice PDF
-                        from app.services.invoice_pdf import InvoicePDFService
-                        pdf_svc = InvoicePDFService()
-                        document_url = await pdf_svc.ensure_invoice_pdf_url(invoice)
-
-                    if creds.sender_type == "SALON" and account and account.templates:
-                        custom_key = "bill_receipt_pdf" if effective_send_bill_pdf else "bill_receipt"
-                        if custom_key in account.templates:
-                            template_name = account.templates.get(custom_key, template_name)
-
-                    real_client_name = (customer_name or invoice.customer_name or "").strip()
-                    if not real_client_name and customer_id:
-                        try:
-                            from app.models.customer import Customer
-                            from beanie import PydanticObjectId
-                            cust = await Customer.find_one({"_id": PydanticObjectId(customer_id), "is_deleted": False})
-                            if cust:
-                                real_client_name = (cust.full_name or cust.first_name or "").strip()
-                        except Exception:
-                            pass
-
-                    real_salon_name = (salon_name or invoice.salon_name or "").strip()
-                    if not real_salon_name and salon_id:
-                        try:
-                            from app.models.salon import Salon
-                            from beanie import PydanticObjectId
-                            sal = await Salon.find_one({"_id": PydanticObjectId(salon_id), "is_deleted": False})
-                            if sal and sal.name:
-                                real_salon_name = sal.name.strip()
-                        except Exception:
-                            pass
-
-                    template_variables, components = self._build_billing_whatsapp_payload(
-                        template_name=template_name,
-                        client_name=real_client_name,
-                        salon_name=real_salon_name,
-                        invoice_number=invoice.invoice_number,
-                        total_amount=invoice.total_amount,
-                        document_url=document_url,
-                        document_filename=f"{invoice.invoice_number}.pdf",
-                    )
-
-                    await whatsapp_service.send_template_message(
-                        salon_id=salon_id,
-                        customer_id=customer_id,
-                        recipient_phone=customer_phone,
-                        message_type="BILL_RECEIPT",
-                        template_name=template_name,
-                        template_variables=template_variables,
-                        components=components,
-                        reference_type="BILL",
-                        reference_id=str(invoice.id),
-                        attachment_type=attachment_type,
-                    )
-        except Exception as exc:
-            import logging
-            logging.getLogger("billing").warning(
-                "WhatsApp bill notification async dispatch exception for invoice %s (payment remains successful): %s",
-                invoice.id,
-                exc,
-            )
+        await self._dispatch_billing_whatsapp(
+            salon_id=salon_id,
+            invoice=invoice,
+            customer_id=customer_id,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            salon_name=salon_name,
+            send_whatsapp=send_whatsapp,
+            send_bill_pdf=send_bill_pdf,
+        )
 
         return invoice
 
@@ -454,66 +503,16 @@ class BillingService:
         await invoice.save()
 
         # Decoupled WhatsApp notification trigger on draft invoice finalization
-        try:
-            from app.core.config import settings
-            from app.services.whatsapp import whatsapp_service
-
-            creds = await whatsapp_service.resolve_sender_credentials(invoice.salon_id)
-            if creds.is_valid and invoice.customer_phone:
-                account = creds.salon_account if creds.sender_type == "SALON" else None
-                if not account or account.features.get("billing_enabled", True):
-                    template_name = settings.WHATSAPP_BILLING_TEMPLATE or "hello_world"
-                    if creds.sender_type == "SALON" and account and account.templates and "bill_receipt" in account.templates:
-                        template_name = account.templates.get("bill_receipt", template_name)
-
-                    real_client_name = (invoice.customer_name or "").strip()
-                    if not real_client_name and invoice.customer_id:
-                        try:
-                            from app.models.customer import Customer
-                            from beanie import PydanticObjectId
-                            cust = await Customer.find_one({"_id": PydanticObjectId(invoice.customer_id), "is_deleted": False})
-                            if cust:
-                                real_client_name = (cust.full_name or cust.first_name or "").strip()
-                        except Exception:
-                            pass
-
-                    real_salon_name = (invoice.salon_name or "").strip()
-                    if not real_salon_name and invoice.salon_id:
-                        try:
-                            from app.models.salon import Salon
-                            from beanie import PydanticObjectId
-                            sal = await Salon.find_one({"_id": PydanticObjectId(invoice.salon_id), "is_deleted": False})
-                            if sal and sal.name:
-                                real_salon_name = sal.name.strip()
-                        except Exception:
-                            pass
-
-                    template_variables, components = self._build_billing_whatsapp_payload(
-                        template_name=template_name,
-                        client_name=real_client_name,
-                        salon_name=real_salon_name,
-                        invoice_number=invoice.invoice_number,
-                        total_amount=invoice.total_amount,
-                    )
-
-                    await whatsapp_service.send_template_message(
-                        salon_id=invoice.salon_id,
-                        customer_id=invoice.customer_id,
-                        recipient_phone=invoice.customer_phone,
-                        message_type="BILL_RECEIPT",
-                        template_name=template_name,
-                        template_variables=template_variables,
-                        components=components,
-                        reference_type="BILL",
-                        reference_id=str(invoice.id),
-                    )
-        except Exception as exc:
-            import logging
-            logging.getLogger("billing").warning(
-                "WhatsApp bill notification dispatch exception on finalize for invoice %s (invoice remains finalized): %s",
-                invoice.id,
-                exc,
-            )
+        await self._dispatch_billing_whatsapp(
+            salon_id=invoice.salon_id,
+            invoice=invoice,
+            customer_id=invoice.customer_id,
+            customer_name=invoice.customer_name,
+            customer_phone=invoice.customer_phone,
+            salon_name=invoice.salon_name,
+            send_whatsapp=True,
+            send_bill_pdf=False,
+        )
 
         return invoice
 
@@ -727,5 +726,18 @@ class BillingService:
             invoice.notes = notes
 
         await invoice.save()
+
+        # Decoupled WhatsApp notification trigger on updated/finalized appointment invoice
+        await self._dispatch_billing_whatsapp(
+            salon_id=salon_id,
+            invoice=invoice,
+            customer_id=customer_id,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            salon_name=salon_name,
+            send_whatsapp=send_whatsapp,
+            send_bill_pdf=send_bill_pdf,
+        )
+
         return invoice
 
