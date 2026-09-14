@@ -507,6 +507,7 @@ class WhatsAppService:
         reference_id: Optional[str] = None,
         tenant_id: Optional[str] = None,
         components: Optional[List[Dict[str, Any]]] = None,
+        attachment_type: Optional[str] = None,
     ) -> WhatsAppMessageLog:
         """
         Generic, reusable multi-tenant message sending method.
@@ -557,6 +558,7 @@ class WhatsAppService:
                 deduplication_key=deduplication_key,
                 bill_id=reference_id if reference_type == "BILL" else None,
                 appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
+                attachment_type=attachment_type,
                 failed_at=now_utc(),
             )
             await log.insert()
@@ -586,6 +588,7 @@ class WhatsAppService:
                 deduplication_key=deduplication_key,
                 bill_id=reference_id if reference_type == "BILL" else None,
                 appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
+                attachment_type=attachment_type,
             )
             await log.insert()
             logger.info("Customer %s opted out of WhatsApp messages.", customer_id)
@@ -613,11 +616,73 @@ class WhatsAppService:
                 deduplication_key=deduplication_key,
                 bill_id=reference_id if reference_type == "BILL" else None,
                 appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
+                attachment_type=attachment_type,
                 failed_at=now_utc(),
             )
             await log.insert()
             logger.warning("WhatsApp credentials missing or invalid for salon=%s sender_type=%s", salon_id, creds.sender_type)
             return log
+
+        # Handle template-specific named parameters / components
+        if template_name in ("service_completion_thank_you", "service_completion_thank_you_with_bill"):
+            if components is None:
+                c_name = str((template_variables or {}).get("client_name") or "").strip()
+                s_name = str((template_variables or {}).get("salon_name") or "").strip()
+                s_repeat = str((template_variables or {}).get("salon_name_repeat") or "").strip()
+
+                if not c_name and customer_id:
+                    try:
+                        from app.models.customer import Customer
+                        from beanie import PydanticObjectId
+                        cust = await Customer.find_one({"_id": PydanticObjectId(customer_id), "is_deleted": False})
+                        if cust:
+                            c_name = (cust.full_name or cust.first_name or "").strip()
+                    except Exception:
+                        pass
+
+                if not s_name and salon_id:
+                    try:
+                        from app.models.salon import Salon
+                        from beanie import PydanticObjectId
+                        sal = await Salon.find_one({"_id": PydanticObjectId(salon_id), "is_deleted": False})
+                        if sal and sal.name:
+                            s_name = sal.name.strip()
+                    except Exception:
+                        pass
+
+                c_name = c_name or "Valued Customer"
+                s_name = s_name or "Salon"
+                s_repeat = s_repeat or s_name
+
+                template_variables = {
+                    "client_name": c_name,
+                    "salon_name": s_name,
+                    "salon_name_repeat": s_repeat,
+                }
+                components = [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {
+                                "type": "text",
+                                "parameter_name": "client_name",
+                                "text": c_name,
+                            },
+                            {
+                                "type": "text",
+                                "parameter_name": "salon_name",
+                                "text": s_name,
+                            },
+                            {
+                                "type": "text",
+                                "parameter_name": "salon_name_repeat",
+                                "text": s_repeat,
+                            },
+                        ],
+                    }
+                ]
+        elif template_name == "hello_world":
+            components = None
 
         # Create audit log with SENDING status
         log = WhatsAppMessageLog(
@@ -638,6 +703,7 @@ class WhatsAppService:
             deduplication_key=deduplication_key,
             bill_id=reference_id if reference_type == "BILL" else None,
             appointment_id=reference_id if reference_type == "APPOINTMENT" else None,
+            attachment_type=attachment_type,
         )
         await log.insert()
 

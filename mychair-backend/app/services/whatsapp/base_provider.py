@@ -16,6 +16,7 @@ class WhatsAppProvider(ABC):
         template_name: str,
         language_code: str = "en_US",
         components: Optional[list] = None,
+        document_header: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Send a WhatsApp template message."""
         pass

@@ -43,6 +43,7 @@ class WhatsAppMessageLog(BaseTenantDocument):
     invoice_id: Optional[str] = Field(default=None, index=True)
     bill_id: Optional[str] = Field(default=None, index=True)
     invoice_url: Optional[str] = Field(default=None)
+    attachment_type: Optional[str] = Field(default=None)  # NONE, BILL_PDF, etc.
     reward_points: int = Field(default=0)
     
     # Audit payloads and error handling

@@ -190,6 +190,7 @@ async def test_completed_bill_schedules_whatsapp_message(monkeypatch):
                 payment_method="CASH",
                 total_amount=500.0,
                 paid_amount=500.0,
+                send_whatsapp=True,
             )
 
             assert invoice is not None
@@ -381,6 +382,7 @@ async def test_meta_api_failure_does_not_fail_billing(monkeypatch):
                 payment_method="CASH",
                 total_amount=500.0,
                 paid_amount=500.0,
+                send_whatsapp=True,
             )
 
             assert invoice is not None
@@ -572,3 +574,333 @@ async def test_hybrid_and_salon_sender_modes(monkeypatch):
     assert salon_unconn.is_valid is False
     assert salon_unconn.phone_number_id is None
     assert salon_unconn.access_token is None
+
+
+# ==============================================================================
+# TEST P: WHATSAPP_BILLING_TEMPLATE=service_completion_thank_you named parameters
+# ==============================================================================
+@pytest.mark.asyncio
+async def test_billing_service_completion_thank_you_named_parameters(monkeypatch):
+    """
+    Verifies that when WHATSAPP_BILLING_TEMPLATE=service_completion_thank_you:
+    1. template_name is passed correctly as 'service_completion_thank_you'.
+    2. client_name contains the actual client's display name.
+    3. salon_name contains the actual salon name.
+    4. salon_name_repeat contains the exact same salon name.
+    5. Named Meta parameters (client_name, salon_name, salon_name_repeat) are built.
+    6. No hardcoded sample names are used.
+    """
+    monkeypatch.setattr(settings, "WHATSAPP_SENDER_MODE", "platform")
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "central-phone-id")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "central-token")
+    monkeypatch.setattr(settings, "WHATSAPP_BILLING_TEMPLATE", "service_completion_thank_you")
+    monkeypatch.setattr(settings, "WHATSAPP_TEST_RECIPIENT_PHONE", "")
+
+    from app.services.billing import BillingService
+    billing_service = BillingService()
+    billing_service._generate_invoice_number = AsyncMock(return_value="INV-2026-999")
+    billing_service.inventory_service = MagicMock()
+    billing_service.inventory_service.deduct_sold_product = AsyncMock()
+
+    mock_invoice = MagicMock()
+    mock_invoice.id = "inv-999"
+    mock_invoice.status = "FINALIZED"
+    mock_invoice.invoice_number = "INV-2026-999"
+    mock_invoice.total_amount = 750.0
+    mock_invoice.insert = AsyncMock()
+
+    mock_payment = MagicMock()
+    mock_payment.insert = AsyncMock()
+
+    actual_client = "Amit Sharma"
+    actual_salon = "Looks Salon Pune"
+
+    with patch("app.services.billing.Invoice") as mock_invoice_cls, \
+         patch("app.services.billing.Payment") as mock_payment_cls:
+        mock_invoice_cls.return_value = mock_invoice
+        mock_invoice_cls.find_one = AsyncMock(return_value=None)
+        mock_payment_cls.return_value = mock_payment
+        with patch("app.services.whatsapp.whatsapp_service.send_template_message", new_callable=AsyncMock) as mock_send_tpl:
+            mock_send_tpl.return_value = MagicMock(status="SENT")
+
+            invoice = await billing_service.create_invoice_from_appointment(
+                salon_id="salon-pune-1",
+                appointment_id="appt-pune-1",
+                salon_name=actual_salon,
+                salon_phone="9876543210",
+                salon_address="123 FC Road, Pune",
+                customer_id="cust-amit-1",
+                customer_name=actual_client,
+                customer_phone="9876543210",
+                services=[{"service_id": "s1", "name": "Hair Spa", "price": 750.0}],
+                products=[],
+                payment_status="PAID",
+                payment_method="UPI",
+                total_amount=750.0,
+                paid_amount=750.0,
+                send_whatsapp=True,
+            )
+
+            assert invoice is not None
+            mock_send_tpl.assert_called_once()
+            kwargs = mock_send_tpl.call_args.kwargs
+
+            # Check template name
+            assert kwargs["template_name"] == "service_completion_thank_you"
+            assert kwargs["message_type"] == "BILL_RECEIPT"
+            assert kwargs["recipient_phone"] == "9876543210"
+
+            # Check template variables
+            tpl_vars = kwargs["template_variables"]
+            assert tpl_vars["client_name"] == actual_client
+            assert tpl_vars["salon_name"] == actual_salon
+            assert tpl_vars["salon_name_repeat"] == actual_salon
+            assert tpl_vars["salon_name"] == tpl_vars["salon_name_repeat"]
+
+            # Confirm no hardcoded sample values
+            assert tpl_vars["client_name"] not in ["Rahul", "Test Customer"]
+            assert tpl_vars["salon_name"] not in ["Style Studio Salon", "MyChair Salon"]
+
+            # Check Meta Cloud API components structure
+            components = kwargs["components"]
+            assert isinstance(components, list) and len(components) == 1
+            body_comp = components[0]
+            assert body_comp["type"] == "body"
+            params = body_comp["parameters"]
+            assert len(params) == 3
+
+            param_dict = {p["parameter_name"]: p["text"] for p in params}
+            assert param_dict["client_name"] == actual_client
+            assert param_dict["salon_name"] == actual_salon
+            assert param_dict["salon_name_repeat"] == actual_salon
+            assert param_dict["salon_name"] == param_dict["salon_name_repeat"]
+
+
+# ==============================================================================
+# TEST Q: finalize_invoice with service_completion_thank_you
+# ==============================================================================
+@pytest.mark.asyncio
+async def test_finalize_invoice_service_completion_thank_you(monkeypatch):
+    """
+    Verifies that finalize_invoice uses service_completion_thank_you named parameters.
+    """
+    monkeypatch.setattr(settings, "WHATSAPP_SENDER_MODE", "platform")
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "central-phone-id")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "central-token")
+    monkeypatch.setattr(settings, "WHATSAPP_BILLING_TEMPLATE", "service_completion_thank_you")
+    monkeypatch.setattr(settings, "WHATSAPP_TEST_RECIPIENT_PHONE", "")
+
+    from app.services.billing import BillingService
+    billing_service = BillingService()
+
+    actual_client = "Priya Patel"
+    actual_salon = "Glamour Lounge Mumbai"
+
+    mock_draft = MagicMock()
+    mock_draft.id = "inv-draft-1"
+    mock_draft.status = "DRAFT"
+    mock_draft.salon_id = "salon-mum-1"
+    mock_draft.salon_name = actual_salon
+    mock_draft.customer_id = "cust-priya-1"
+    mock_draft.customer_name = actual_client
+    mock_draft.customer_phone = "9123456789"
+    mock_draft.invoice_number = "INV-2026-002"
+    mock_draft.total_amount = 1200.0
+    mock_draft.finalize = MagicMock()
+    mock_draft.save = AsyncMock()
+
+    billing_service.invoice_repo = MagicMock()
+    billing_service.invoice_repo.get = AsyncMock(return_value=mock_draft)
+
+    with patch("app.services.whatsapp.whatsapp_service.send_template_message", new_callable=AsyncMock) as mock_send_tpl:
+        mock_send_tpl.return_value = MagicMock(status="SENT")
+
+        finalized = await billing_service.finalize_invoice("inv-draft-1")
+        assert finalized is not None
+        mock_send_tpl.assert_called_once()
+        kwargs = mock_send_tpl.call_args.kwargs
+
+        assert kwargs["template_name"] == "service_completion_thank_you"
+        assert kwargs["template_variables"]["client_name"] == actual_client
+        assert kwargs["template_variables"]["salon_name"] == actual_salon
+        assert kwargs["template_variables"]["salon_name_repeat"] == actual_salon
+        assert kwargs["template_variables"]["salon_name"] == kwargs["template_variables"]["salon_name_repeat"]
+
+
+# ==============================================================================
+# TEST R: Meta failure on service_completion_thank_you does not fail billing
+# ==============================================================================
+@pytest.mark.asyncio
+async def test_service_completion_thank_you_failure_does_not_fail_billing(monkeypatch):
+    """
+    Verifies that billing succeeds even if WhatsApp raises an error when sending
+    service_completion_thank_you.
+    """
+    monkeypatch.setattr(settings, "WHATSAPP_SENDER_MODE", "platform")
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "central-phone-id")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "central-token")
+    monkeypatch.setattr(settings, "WHATSAPP_BILLING_TEMPLATE", "service_completion_thank_you")
+    monkeypatch.setattr(settings, "WHATSAPP_TEST_RECIPIENT_PHONE", "")
+
+    from app.services.billing import BillingService
+    billing_service = BillingService()
+    billing_service._generate_invoice_number = AsyncMock(return_value="INV-2026-003")
+    billing_service.inventory_service = MagicMock()
+    billing_service.inventory_service.deduct_sold_product = AsyncMock()
+
+    mock_invoice = MagicMock()
+    mock_invoice.id = "inv-fail-test"
+    mock_invoice.status = "FINALIZED"
+    mock_invoice.invoice_number = "INV-2026-003"
+    mock_invoice.total_amount = 500.0
+    mock_invoice.insert = AsyncMock()
+
+    mock_payment = MagicMock()
+    mock_payment.insert = AsyncMock()
+
+    with patch("app.services.billing.Invoice") as mock_invoice_cls, \
+         patch("app.services.billing.Payment") as mock_payment_cls:
+        mock_invoice_cls.return_value = mock_invoice
+        mock_invoice_cls.find_one = AsyncMock(return_value=None)
+        mock_payment_cls.return_value = mock_payment
+
+        with patch("app.services.whatsapp.whatsapp_service.send_template_message", AsyncMock(side_effect=RuntimeError("Meta 500 Server Error"))):
+            invoice = await billing_service.create_invoice_from_appointment(
+                salon_id="salon-123",
+                appointment_id="appt-123",
+                salon_name="Test Salon",
+                salon_phone="9876543210",
+                salon_address="123 Street",
+                customer_id="cust-123",
+                customer_name="Test Customer Name",
+                customer_phone="9876543210",
+                services=[],
+                products=[],
+                payment_status="PAID",
+                payment_method="CASH",
+                total_amount=500.0,
+                paid_amount=500.0,
+                send_whatsapp=True,
+            )
+            # Billing MUST remain successful
+            assert invoice is not None
+            assert invoice.status == "FINALIZED"
+
+
+# ==============================================================================
+# TEST S: MetaCloudApiProvider builds exact payload for service_completion_thank_you
+# ==============================================================================
+@pytest.mark.asyncio
+async def test_meta_provider_payload_for_service_completion_thank_you():
+    """
+    Verifies the exact Meta Cloud API HTTP payload for service_completion_thank_you
+    and verifies that hello_world does not include components.
+    """
+    from app.services.whatsapp.meta_provider import MetaCloudApiProvider
+    provider = MetaCloudApiProvider(api_version="v20.0")
+
+    captured_payloads = []
+
+    async def mock_post(url, json=None, headers=None):
+        captured_payloads.append(json)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "messages": [{"id": "wamid.test.123"}]
+        }
+        return mock_resp
+
+    components = [
+        {
+            "type": "body",
+            "parameters": [
+                {"type": "text", "parameter_name": "client_name", "text": "Amit Sharma"},
+                {"type": "text", "parameter_name": "salon_name", "text": "Looks Salon Pune"},
+                {"type": "text", "parameter_name": "salon_name_repeat", "text": "Looks Salon Pune"},
+            ],
+        }
+    ]
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_post):
+        # 1. service_completion_thank_you sends named components
+        res1 = await provider.send_template_message(
+            phone_number_id="phone-123",
+            access_token="token-abc",
+            to_phone="919876543210",
+            template_name="service_completion_thank_you",
+            language_code="en_US",
+            components=components,
+        )
+        assert res1["success"] is True
+        p1 = captured_payloads[0]
+        assert p1["messaging_product"] == "whatsapp"
+        assert p1["template"]["name"] == "service_completion_thank_you"
+        assert p1["template"]["language"]["code"] == "en_US"
+        assert p1["template"]["components"] == components
+
+        # 2. hello_world NEVER sends components
+        res2 = await provider.send_template_message(
+            phone_number_id="phone-123",
+            access_token="token-abc",
+            to_phone="919876543210",
+            template_name="hello_world",
+            language_code="en_US",
+            components=components,  # passed components should be stripped for hello_world
+        )
+        assert res2["success"] is True
+        p2 = captured_payloads[1]
+        assert p2["template"]["name"] == "hello_world"
+        assert "components" not in p2["template"]
+
+
+# ==============================================================================
+# TEST T: WhatsAppService sends service_completion_thank_you and logs correctly
+# ==============================================================================
+@pytest.mark.asyncio
+async def test_whatsapp_service_service_completion_thank_you_logging(monkeypatch):
+    """
+    Verifies WhatsAppService logs template_name and template_variables for
+    service_completion_thank_you without exposing access token.
+    """
+    monkeypatch.setattr(settings, "WHATSAPP_SENDER_MODE", "platform")
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "central-phone-999")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "central-token-secret")
+    monkeypatch.setattr(settings, "WHATSAPP_TEST_RECIPIENT_PHONE", "")
+
+    service = WhatsAppService()
+    service.get_salon_account = AsyncMock(return_value=None)
+
+    with patch.object(service.provider, "send_template_message", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = {
+            "success": True,
+            "status_code": 200,
+            "wamid": "wamid.named.001",
+            "error_message": None,
+        }
+        with patch("app.services.whatsapp.service.WhatsAppMessageLog", side_effect=make_mock_log) as mock_log_cls:
+            mock_log_cls.find_one = AsyncMock(return_value=None)
+
+            log = await service.send_template_message(
+                salon_id="salon-no-account",
+                customer_id=None,
+                recipient_phone="9876543210",
+                message_type="BILL_RECEIPT",
+                template_name="service_completion_thank_you",
+                template_variables={
+                    "client_name": "Amit Sharma",
+                    "salon_name": "Looks Salon Pune",
+                    "salon_name_repeat": "Looks Salon Pune",
+                },
+            )
+
+            mock_send.assert_called_once()
+            call_kwargs = mock_send.call_args.kwargs
+            assert call_kwargs["template_name"] == "service_completion_thank_you"
+            assert call_kwargs["components"] is not None
+
+            assert log.template_name == "service_completion_thank_you"
+            assert log.template_variables["client_name"] == "Amit Sharma"
+            assert log.template_variables["salon_name"] == "Looks Salon Pune"
+            assert log.template_variables["salon_name_repeat"] == "Looks Salon Pune"
+            assert not hasattr(log, "access_token")
+

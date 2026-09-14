@@ -1,5 +1,5 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 class InvoiceItemPayload(BaseModel):
     item_type: str = Field(..., description="SERVICE or PRODUCT")
@@ -16,6 +16,14 @@ class InvoiceCreate(BaseModel):
     customer_id: str
     appointment_id: Optional[str] = None
     items: List[InvoiceItemPayload] = Field(..., min_items=1)
+    send_whatsapp: bool = Field(default=False, description="Send outbound WhatsApp message upon billing completion")
+    send_bill_pdf: bool = Field(default=False, description="Attach generated invoice PDF to outbound WhatsApp message")
+
+    @model_validator(mode="after")
+    def validate_whatsapp_options(self) -> "InvoiceCreate":
+        if not self.send_whatsapp:
+            self.send_bill_pdf = False
+        return self
 
 
 class PaymentCreate(BaseModel):

@@ -21,6 +21,92 @@ class BillingService:
         salon_short = salon_id[-4:].upper()
         return f"INV-{salon_short}-{str(count + 1).zfill(4)}"
 
+    @staticmethod
+    def _build_billing_whatsapp_payload(
+        template_name: str,
+        client_name: Optional[str],
+        salon_name: Optional[str],
+        invoice_number: Optional[str] = None,
+        total_amount: Optional[float] = None,
+        document_url: Optional[str] = None,
+        document_filename: Optional[str] = None,
+    ) -> tuple[Optional[Dict[str, Any]], Optional[List[Dict[str, Any]]]]:
+        """
+        Builds template variables and Meta components for outbound billing WhatsApp templates.
+        Supports:
+          - 'service_completion_thank_you' (body named parameters, no PDF header)
+          - 'service_completion_thank_you_with_bill' (document header with invoice PDF + body named parameters)
+          - 'hello_world' (no variables)
+        """
+        if template_name in ("service_completion_thank_you", "service_completion_thank_you_with_bill"):
+            actual_client = (client_name or "").strip() or "Valued Customer"
+            actual_salon = (salon_name or "").strip() or "Salon"
+            actual_salon_repeat = actual_salon
+
+            template_variables = {
+                "client_name": actual_client,
+                "salon_name": actual_salon,
+                "salon_name_repeat": actual_salon_repeat,
+            }
+
+            components: List[Dict[str, Any]] = []
+
+            # Document header component for PDF billing template
+            if template_name == "service_completion_thank_you_with_bill":
+                doc_param: Dict[str, Any] = {}
+                if document_url:
+                    doc_param["link"] = document_url
+                if document_filename:
+                    doc_param["filename"] = document_filename
+                elif invoice_number:
+                    doc_param["filename"] = f"{invoice_number}.pdf"
+                else:
+                    doc_param["filename"] = "invoice.pdf"
+
+                components.append({
+                    "type": "header",
+                    "parameters": [
+                        {
+                            "type": "document",
+                            "document": doc_param,
+                        }
+                    ],
+                })
+
+            # Body component with named parameters
+            components.append({
+                "type": "body",
+                "parameters": [
+                    {
+                        "type": "text",
+                        "parameter_name": "client_name",
+                        "text": actual_client,
+                    },
+                    {
+                        "type": "text",
+                        "parameter_name": "salon_name",
+                        "text": actual_salon,
+                    },
+                    {
+                        "type": "text",
+                        "parameter_name": "salon_name_repeat",
+                        "text": actual_salon_repeat,
+                    },
+                ],
+            })
+            return template_variables, components
+        elif template_name == "hello_world":
+            return None, None
+        else:
+            # Fallback for custom templates
+            template_variables = {
+                "1": client_name or "Valued Customer",
+                "2": salon_name or "Salon",
+                "3": invoice_number or "",
+                "4": f"{total_amount:.2f}" if total_amount is not None else "0.00",
+            }
+            return template_variables, None
+
     async def create_invoice_from_appointment(
         self,
         appointment_id: str,
@@ -38,6 +124,8 @@ class BillingService:
         total_amount: float,
         paid_amount: float,
         notes: Optional[str] = None,
+        send_whatsapp: bool = False,
+        send_bill_pdf: bool = False,
     ) -> Invoice:
         """
         Auto-creates a finalized invoice from an appointment submission.
@@ -64,8 +152,11 @@ class BillingService:
                     total_amount=total_amount,
                     paid_amount=paid_amount,
                     notes=notes,
+                    send_whatsapp=send_whatsapp,
+                    send_bill_pdf=send_bill_pdf,
                 )
 
+        invoice_number = await self._generate_invoice_number(salon_id)
         invoice_items: List[InvoiceItem] = []
         subtotal = 0.0
         tax_amount = 0.0
@@ -104,8 +195,7 @@ class BillingService:
                 quantity = int(prod.get("quantity") or 1)
             except (TypeError, ValueError):
                 quantity = 1
-            if quantity < 1:
-                quantity = 1
+            quantity = max(1, quantity)
             line_subtotal = (unit_price * quantity) - discount
             line_tax = line_subtotal * (tax_rate / 100.0)
             subtotal += unit_price * quantity
@@ -114,7 +204,7 @@ class BillingService:
             invoice_items.append(
                 InvoiceItem(
                     item_type="PRODUCT",
-                    item_id=prod.get("product_id", ""),
+                    item_id=prod.get("product_id") or prod.get("id", ""),
                     salon_product_id=prod.get("salon_product_id"),
                     brand_id=prod.get("brand_id"),
                     name=prod.get("name", "Product"),
@@ -127,19 +217,10 @@ class BillingService:
                 )
             )
 
-        computed_total = total_amount if total_amount > 0 else (subtotal - discount_amount + tax_amount)
-
-        if payment_status == "PAID":
-            effective_paid = computed_total
-            remaining = 0.0
-        elif payment_status == "PENDING":
-            effective_paid = 0.0
-            remaining = computed_total
-        else:  # PARTIALLY_PAID
-            effective_paid = min(paid_amount, computed_total)
-            remaining = computed_total - effective_paid
-
-        invoice_number = await self._generate_invoice_number(salon_id)
+        computed_total = round((subtotal - discount_amount) + tax_amount, 2)
+        effective_total = float(total_amount) if total_amount is not None else computed_total
+        effective_paid = float(paid_amount) if paid_amount is not None else effective_total
+        remaining = max(0.0, effective_total - effective_paid)
 
         invoice = Invoice(
             salon_id=salon_id,
@@ -151,15 +232,15 @@ class BillingService:
             customer_phone=customer_phone,
             appointment_id=appointment_id,
             invoice_number=invoice_number,
-            notes=notes,
             status="FINALIZED",
             payment_status=payment_status,
             payment_method=payment_method,
+            notes=notes,
             items=invoice_items,
             subtotal=round(subtotal, 2),
             tax_amount=round(tax_amount, 2),
             discount_amount=round(discount_amount, 2),
-            total_amount=round(computed_total, 2),
+            total_amount=round(effective_total, 2),
             paid_amount=round(effective_paid, 2),
             remaining_amount=round(remaining, 2),
             finalized_at=now_utc(),
@@ -167,7 +248,7 @@ class BillingService:
         await invoice.insert()
 
         # Record initial paid amount in the payment ledger (partial or full).
-        if round(effective_paid, 2) > 0.01:
+        if effective_paid > 0:
             installment_number = 1
             note = build_payment_history_note(
                 status_before="PENDING",
@@ -206,6 +287,17 @@ class BillingService:
                 continue
 
         # Decoupled WhatsApp notification trigger — billing completion is never blocked by WhatsApp failures
+        effective_send_whatsapp = bool(send_whatsapp)
+        effective_send_bill_pdf = bool(send_bill_pdf) if effective_send_whatsapp else False
+
+        if not effective_send_whatsapp:
+            import logging
+            logging.getLogger("billing").info(
+                "WhatsApp billing notification skipped for invoice %s (send_whatsapp is False)",
+                invoice.id,
+            )
+            return invoice
+
         try:
             from app.core.config import settings
             from app.services.whatsapp import whatsapp_service
@@ -214,9 +306,55 @@ class BillingService:
             if creds.is_valid:
                 account = creds.salon_account if creds.sender_type == "SALON" else None
                 if not account or account.features.get("billing_enabled", True):
-                    template_name = settings.WHATSAPP_BILLING_TEMPLATE or "hello_world"
-                    if creds.sender_type == "SALON" and account and account.templates and "bill_receipt" in account.templates:
-                        template_name = account.templates.get("bill_receipt", template_name)
+                    # Template selection
+                    if not effective_send_bill_pdf:
+                        template_name = settings.WHATSAPP_BILLING_TEMPLATE or "service_completion_thank_you"
+                        attachment_type = "NONE"
+                        document_url = None
+                    else:
+                        template_name = settings.WHATSAPP_BILLING_PDF_TEMPLATE or "service_completion_thank_you_with_bill"
+                        attachment_type = "BILL_PDF"
+                        # Generate actual invoice PDF
+                        from app.services.invoice_pdf import InvoicePDFService
+                        pdf_svc = InvoicePDFService()
+                        document_url = await pdf_svc.ensure_invoice_pdf_url(invoice)
+
+                    if creds.sender_type == "SALON" and account and account.templates:
+                        custom_key = "bill_receipt_pdf" if effective_send_bill_pdf else "bill_receipt"
+                        if custom_key in account.templates:
+                            template_name = account.templates.get(custom_key, template_name)
+
+                    real_client_name = (customer_name or invoice.customer_name or "").strip()
+                    if not real_client_name and customer_id:
+                        try:
+                            from app.models.customer import Customer
+                            from beanie import PydanticObjectId
+                            cust = await Customer.find_one({"_id": PydanticObjectId(customer_id), "is_deleted": False})
+                            if cust:
+                                real_client_name = (cust.full_name or cust.first_name or "").strip()
+                        except Exception:
+                            pass
+
+                    real_salon_name = (salon_name or invoice.salon_name or "").strip()
+                    if not real_salon_name and salon_id:
+                        try:
+                            from app.models.salon import Salon
+                            from beanie import PydanticObjectId
+                            sal = await Salon.find_one({"_id": PydanticObjectId(salon_id), "is_deleted": False})
+                            if sal and sal.name:
+                                real_salon_name = sal.name.strip()
+                        except Exception:
+                            pass
+
+                    template_variables, components = self._build_billing_whatsapp_payload(
+                        template_name=template_name,
+                        client_name=real_client_name,
+                        salon_name=real_salon_name,
+                        invoice_number=invoice.invoice_number,
+                        total_amount=invoice.total_amount,
+                        document_url=document_url,
+                        document_filename=f"{invoice.invoice_number}.pdf",
+                    )
 
                     await whatsapp_service.send_template_message(
                         salon_id=salon_id,
@@ -224,14 +362,11 @@ class BillingService:
                         recipient_phone=customer_phone,
                         message_type="BILL_RECEIPT",
                         template_name=template_name,
-                        template_variables={
-                            "1": customer_name,
-                            "2": salon_name,
-                            "3": invoice.invoice_number,
-                            "4": f"{invoice.total_amount:.2f}",
-                        },
+                        template_variables=template_variables,
+                        components=components,
                         reference_type="BILL",
                         reference_id=str(invoice.id),
+                        attachment_type=attachment_type,
                     )
         except Exception as exc:
             import logging
@@ -331,18 +466,44 @@ class BillingService:
                     if creds.sender_type == "SALON" and account and account.templates and "bill_receipt" in account.templates:
                         template_name = account.templates.get("bill_receipt", template_name)
 
+                    real_client_name = (invoice.customer_name or "").strip()
+                    if not real_client_name and invoice.customer_id:
+                        try:
+                            from app.models.customer import Customer
+                            from beanie import PydanticObjectId
+                            cust = await Customer.find_one({"_id": PydanticObjectId(invoice.customer_id), "is_deleted": False})
+                            if cust:
+                                real_client_name = (cust.full_name or cust.first_name or "").strip()
+                        except Exception:
+                            pass
+
+                    real_salon_name = (invoice.salon_name or "").strip()
+                    if not real_salon_name and invoice.salon_id:
+                        try:
+                            from app.models.salon import Salon
+                            from beanie import PydanticObjectId
+                            sal = await Salon.find_one({"_id": PydanticObjectId(invoice.salon_id), "is_deleted": False})
+                            if sal and sal.name:
+                                real_salon_name = sal.name.strip()
+                        except Exception:
+                            pass
+
+                    template_variables, components = self._build_billing_whatsapp_payload(
+                        template_name=template_name,
+                        client_name=real_client_name,
+                        salon_name=real_salon_name,
+                        invoice_number=invoice.invoice_number,
+                        total_amount=invoice.total_amount,
+                    )
+
                     await whatsapp_service.send_template_message(
                         salon_id=invoice.salon_id,
                         customer_id=invoice.customer_id,
                         recipient_phone=invoice.customer_phone,
                         message_type="BILL_RECEIPT",
                         template_name=template_name,
-                        template_variables={
-                            "1": invoice.customer_name or "Valued Customer",
-                            "2": invoice.salon_name or "Salon",
-                            "3": invoice.invoice_number,
-                            "4": f"{invoice.total_amount:.2f}",
-                        },
+                        template_variables=template_variables,
+                        components=components,
                         reference_type="BILL",
                         reference_id=str(invoice.id),
                     )
@@ -446,6 +607,8 @@ class BillingService:
         total_amount: float,
         paid_amount: float,
         notes: Optional[str] = None,
+        send_whatsapp: bool = False,
+        send_bill_pdf: bool = False,
     ) -> Optional[Invoice]:
         """
         Updates an existing Invoice record when an appointment is edited.
@@ -470,6 +633,8 @@ class BillingService:
                 total_amount=total_amount,
                 paid_amount=paid_amount,
                 notes=notes,
+                send_whatsapp=send_whatsapp,
+                send_bill_pdf=send_bill_pdf,
             )
 
         invoice_items: List[InvoiceItem] = []

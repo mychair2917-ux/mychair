@@ -123,6 +123,8 @@ class FrontDeskAppointmentCreate(BaseModel):
     total_amount: float = Field(..., ge=0)
     booking_source: str = Field(default="WALK_IN")
     notes: Optional[str] = None
+    send_whatsapp: bool = Field(default=False, description="Send outbound WhatsApp message upon billing completion")
+    send_bill_pdf: bool = Field(default=False, description="Attach generated invoice PDF to outbound WhatsApp message")
 
     @field_validator("payment_type")
     @classmethod
@@ -142,6 +144,10 @@ class FrontDeskAppointmentCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_line_items(self) -> "FrontDeskAppointmentCreate":
+        # Normalize invalid combination: if not send_whatsapp, force send_bill_pdf = False
+        if not self.send_whatsapp:
+            self.send_bill_pdf = False
+
         if not self.services and not self.products:
             raise ValueError("At least one service or product is required")
         if self.payment_status == "PARTIALLY_PAID":

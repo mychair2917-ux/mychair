@@ -1514,6 +1514,8 @@ const Appointments: React.FC = () => {
   const [showOosConfirmModal, setShowOosConfirmModal] = useState(false);
   const [oosProductsToConfirm, setOosProductsToConfirm] = useState<string[]>([]);
   const [pendingSubmitData, setPendingSubmitData] = useState<CreateFrontDeskAppointmentRequest | null>(null);
+  const [sendWhatsApp, setSendWhatsApp] = useState<boolean>(false);
+  const [sendBillPdf, setSendBillPdf] = useState<boolean>(false);
 
   const { data: servicesData, isLoading: isLoadingSalonServices } = useGetAppointmentSalonServicesQuery(
     { salon_id: salonId },
@@ -1917,6 +1919,8 @@ const Appointments: React.FC = () => {
     setPaymentStatus('');
     setPaymentMethod('');
     setNotes('');
+    setSendWhatsApp(false);
+    setSendBillPdf(false);
     setClientSearch('');
     setQuickAddOpen(false);
     setClientForm({ name: '', phone: '', email: '', gender: '', dob: '', anniversary_date: '', is_member: false });
@@ -2015,6 +2019,8 @@ const Appointments: React.FC = () => {
       total_amount: finalTotal,
       booking_source: selectedAppointmentForBilling ? 'APPOINTMENT' : 'WALK_IN',
       notes: notes.trim() || undefined,
+      send_whatsapp: sendWhatsApp,
+      send_bill_pdf: sendWhatsApp ? sendBillPdf : false,
     };
 
     const oosProducts = productRowsToSubmit
@@ -2867,6 +2873,58 @@ const Appointments: React.FC = () => {
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                 />
+
+                {/* Optional WhatsApp outbound controls */}
+                <div className="space-y-3 rounded-2xl border border-[var(--color-border-soft)] bg-[var(--color-surface-muted)]/40 p-3.5">
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      id="billing-send-whatsapp"
+                      checked={sendWhatsApp}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setSendWhatsApp(checked);
+                        if (!checked) {
+                          setSendBillPdf(false);
+                        }
+                      }}
+                      className="mt-0.5 h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-brand-gold-dark)] focus:ring-[var(--color-brand-gold)]"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-[var(--color-text-primary)]">
+                        Send WhatsApp
+                      </span>
+                      <span className="text-[11px] leading-tight text-[var(--color-text-secondary)]">
+                        Send a service completion message to the client's WhatsApp number.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={cn(
+                      'flex items-start gap-2.5 select-none transition-opacity',
+                      sendWhatsApp ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      id="billing-send-bill-pdf"
+                      disabled={!sendWhatsApp}
+                      checked={sendBillPdf}
+                      onChange={(e) => setSendBillPdf(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-brand-gold-dark)] focus:ring-[var(--color-brand-gold)] disabled:cursor-not-allowed"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-[var(--color-text-primary)]">
+                        Send Bill PDF
+                      </span>
+                      <span className="text-[11px] leading-tight text-[var(--color-text-secondary)]">
+                        Attach the generated invoice PDF to the WhatsApp message.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
                 <Button
                   fullWidth
                   type="button"

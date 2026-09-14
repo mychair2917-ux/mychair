@@ -412,6 +412,8 @@ class AppointmentService:
         notes: Optional[str] = None,
         booking_source: str = "WALK_IN",
         appointment_id: Optional[str] = None,
+        send_whatsapp: bool = False,
+        send_bill_pdf: bool = False,
     ) -> Appointment:
         """
         Creates a receptionist/POS appointment with per-service staff assignments.
@@ -794,6 +796,8 @@ class AppointmentService:
                     total_amount=effective_total_amount,
                     paid_amount=effective_paid,
                     notes=appointment.notes,
+                    send_whatsapp=send_whatsapp,
+                    send_bill_pdf=send_bill_pdf,
                 )
             else:
                 await self.billing_service.create_invoice_from_appointment(
@@ -812,6 +816,8 @@ class AppointmentService:
                     total_amount=effective_total_amount,
                     paid_amount=effective_paid,
                     notes=appointment.notes,
+                    send_whatsapp=send_whatsapp,
+                    send_bill_pdf=send_bill_pdf,
                 )
         except Exception:
             # Invoice creation failure must not block appointment creation

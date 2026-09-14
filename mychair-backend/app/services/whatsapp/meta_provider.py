@@ -66,6 +66,7 @@ class MetaCloudApiProvider(WhatsAppProvider):
         template_name: str,
         language_code: str = "en_US",
         components: Optional[List[Dict[str, Any]]] = None,
+        document_header: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Sends a Meta-approved template message via WhatsApp Cloud API."""
         url = self._graph_messages_url(phone_number_id)
@@ -74,12 +75,27 @@ class MetaCloudApiProvider(WhatsAppProvider):
             "Content-Type": "application/json",
         }
 
+        # If document_header is provided, ensure a document header component is injected
+        final_components = list(components) if components is not None else []
+        if document_header:
+            doc_comp = {
+                "type": "header",
+                "parameters": [
+                    {
+                        "type": "document",
+                        "document": document_header,
+                    }
+                ],
+            }
+            if not any(c.get("type") == "header" for c in final_components):
+                final_components.insert(0, doc_comp)
+
         template_payload: Dict[str, Any] = {
             "name": template_name,
             "language": {"code": language_code},
         }
-        if components:
-            template_payload["components"] = components
+        if final_components and template_name != "hello_world":
+            template_payload["components"] = final_components
 
         payload = {
             "messaging_product": "whatsapp",

@@ -802,6 +802,8 @@ async def create_frontdesk_booking(
         notes=payload.notes,
         booking_source=payload.booking_source,
         appointment_id=payload.appointment_id,
+        send_whatsapp=payload.send_whatsapp,
+        send_bill_pdf=payload.send_bill_pdf,
     )
     await manager.broadcast_to_salon(
         tenant_id=_effective_tenant_id(current_user),

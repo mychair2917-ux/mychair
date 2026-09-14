@@ -1,7 +1,7 @@
 import logging
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.config import settings
 from app.models.bill import Bill
@@ -25,18 +25,27 @@ class InvoicePDFService:
         return f"{base_url}/static/invoices/{filename}"
 
     async def ensure_bill_pdf_url(self, bill: Bill) -> Optional[str]:
-        filename = f"{_safe_filename(bill.bill_number)}-{str(bill.id)}.pdf"
+        return await self.ensure_invoice_pdf_url(bill)
+
+    async def ensure_invoice_pdf_url(self, invoice_or_bill: Any) -> Optional[str]:
+        inv_number = (
+            getattr(invoice_or_bill, "invoice_number", None)
+            or getattr(invoice_or_bill, "bill_number", None)
+            or "INV"
+        )
+        inv_id = str(getattr(invoice_or_bill, "id", "doc"))
+        filename = f"{_safe_filename(inv_number)}-{inv_id}.pdf"
         path = self.invoice_dir / filename
         try:
             self.invoice_dir.mkdir(parents=True, exist_ok=True)
             if not path.exists():
-                self._write_pdf(path, bill)
+                self._write_pdf(path, invoice_or_bill)
             return self._public_url_for(filename)
         except Exception as exc:
-            logger.error("Invoice PDF generation failed for bill %s: %s", bill.id, exc)
+            logger.error("Invoice PDF generation failed for doc %s: %s", inv_id, exc)
             return None
 
-    def _write_pdf(self, path: Path, bill: Bill) -> None:
+    def _write_pdf(self, path: Path, bill: Any) -> None:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet
@@ -53,23 +62,33 @@ class InvoicePDFService:
             bottomMargin=16 * mm,
         )
 
+        salon_name = getattr(bill, "salon_name", None) or "Salon"
+        inv_num = getattr(bill, "invoice_number", None) or getattr(bill, "bill_number", "INV")
+        customer_name = getattr(bill, "customer_name", None) or "Customer"
+        customer_phone = getattr(bill, "customer_phone", None) or "-"
+
         story = [
-            Paragraph(bill.salon_name or "Salon", styles["Title"]),
-            Paragraph(f"Invoice: {bill.bill_number}", styles["Normal"]),
-            Paragraph(f"Customer: {bill.customer_name or 'Customer'}", styles["Normal"]),
-            Paragraph(f"Phone: {bill.customer_phone or '-'}", styles["Normal"]),
+            Paragraph(salon_name, styles["Title"]),
+            Paragraph(f"Invoice: {inv_num}", styles["Normal"]),
+            Paragraph(f"Customer: {customer_name}", styles["Normal"]),
+            Paragraph(f"Phone: {customer_phone}", styles["Normal"]),
             Spacer(1, 8 * mm),
         ]
 
         rows = [["Item", "Qty", "Rate", "Tax", "Total"]]
-        for item in bill.items:
+        for item in getattr(bill, "items", []):
+            tax_amt = getattr(item, "tax_amount", 0.0)
+            line_tot = getattr(item, "total", None) or getattr(item, "line_total", None)
+            if line_tot is None:
+                discount = getattr(item, "discount", 0.0)
+                line_tot = (item.unit_price * item.quantity - discount) + tax_amt
             rows.append(
                 [
                     item.name,
                     str(item.quantity),
                     f"Rs. {item.unit_price:.2f}",
-                    f"Rs. {item.tax_amount:.2f}",
-                    f"Rs. {item.line_total:.2f}",
+                    f"Rs. {tax_amt:.2f}",
+                    f"Rs. {line_tot:.2f}",
                 ]
             )
 
@@ -92,16 +111,16 @@ class InvoicePDFService:
             [
                 table,
                 Spacer(1, 8 * mm),
-                Paragraph(f"Subtotal: Rs. {bill.subtotal:.2f}", styles["Normal"]),
-                Paragraph(f"Tax: Rs. {bill.tax_amount:.2f}", styles["Normal"]),
-                Paragraph(f"Total: Rs. {bill.total_amount:.2f}", styles["Heading3"]),
-                Paragraph(f"Paid: Rs. {bill.paid_amount:.2f}", styles["Normal"]),
-                Paragraph(f"Remaining: Rs. {bill.remaining_amount:.2f}", styles["Normal"]),
-                Paragraph(f"Payment status: {bill.payment_status}", styles["Normal"]),
+                Paragraph(f"Subtotal: Rs. {getattr(bill, 'subtotal', 0.0):.2f}", styles["Normal"]),
+                Paragraph(f"Tax: Rs. {getattr(bill, 'tax_amount', 0.0):.2f}", styles["Normal"]),
+                Paragraph(f"Total: Rs. {getattr(bill, 'total_amount', 0.0):.2f}", styles["Heading3"]),
+                Paragraph(f"Paid: Rs. {getattr(bill, 'paid_amount', 0.0):.2f}", styles["Normal"]),
+                Paragraph(f"Remaining: Rs. {getattr(bill, 'remaining_amount', 0.0):.2f}", styles["Normal"]),
+                Paragraph(f"Payment status: {getattr(bill, 'payment_status', 'PENDING')}", styles["Normal"]),
             ]
         )
 
-        history = list(bill.payment_history or [])
+        history = list(getattr(bill, "payment_history", None) or [])
         if history:
             story.append(Spacer(1, 6 * mm))
             story.append(Paragraph("Payment History", styles["Heading3"]))
@@ -111,7 +130,7 @@ class InvoicePDFService:
                     [
                         str(entry.installment_number),
                         f"Rs. {entry.amount:.2f}",
-                        entry.payment_method or bill.payment_method or "-",
+                        entry.payment_method or getattr(bill, "payment_method", None) or "-",
                         entry.status_after,
                         f"Rs. {entry.remaining_amount_after:.2f}",
                         entry.note or "-",

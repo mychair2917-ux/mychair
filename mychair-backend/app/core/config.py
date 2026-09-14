@@ -128,7 +128,11 @@ class Settings(BaseSettings):
     )
     WHATSAPP_BILLING_TEMPLATE: str = Field(
         default="hello_world",
-        description="Meta-approved template for outbound billing receipts",
+        description="Meta-approved template for outbound billing receipts (text-only)",
+    )
+    WHATSAPP_BILLING_PDF_TEMPLATE: str = Field(
+        default="service_completion_thank_you_with_bill",
+        description="Meta-approved template for outbound billing receipts with invoice PDF document header",
     )
 
     def validate_whatsapp_platform_config(self) -> List[str]:

@@ -149,6 +149,8 @@ export interface CreateFrontDeskAppointmentRequest {
   total_amount: number;
   booking_source: string;
   notes?: string;
+  send_whatsapp?: boolean;
+  send_bill_pdf?: boolean;
 }
 
 export interface QuickAppointmentRequest {
