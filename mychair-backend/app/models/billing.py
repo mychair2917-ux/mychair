@@ -97,6 +97,8 @@ class Invoice(BaseTenantDocument):
     appointment_id: Optional[str] = Field(default=None, index=True)
 
     invoice_number: str = Field(..., index=True)  # e.g. "INV-A1B2-0001"
+    original_bill_reference: Optional[str] = Field(default=None, index=True)
+    import_batch_id: Optional[str] = Field(default=None, index=True)
     status: str = Field(default="FINALIZED", index=True)  # FINALIZED, VOIDED
 
     # Payment tracking
@@ -121,6 +123,8 @@ class Invoice(BaseTenantDocument):
             "tenant_id",
             "salon_id",
             "invoice_number",
+            "original_bill_reference",
+            "import_batch_id",
             "status",
             "payment_status",
             "is_deleted",

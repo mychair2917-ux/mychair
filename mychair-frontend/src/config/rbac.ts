@@ -265,7 +265,7 @@ function financeChildren(
   enabledFeatures?: string[] | null
 ): SidebarNavChild[] {
   const items: { name: string; key: string; segment: string }[] = [
-    { name: 'Bills', key: BILLING_PERMISSION_KEYS.BILLS, segment: 'bills' },
+    { name: 'History and Billing', key: BILLING_PERMISSION_KEYS.BILLS, segment: 'bills' },
     { name: 'Payroll', key: BILLING_PERMISSION_KEYS.PAYROLL, segment: 'payroll' },
     { name: 'Expenses', key: BILLING_PERMISSION_KEYS.EXPENSES, segment: 'expenses' },
   ];

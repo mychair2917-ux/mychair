@@ -80,6 +80,16 @@ export const API_PATHS = {
   BILLING: {
     BILLS: '/billing/bills',
     BILL_DETAIL: (id: string) => `/billing/bills/${id}`,
+    BULK_TEMPLATE_SERVICE: '/billing/bulk-upload/templates/service',
+    BULK_TEMPLATE_PRODUCT: '/billing/bulk-upload/templates/product',
+    BULK_VALIDATE: '/billing/bulk-upload/validate',
+    BULK_CONFIRM: '/billing/bulk-upload/confirm',
+    BULK_BATCHES: '/billing/bulk-upload/batches',
+    BULK_BATCH_DETAIL: (id: string) => `/billing/bulk-upload/batches/${id}`,
+    BULK_FAILED_RECORDS: (id: string) => `/billing/bulk-upload/batches/${id}/failed-records`,
+    BULK_SUMMARY: (id: string) => `/billing/bulk-upload/batches/${id}/summary`,
+    BULK_GENERATED_CLIENT_IDS: (id: string) => `/billing/bulk-upload/batches/${id}/generated-client-ids`,
+    BULK_EDIT_ROW: (batchId: string, excelRow: number) => `/billing/bulk-upload/batches/${batchId}/rows/${excelRow}`,
   },
   EXPENSES: {
     LIST: '/expenses',

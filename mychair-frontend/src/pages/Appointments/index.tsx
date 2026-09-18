@@ -11,10 +11,12 @@ import {
   Search,
   Sparkles,
   Trash2,
+  UploadCloud,
   UserPlus,
 } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
+import BulkBillingModal from '../../components/billing/BulkBillingModal';
 import { Button, CommonDropdown, Input, Modal, Select } from '../../components/common';
 import ModalBody from '../../components/common/Modal/ModalBody';
 import ModalFooter from '../../components/common/Modal/ModalFooter';
@@ -1018,6 +1020,11 @@ const AppointmentListTab: React.FC<{
 
   const userRole = useAppSelector((state) => state.auth.user?.role);
   const canEdit = canEditAppointment(userRole);
+  const normalizedUserRole = normalizeRole(userRole);
+  const isEmployeeOnly = normalizedUserRole === ROLES.EMPLOYEE || normalizedUserRole === ROLES.USER;
+  const canBulkUpload = !isEmployeeOnly;
+
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
 
   const [fetchBillByAppointment] = useLazyGetBillByAppointmentQuery();
   const [fetchBillDetail] = useLazyGetBillDetailQuery();
@@ -1054,7 +1061,7 @@ const AppointmentListTab: React.FC<{
     }, 400);
   };
 
-  const { data, isLoading, isFetching, isError } = useListAppointmentsQuery(
+  const { data, isLoading, isFetching, isError, refetch } = useListAppointmentsQuery(
     {
       salon_id: salonId,
       page,
@@ -1137,6 +1144,17 @@ const AppointmentListTab: React.FC<{
         >
           Date {sortOrder === 'desc' ? '↓' : '↑'}
         </Button>
+        {canBulkUpload && (
+          <Button
+            id="btn-bulk-upload-appointments"
+            type="button"
+            className="!px-4 !py-2 text-xs font-bold rounded-xl bg-[var(--color-brand-gold)] hover:brightness-105 text-white gap-2 shadow-xs ml-auto flex items-center whitespace-nowrap"
+            icon={<UploadCloud className="h-4 w-4 text-white" />}
+            onClick={() => setBulkModalOpen(true)}
+          >
+            Bulk Upload
+          </Button>
+        )}
         {isFetching && !isLoading && (
           <span className="text-xs text-[var(--color-text-secondary)] font-medium">Refreshing...</span>
         )}
@@ -1396,6 +1414,15 @@ const AppointmentListTab: React.FC<{
         salonId={salonId}
         onClose={() => setEditingAppointment(null)}
         onSuccess={() => setEditingAppointment(null)}
+      />
+
+      <BulkBillingModal
+        open={bulkModalOpen}
+        salonId={salonId}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={() => {
+          refetch();
+        }}
       />
     </div>
   );

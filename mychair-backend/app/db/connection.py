@@ -54,6 +54,7 @@ from app.models.user_permission import PermissionRecord
 from app.models.plan_config import PlanConfig
 from app.models.whatsapp_message import WhatsAppMessageLog
 from app.models.salon_whatsapp_account import SalonWhatsAppAccount
+from app.models.bulk_billing import BulkBillingBatch
 
 logger = logging.getLogger("db")
 
@@ -62,6 +63,7 @@ MONGO_STARTUP_BUDGET_SECONDS = 60
 MONGO_SERVER_SELECTION_TIMEOUT_MS = 5000
 
 BEANIE_MODELS = [
+    BulkBillingBatch,
     Tenant,
     Salon,
     SalonWhatsAppAccount,

@@ -13,14 +13,17 @@ import {
   Search,
   Send,
   Sparkles,
+  UploadCloud,
   Users,
   X,
 } from 'lucide-react';
 
+import BulkBillingModal from '../components/billing/BulkBillingModal';
 import { Button, Input, Select } from '../components/common';
 import { showToast } from '../components/common/Toast/toastService';
 import ExpensesSection from '../components/expenses/ExpensesSection';
 import PayrollSection from '../components/payroll/PayrollSection';
+import { ROLES } from '../constants';
 import { useAppSelector } from '../redux/hooks';
 import { useLazyGetBillDetailQuery, useListBillsQuery } from '../redux/slices/billing/billingApi';
 import { BillListItem } from '../redux/slices/billing/Types';
@@ -49,10 +52,9 @@ interface StatCardItem {
 
 
 const sectionItems: Array<{ key: SectionKey; label: string; description: string; icon: React.ElementType }> = [
-  { key: 'bills', label: 'Bills', description: 'Invoices and refunds', icon: ReceiptText },
+  { key: 'bills', label: 'History and Billing', description: 'Invoices, payments, and bulk record imports', icon: ReceiptText },
   { key: 'payroll', label: 'Payroll', description: 'Salary and incentives', icon: Users },
   { key: 'expenses', label: 'Expenses', description: 'Spend and approvals', icon: FileText },
-
 ];
 
 const isSectionKey = (value: string | undefined): value is SectionKey =>
@@ -96,45 +98,62 @@ const PageHeader: React.FC<{
   section: string;
   subtitle: string;
   onOpenDrawer: () => void;
-}> = ({ section, subtitle, onOpenDrawer }) => (
-  <div className="rounded-[2rem] border border-[var(--color-border-soft)] bg-white/90 p-4 shadow-soft backdrop-blur md:p-5 xl:p-6">
-    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-      <div>
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[var(--color-brand-gold-light)]/20 px-3 py-1 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
-          <Sparkles className="h-3.5 w-3.5" />
-          Premium salon ERP finance desk
-        </div>
-        <h1 className="text-2xl font-bold text-[var(--color-text-primary)] md:text-3xl">
-          Billing & Finance
-        </h1>
-        <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{section} · {subtitle}</p>
-      </div>
+  canBulkUpload?: boolean;
+  onOpenBulkModal?: () => void;
+}> = ({ section, subtitle, onOpenDrawer, canBulkUpload, onOpenBulkModal }) => {
+  const allowBulk = canBulkUpload ?? true;
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative min-w-0 lg:w-80">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            className="!h-11 rounded-2xl border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] !pl-10"
-            placeholder="Search invoice, client, vendor..."
-          />
+  return (
+    <div className="rounded-[2rem] border border-[var(--color-border-soft)] bg-white/90 p-4 shadow-soft backdrop-blur md:p-5 xl:p-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[var(--color-brand-gold-light)]/20 px-3 py-1 text-xs font-semibold text-[var(--color-brand-gold-dark)]">
+            <Sparkles className="h-3.5 w-3.5" />
+            Premium salon ERP finance desk
+          </div>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)] md:text-3xl">
+            Billing & Finance
+          </h1>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{section} · {subtitle}</p>
         </div>
-        <Select
-          className="!h-11 rounded-2xl border-[var(--color-border-strong)] bg-white"
-          value="today"
-          onChange={() => undefined}
-          options={[
-            { value: 'today', label: 'Today' },
-            { value: 'week', label: 'This week' },
-            { value: 'month', label: 'This month' },
-          ]}
-        />
-        <Button className="h-11 rounded-2xl" icon={<Plus className="h-4 w-4" />} onClick={onOpenDrawer}>
-          Create Bill
-        </Button>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              className="!h-11 rounded-2xl border-[var(--color-border-strong)] bg-[var(--color-surface-bg)] !pl-10"
+              placeholder="Search invoice, client, vendor..."
+            />
+          </div>
+          <Select
+            className="!h-11 rounded-2xl border-[var(--color-border-strong)] bg-white"
+            value="today"
+            onChange={() => undefined}
+            options={[
+              { value: 'today', label: 'Today' },
+              { value: 'week', label: 'This week' },
+              { value: 'month', label: 'This month' },
+            ]}
+          />
+          {allowBulk && onOpenBulkModal && (
+            <Button
+              id="btn-bulk-upload-header"
+              variant="outline"
+              className="h-11 rounded-2xl border-2 border-[var(--color-brand-gold)] bg-[var(--color-brand-gold)]/5 text-[var(--color-brand-gold-dark)] hover:bg-[var(--color-brand-gold)]/15 font-bold gap-2 px-4 shadow-xs flex items-center whitespace-nowrap"
+              icon={<UploadCloud className="h-4 w-4 text-[var(--color-brand-gold)]" />}
+              onClick={onOpenBulkModal}
+            >
+              Bulk Upload
+            </Button>
+          )}
+          <Button className="h-11 rounded-2xl" icon={<Plus className="h-4 w-4" />} onClick={onOpenDrawer}>
+            Create Bill
+          </Button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const TabNavigation: React.FC<{
   tabs: TabItem[];
@@ -443,7 +462,13 @@ const getDatePresetRange = (preset: DatePreset): { startDate?: string; endDate?:
   return {};
 };
 
-const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonId, activeTab }) => {
+const BillsSection: React.FC<{
+  salonId: string;
+  activeTab: string;
+  canBulkUpload?: boolean;
+  onOpenBulkModal?: () => void;
+  refreshTrigger?: number;
+}> = ({ salonId, activeTab, canBulkUpload, onOpenBulkModal, refreshTrigger }) => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -473,7 +498,7 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
         }
       : getDatePresetRange(datePreset);
 
-  const { data, isLoading, isFetching, isError } = useListBillsQuery(
+  const { data, isLoading, isFetching, isError, refetch } = useListBillsQuery(
     {
       salon_id: branchId || salonId,
       branch_id: branchId || undefined,
@@ -535,8 +560,40 @@ const BillsSection: React.FC<{ salonId: string; activeTab: string }> = ({ salonI
     setBranchId(salonId);
   }, [salonId]);
 
+  React.useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      refetch();
+    }
+  }, [refreshTrigger, refetch]);
+
+  const allowBulk = canBulkUpload ?? true;
+
   return (
     <SectionStack>
+      {/* History and Billing Header Bar with Bulk Upload */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 md:p-5 rounded-2xl border border-[var(--color-border-soft)] shadow-soft">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-[var(--color-brand-gold-dark)] border border-amber-200/60">
+            <ReceiptText className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-[var(--color-text-primary)]">History and Billing</h2>
+            <p className="text-xs text-[var(--color-text-secondary)]">Historical invoices, payments, and bulk record imports</p>
+          </div>
+        </div>
+
+        {allowBulk && onOpenBulkModal && (
+          <Button
+            id="btn-bulk-upload-section"
+            className="h-10 w-full sm:w-auto rounded-xl bg-[var(--color-brand-gold)] hover:brightness-105 text-white font-bold gap-2 shadow-sm px-5 flex items-center justify-center whitespace-nowrap"
+            icon={<UploadCloud className="h-4 w-4 text-white" />}
+            onClick={onOpenBulkModal}
+          >
+            Bulk Upload
+          </Button>
+        )}
+      </div>
+
       {/* Summary cards */}
       <SummaryCards
         items={[
@@ -896,9 +953,17 @@ const BillingFinance: React.FC = () => {
   const { financeSection, orgId } = useParams<{ financeSection?: string; orgId?: string }>();
   const storedOrgId = useAppSelector((state) => state.auth.orgId);
   const selectedSalonId = useAppSelector((state) => state.auth.selectedSalonId);
-  const role = useAppSelector((state) => state.auth.user?.role);
-  const isSuperAdmin = role === 'super_admin';
-  const salonId = (orgId ?? (isSuperAdmin ? selectedSalonId : storedOrgId) ?? '').trim();
+  const user = useAppSelector((state) => state.auth.user);
+  const role = user?.role;
+  const isSuperAdminUser = role === 'super_admin';
+  const salonId = (orgId ?? (isSuperAdminUser ? selectedSalonId : storedOrgId) ?? '').trim();
+
+  // Role check: Salon Owner, Salon Admin, Salon Manager, Super Admin, and admin/owner aliases
+  const isEmployeeOnly = role === ROLES.EMPLOYEE || role === ROLES.USER;
+  const canBulkUpload = !isEmployeeOnly;
+
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [billsRefreshTrigger, setBillsRefreshTrigger] = useState(0);
 
   const activeSection: SectionKey = isSectionKey(financeSection) ? financeSection : 'bills';
   const [activeTabs, setActiveTabs] = useState<Record<SectionKey, string>>({
@@ -915,7 +980,15 @@ const BillingFinance: React.FC = () => {
   const content = useMemo(() => {
     switch (activeSection) {
       case 'bills':
-        return <BillsSection salonId={salonId} activeTab={activeTab} />;
+        return (
+          <BillsSection
+            salonId={salonId}
+            activeTab={activeTab}
+            canBulkUpload={canBulkUpload}
+            onOpenBulkModal={() => setBulkModalOpen(true)}
+            refreshTrigger={billsRefreshTrigger}
+          />
+        );
       case 'payroll':
         return <PayrollSection activeTab={activeTab} salonId={salonId} />;
       case 'expenses':
@@ -925,7 +998,7 @@ const BillingFinance: React.FC = () => {
       default:
         return null;
     }
-  }, [activeSection, activeTab, salonId]);
+  }, [activeSection, activeTab, salonId, canBulkUpload, billsRefreshTrigger]);
 
   return (
     <div className="min-h-screen bg-[var(--color-surface-bg)] p-4 md:p-6 xl:p-8">
@@ -934,6 +1007,8 @@ const BillingFinance: React.FC = () => {
           section={currentSection.label}
           subtitle={currentSection.description}
           onOpenDrawer={() => setDrawerOpen(true)}
+          canBulkUpload={activeSection === 'bills' && canBulkUpload}
+          onOpenBulkModal={() => setBulkModalOpen(true)}
         />
 
         <main className="min-w-0 space-y-5">
@@ -948,6 +1023,14 @@ const BillingFinance: React.FC = () => {
         </main>
       </div>
       <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <BulkBillingModal
+        open={bulkModalOpen}
+        salonId={salonId}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={() => {
+          setBillsRefreshTrigger((prev) => prev + 1);
+        }}
+      />
     </div>
   );
 };

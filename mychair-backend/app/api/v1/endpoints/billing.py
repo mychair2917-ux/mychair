@@ -16,8 +16,10 @@ from app.services.billing import BillingService
 from app.services.notifications import notification_service
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import success_response
+from app.api.v1.endpoints.bulk_billing import router as bulk_billing_router
 
 router = APIRouter()
+router.include_router(bulk_billing_router)
 billing_service = BillingService()
 whatsapp_service = WhatsAppService()
 

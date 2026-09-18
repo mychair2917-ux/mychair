@@ -44,6 +44,8 @@ class Bill(BaseTenantDocument):
 
     # === Bill Identity ===
     bill_number: str = Field(..., index=True)     # e.g. "BILL-XYZ4-0001"
+    original_bill_reference: Optional[str] = Field(default=None, index=True)
+    import_batch_id: Optional[str] = Field(default=None, index=True)
     category: str = Field(default="APPOINTMENT")  # APPOINTMENT, WALK_IN, etc.
 
     # === Line Items ===
@@ -76,6 +78,8 @@ class Bill(BaseTenantDocument):
             "customer_id",
             "appointment_id",
             "bill_number",
+            "original_bill_reference",
+            "import_batch_id",
             "payment_status",
             "is_deleted",
         ]
