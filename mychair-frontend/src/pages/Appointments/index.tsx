@@ -17,7 +17,7 @@ import {
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import BulkBillingModal from '../../components/billing/BulkBillingModal';
-import { Button, CommonDropdown, Input, Modal, Select } from '../../components/common';
+import { Button, CommonDropdown, Input, Modal, MonthSelector, MONTH_NAMES, Select } from '../../components/common';
 import ModalBody from '../../components/common/Modal/ModalBody';
 import ModalFooter from '../../components/common/Modal/ModalFooter';
 import ModalHeader from '../../components/common/Modal/ModalHeader';
@@ -1005,6 +1005,10 @@ const AppointmentListTab: React.FC<{
   initialSearch?: string;
   onHighlightConsumed?: () => void;
 }> = ({ salonId, highlightAppointmentId = null, initialSearch = '', onHighlightConsumed }) => {
+  const currentNow = new Date();
+  const [selectedMonth, setSelectedMonth] = useState<number>(currentNow.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(currentNow.getFullYear());
+
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState(initialSearch);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
@@ -1017,6 +1021,12 @@ const AppointmentListTab: React.FC<{
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(highlightAppointmentId);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMonthChange = (newMonth: number, newYear: number) => {
+    setSelectedMonth(newMonth);
+    setSelectedYear(newYear);
+    setPage(1);
+  };
 
   const userRole = useAppSelector((state) => state.auth.user?.role);
   const canEdit = canEditAppointment(userRole);
@@ -1071,6 +1081,8 @@ const AppointmentListTab: React.FC<{
       status: 'Completed', // Only show billed/completed appointments in the billing list
       sort_by: sortBy,
       sort_order: sortOrder,
+      month: selectedMonth,
+      year: selectedYear,
     },
     { skip: !salonId }
   );
@@ -1122,6 +1134,12 @@ const AppointmentListTab: React.FC<{
             className="!pl-10"
           />
         </div>
+        <MonthSelector
+          month={selectedMonth}
+          year={selectedYear}
+          onChange={handleMonthChange}
+          idPrefix="appointments-history-month-selector"
+        />
         <div className="w-48">
           <Select
             value={paymentStatusFilter}
@@ -1195,7 +1213,9 @@ const AppointmentListTab: React.FC<{
                 <td colSpan={14} className="px-3 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <CalendarDays className="h-10 w-10 text-gray-300" />
-                    <p className="text-sm font-medium text-gray-500">No billing records found</p>
+                    <p className="text-sm font-medium text-gray-500">
+                      No billing records found for {MONTH_NAMES[selectedMonth - 1]} {selectedYear}.
+                    </p>
                     {(debouncedSearch || paymentStatusFilter) && (
                       <p className="text-xs text-gray-400">Try adjusting your filters</p>
                     )}

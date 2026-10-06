@@ -55,7 +55,7 @@ from app.services.websocket import manager
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import error_response, success_response
 from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile, phone_lookup_variants
-from app.utils.timezone import make_aware, now_utc, to_utc_iso, timezone
+from app.utils.timezone import make_aware, now_utc, to_utc_iso, timezone, KOLKATA_TZ
 
 router = APIRouter()
 appointment_service = AppointmentService()
@@ -1101,6 +1101,8 @@ async def list_appointments(
     sort_order: str = Query(default="desc"),
     date_from: Optional[datetime] = Query(default=None),
     date_to: Optional[datetime] = Query(default=None),
+    month: Optional[int] = Query(default=None, ge=1, le=12, description="Month 1-12"),
+    year: Optional[int] = Query(default=None, ge=2000, le=2100, description="Year e.g. 2026"),
     current_user: User = Depends(PermissionChecker("appointments.view")),
 ):
     """
@@ -1110,8 +1112,21 @@ async def list_appointments(
     (services + products grouped by assigned staff) before pagination so
     page boundaries never split a staff group incorrectly.
     """
-    date_from_aware = make_aware(date_from) if date_from else None
-    date_to_aware = make_aware(date_to) if date_to else None
+    if month is not None or year is not None:
+        now_local = datetime.now(KOLKATA_TZ)
+        filter_year = year if year is not None else now_local.year
+        if month is not None:
+            date_from_aware = datetime(filter_year, month, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            if month == 12:
+                date_to_aware = datetime(filter_year + 1, 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            else:
+                date_to_aware = datetime(filter_year, month + 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+        else:
+            date_from_aware = datetime(filter_year, 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            date_to_aware = datetime(filter_year + 1, 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+    else:
+        date_from_aware = make_aware(date_from) if date_from else None
+        date_to_aware = make_aware(date_to) if date_to else None
 
     appointments = await appointment_repo.list_filtered(
         salon_id=salon_id,

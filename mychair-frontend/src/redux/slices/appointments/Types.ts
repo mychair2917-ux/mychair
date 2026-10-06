@@ -260,6 +260,8 @@ export interface AppointmentListParams {
   sort_order?: string;
   date_from?: string;
   date_to?: string;
+  month?: number;
+  year?: number;
 }
 
 export interface PaginatedAppointmentData {

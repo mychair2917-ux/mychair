@@ -15,6 +15,7 @@ export { default as ProgressBar } from './ProgressBar';
 export { default as SortOrderToggle } from './SortOrderToggle';
 export { default as SvgIcon } from './SvgIcon';
 export { default as ThemeToggler } from './ThemeToggler';
+export { default as MonthSelector, MONTH_NAMES } from './MonthSelector';
 export { ToastContainer, toast, showToast } from './Toast/exports';
 export type { ToastOptions, ToastType } from './Toast/exports';
 export { default as Typography } from './Typography';

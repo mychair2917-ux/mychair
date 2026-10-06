@@ -28,9 +28,37 @@ export const billingApi = baseApi.injectEndpoints({
         if (params.branch_id) queryParams.branch_id = params.branch_id;
         if (params.startDate) queryParams.startDate = params.startDate;
         if (params.endDate) queryParams.endDate = params.endDate;
+        if (params.month !== undefined && params.month !== null) queryParams.month = params.month;
+        if (params.year !== undefined && params.year !== null) queryParams.year = params.year;
         if (params.search) queryParams.search = params.search;
         return {
           url: API_PATHS.BILLING.BILLS,
+          method: HTTP_METHODS.GET,
+          params: queryParams,
+        };
+      },
+      providesTags: ['Bills'],
+    }),
+    getBillingHistory: builder.query<ApiResponse<PaginatedBillData>, BillListParams>({
+      query: (params) => {
+        const queryParams: Record<string, string | number> = {
+          salon_id: params.salon_id,
+        };
+        if (params.page) queryParams.page = params.page;
+        if (params.limit) queryParams.limit = params.limit;
+        if (params.payment_status) queryParams.payment_status = params.payment_status;
+        if (params.bill_status) queryParams.bill_status = params.bill_status;
+        if (params.payment_method) queryParams.payment_method = params.payment_method;
+        if (params.staff_id) queryParams.staff_id = params.staff_id;
+        if (params.staff_name) queryParams.staff_name = params.staff_name;
+        if (params.branch_id) queryParams.branch_id = params.branch_id;
+        if (params.startDate) queryParams.startDate = params.startDate;
+        if (params.endDate) queryParams.endDate = params.endDate;
+        if (params.month !== undefined && params.month !== null) queryParams.month = params.month;
+        if (params.year !== undefined && params.year !== null) queryParams.year = params.year;
+        if (params.search) queryParams.search = params.search;
+        return {
+          url: API_PATHS.BILLING.HISTORY,
           method: HTTP_METHODS.GET,
           params: queryParams,
         };
@@ -143,6 +171,9 @@ export const billingApi = baseApi.injectEndpoints({
 
 export const {
   useListBillsQuery,
+  useLazyListBillsQuery,
+  useGetBillingHistoryQuery,
+  useLazyGetBillingHistoryQuery,
   useLazyGetBillDetailQuery,
   useValidateBulkUploadMutation,
   useConfirmBulkUploadMutation,

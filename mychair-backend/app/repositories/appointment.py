@@ -125,7 +125,7 @@ class AppointmentRepository(BaseRepository[Appointment]):
         sort_prefix = "-" if sort_order.lower() == "desc" else "+"
         sort_expr = f"{sort_prefix}{sort_field}"
 
-        return await self.model.find(merged).sort(sort_expr).limit(limit).to_list()
+        return await self.model.find(merged).sort(sort_expr, "-_id").limit(limit).to_list()
 
     async def list_paginated(
         self,

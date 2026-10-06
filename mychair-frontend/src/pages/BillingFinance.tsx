@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   CheckCircle2,
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import BulkBillingModal from '../components/billing/BulkBillingModal';
-import { Button, Input, Select } from '../components/common';
+import { Button, Input, MonthSelector, MONTH_NAMES, Select } from '../components/common';
 import { showToast } from '../components/common/Toast/toastService';
 import ExpensesSection from '../components/expenses/ExpensesSection';
 import PayrollSection from '../components/payroll/PayrollSection';
@@ -30,11 +30,10 @@ import { BillListItem } from '../redux/slices/billing/Types';
 import { cn } from '../utils/cn';
 import { formatCurrency } from '../utils/currency';
 import { downloadInvoicePDF } from '../utils/invoicePdf';
-import { formatDateDMY, toDateInputValue } from '../utils/utilities';
+import { formatDateDMY } from '../utils/utilities';
 
 type SectionKey = 'bills' | 'payroll' | 'expenses';
 type StatusTone = 'paid' | 'pending' | 'refunded' | 'processing' | 'partial' | 'approved' | 'danger' | 'neutral';
-type DatePreset = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'custom';
 
 interface TabItem {
   label: string;
@@ -421,47 +420,6 @@ const BillsSkeletonRow: React.FC = () => (
   </tr>
 );
 
-const getDatePresetRange = (preset: DatePreset): { startDate?: string; endDate?: string } => {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  if (preset === 'today') {
-    const iso = toDateInputValue(today);
-    return { startDate: iso, endDate: iso };
-  }
-
-  if (preset === 'yesterday') {
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const iso = toDateInputValue(yesterday);
-    return { startDate: iso, endDate: iso };
-  }
-
-  if (preset === 'this_week') {
-    const weekStart = new Date(today);
-    const day = weekStart.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    weekStart.setDate(weekStart.getDate() + diff);
-    return { startDate: toDateInputValue(weekStart), endDate: toDateInputValue(today) };
-  }
-
-  if (preset === 'this_month') {
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { startDate: toDateInputValue(monthStart), endDate: toDateInputValue(today) };
-  }
-
-  if (preset === 'last_month') {
-    const firstDayLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-    return {
-      startDate: toDateInputValue(firstDayLastMonth),
-      endDate: toDateInputValue(lastDayLastMonth),
-    };
-  }
-
-  return {};
-};
-
 const BillsSection: React.FC<{
   salonId: string;
   activeTab: string;
@@ -469,12 +427,24 @@ const BillsSection: React.FC<{
   onOpenBulkModal?: () => void;
   refreshTrigger?: number;
 }> = ({ salonId, activeTab, canBulkUpload, onOpenBulkModal, refreshTrigger }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentNow = new Date();
+  const currentMonthNum = currentNow.getMonth() + 1;
+  const currentYearNum = currentNow.getFullYear();
+
+  const urlMonth = Number(searchParams.get('month'));
+  const urlYear = Number(searchParams.get('year'));
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => {
+    return urlMonth >= 1 && urlMonth <= 12 ? urlMonth : currentMonthNum;
+  });
+  const [selectedYear, setSelectedYear] = useState<number>(() => {
+    return urlYear >= 2000 && urlYear <= 2100 ? urlYear : currentYearNum;
+  });
+
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [datePreset, setDatePreset] = useState<DatePreset>('this_month');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [billStatus, setBillStatus] = useState('');
   const [staffName, setStaffName] = useState('');
@@ -484,19 +454,26 @@ const BillsSection: React.FC<{
   const LIMIT = 20;
   const [fetchBillDetail] = useLazyGetBillDetailQuery();
 
+  const handleMonthChange = (newMonth: number, newYear: number) => {
+    setSelectedMonth(newMonth);
+    setSelectedYear(newYear);
+    setPage(1);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('month', String(newMonth));
+        next.set('year', String(newYear));
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
   const paymentStatusFilter =
     activeTab === 'paid' ? 'PAID'
     : activeTab === 'pending' ? 'PENDING'
     : activeTab === 'partially_paid' ? 'PARTIALLY_PAID'
     : undefined;
-
-  const selectedDateRange =
-    datePreset === 'custom'
-      ? {
-          startDate: customStartDate || undefined,
-          endDate: customEndDate || undefined,
-        }
-      : getDatePresetRange(datePreset);
 
   const { data, isLoading, isFetching, isError, refetch } = useListBillsQuery(
     {
@@ -508,8 +485,8 @@ const BillsSection: React.FC<{
       bill_status: billStatus || undefined,
       payment_method: paymentMethod || undefined,
       staff_name: staffName || undefined,
-      startDate: selectedDateRange.startDate,
-      endDate: selectedDateRange.endDate,
+      month: selectedMonth,
+      year: selectedYear,
       search: debouncedSearch || undefined,
     },
     { skip: !(branchId || salonId) }
@@ -521,10 +498,12 @@ const BillsSection: React.FC<{
   const startItem = total === 0 ? 0 : (page - 1) * LIMIT + 1;
   const endItem = Math.min(page * LIMIT, total);
 
-  const totalRevenue = items.reduce((s, b) => s + b.total_amount, 0);
-  const totalPaid = items.reduce((s, b) => s + b.paid_amount, 0);
-  const totalPending = items.reduce((s, b) => s + b.remaining_amount, 0);
-  const paidCount = items.filter((b) => b.payment_status === 'PAID').length;
+  // Backend aggregates query-wide totals across the entire month
+  const totals = data?.data?.totals;
+  const totalBills = totals?.total_bills ?? total;
+  const totalRevenue = totals?.total_amount ?? items.reduce((s, b) => s + b.total_amount, 0);
+  const totalPaid = totals?.total_paid ?? items.reduce((s, b) => s + b.paid_amount, 0);
+  const totalPending = totals?.total_pending ?? items.reduce((s, b) => s + b.remaining_amount, 0);
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
@@ -533,11 +512,6 @@ const BillsSection: React.FC<{
       setDebouncedSearch(val);
       setPage(1);
     }, 400);
-  };
-
-  const handlePresetChange = (preset: DatePreset) => {
-    setDatePreset(preset);
-    setPage(1);
   };
 
   const handlePrint = async (billId: string) => {
@@ -570,28 +544,38 @@ const BillsSection: React.FC<{
 
   return (
     <SectionStack>
-      {/* History and Billing Header Bar with Bulk Upload */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 md:p-5 rounded-2xl border border-[var(--color-border-soft)] shadow-soft">
+      {/* History and Billing Header Bar with Month Selector & Bulk Upload */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-4 md:p-5 rounded-2xl border border-[var(--color-border-soft)] shadow-soft">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-[var(--color-brand-gold-dark)] border border-amber-200/60">
             <ReceiptText className="h-5 w-5" />
           </div>
           <div>
             <h2 className="text-base font-bold text-[var(--color-text-primary)]">History and Billing</h2>
-            <p className="text-xs text-[var(--color-text-secondary)]">Historical invoices, payments, and bulk record imports</p>
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              Historical invoices, payments, and bulk imports · {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+            </p>
           </div>
         </div>
 
-        {allowBulk && onOpenBulkModal && (
-          <Button
-            id="btn-bulk-upload-section"
-            className="h-10 w-full sm:w-auto rounded-xl bg-[var(--color-brand-gold)] hover:brightness-105 text-white font-bold gap-2 shadow-sm px-5 flex items-center justify-center whitespace-nowrap"
-            icon={<UploadCloud className="h-4 w-4 text-white" />}
-            onClick={onOpenBulkModal}
-          >
-            Bulk Upload
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <MonthSelector
+            month={selectedMonth}
+            year={selectedYear}
+            onChange={handleMonthChange}
+            idPrefix="billing-header-month-selector"
+          />
+          {allowBulk && onOpenBulkModal && (
+            <Button
+              id="btn-bulk-upload-section"
+              className="h-10 rounded-xl bg-[var(--color-brand-gold)] hover:brightness-105 text-white font-bold gap-2 shadow-sm px-5 flex items-center justify-center whitespace-nowrap"
+              icon={<UploadCloud className="h-4 w-4 text-white" />}
+              onClick={onOpenBulkModal}
+            >
+              Bulk Upload
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -599,29 +583,29 @@ const BillsSection: React.FC<{
         items={[
           {
             label: 'Total Bills',
-            value: String(total),
-            helper: `${paidCount} paid this page`,
+            value: String(totalBills),
+            helper: `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`,
             tone: 'bg-blue-50 text-blue-700',
             icon: ReceiptText,
           },
           {
             label: 'Total Amount',
             value: formatCurrency(totalRevenue),
-            helper: 'Current page',
+            helper: `${MONTH_NAMES[selectedMonth - 1]} revenue`,
             tone: 'bg-emerald-50 text-emerald-700',
             icon: IndianRupee,
           },
           {
             label: 'Collected',
             value: formatCurrency(totalPaid),
-            helper: 'Paid amount',
+            helper: `${MONTH_NAMES[selectedMonth - 1]} paid`,
             tone: 'bg-teal-50 text-teal-700',
             icon: CheckCircle2,
           },
           {
             label: 'Pending',
             value: formatCurrency(totalPending),
-            helper: 'Remaining balance',
+            helper: `${MONTH_NAMES[selectedMonth - 1]} pending`,
             tone: 'bg-amber-50 text-amber-700',
             icon: AlertCircle,
           },
@@ -630,30 +614,57 @@ const BillsSection: React.FC<{
 
       {/* Filters */}
       <div className="space-y-3 rounded-[1.5rem] border border-[var(--color-border-soft)] bg-white p-3 shadow-soft">
-        <div className="flex flex-wrap gap-2">
-          {[
-            { key: 'today', label: 'Today' },
-            { key: 'yesterday', label: 'Yesterday' },
-            { key: 'this_week', label: 'This Week' },
-            { key: 'this_month', label: 'This Month' },
-            { key: 'last_month', label: 'Last Month' },
-            { key: 'custom', label: 'Custom Range' },
-          ].map((preset) => (
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-[var(--color-border-soft)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-[var(--color-text-secondary)] uppercase tracking-wider">
+              Month Scope:
+            </span>
+            <MonthSelector
+              month={selectedMonth}
+              year={selectedYear}
+              onChange={handleMonthChange}
+              idPrefix="bills-filter-month-selector"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
             <button
-              key={preset.key}
               type="button"
-              onClick={() => handlePresetChange(preset.key as DatePreset)}
+              onClick={() => {
+                const prevM = selectedMonth === 1 ? 12 : selectedMonth - 1;
+                const prevY = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+                handleMonthChange(prevM, prevY);
+              }}
+              className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface-bg)] text-gray-700 hover:bg-gray-100 transition"
+            >
+              Prev Month
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMonthChange(currentMonthNum, currentYearNum)}
               className={cn(
-                'rounded-xl px-3 py-2 text-xs font-semibold transition',
-                datePreset === preset.key
+                'rounded-xl px-3 py-1.5 text-xs font-semibold transition',
+                selectedMonth === currentMonthNum && selectedYear === currentYearNum
                   ? 'bg-[var(--color-brand-gold)] text-white'
-                  : 'bg-[var(--color-surface-bg)] text-gray-600 hover:text-[var(--color-text-primary)]'
+                  : 'bg-[var(--color-surface-bg)] text-gray-700 hover:bg-gray-100'
               )}
             >
-              {preset.label}
+              This Month
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => {
+                const nextM = selectedMonth === 12 ? 1 : selectedMonth + 1;
+                const nextY = selectedMonth === 12 ? selectedYear + 1 : selectedYear;
+                handleMonthChange(nextM, nextY);
+              }}
+              className="rounded-xl px-3 py-1.5 text-xs font-semibold bg-[var(--color-surface-bg)] text-gray-700 hover:bg-gray-100 transition"
+            >
+              Next Month
+            </button>
+          </div>
         </div>
+
         <div className="grid gap-2 xl:grid-cols-6">
           <div className="relative xl:col-span-2">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -712,33 +723,12 @@ const BillsSection: React.FC<{
             }}
           />
         </div>
-        {datePreset === 'custom' && (
-          <div className="grid gap-2 sm:grid-cols-2 xl:max-w-[420px]">
-            <Input
-              type="date"
-              className="!h-10 rounded-xl border-[var(--color-border-strong)]"
-              value={customStartDate}
-              onChange={(e) => {
-                setCustomStartDate(e.target.value);
-                setPage(1);
-              }}
-            />
-            <Input
-              type="date"
-              className="!h-10 rounded-xl border-[var(--color-border-strong)]"
-              value={customEndDate}
-              onChange={(e) => {
-                setCustomEndDate(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-        )}
         <div className="flex items-center justify-between text-xs text-gray-500">
           <span>
-            Range:{' '}
-            {selectedDateRange.startDate ? formatDateDMY(selectedDateRange.startDate) : 'Any'} -{' '}
-            {selectedDateRange.endDate ? formatDateDMY(selectedDateRange.endDate) : 'Any'}
+            Viewing billing records for:{' '}
+            <strong className="text-gray-700">
+              {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+            </strong>
           </span>
           {isFetching && !isLoading && <span>Refreshing...</span>}
         </div>
@@ -786,9 +776,11 @@ const BillsSection: React.FC<{
                   <td colSpan={12} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <ReceiptText className="h-10 w-10 text-gray-300" />
-                      <p className="text-sm font-medium text-gray-500">No bills found</p>
+                      <p className="text-sm font-medium text-gray-500">
+                        No billing records found for {MONTH_NAMES[selectedMonth - 1]} {selectedYear}.
+                      </p>
                       <p className="text-xs text-gray-400">
-                        Bills are auto-generated when appointments are submitted.
+                        Bills are auto-generated when appointments are submitted or quick bills are created.
                       </p>
                     </div>
                   </td>

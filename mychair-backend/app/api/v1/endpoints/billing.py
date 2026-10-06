@@ -16,6 +16,7 @@ from app.services.billing import BillingService
 from app.services.notifications import notification_service
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import success_response
+from app.utils.timezone import KOLKATA_TZ
 from app.api.v1.endpoints.bulk_billing import router as bulk_billing_router
 
 router = APIRouter()
@@ -94,6 +95,7 @@ def _parse_date_yyyy_mm_dd(value: Optional[str]) -> Optional[datetime]:
 
 
 @router.get("/bills")
+@router.get("/history")
 async def list_bills(
     salon_id: str = Query(..., description="Salon branch ID"),
     branch_id: Optional[str] = Query(default=None, description="Optional branch override"),
@@ -111,11 +113,17 @@ async def list_bills(
     end_date: Optional[str] = Query(
         default=None, description="YYYY-MM-DD", alias="endDate"
     ),
+    month: Optional[int] = Query(
+        default=None, ge=1, le=12, description="Month (1-12) for monthly data display"
+    ),
+    year: Optional[int] = Query(
+        default=None, ge=2000, le=2100, description="Year (e.g. 2026)"
+    ),
     search: Optional[str] = Query(default=None),
     current_user: User = Depends(PermissionChecker("billing.view")),
 ):
-    """Returns paginated bills (invoices) for a salon, latest first."""
-    effective_salon_id = branch_id or salon_id
+    """Returns paginated bills (invoices) for a salon, latest first, with month-wise filtering."""
+    effective_salon_id = branch_id if isinstance(branch_id, str) and branch_id else salon_id
     query: Dict[str, Any] = {
         "salon_id": effective_salon_id,
         "is_deleted": False,
@@ -124,54 +132,131 @@ async def list_bills(
     if effective_tenant:
         query["tenant_id"] = effective_tenant
 
-    if appointment_id and appointment_id.strip():
+    if isinstance(appointment_id, str) and appointment_id.strip():
         query["appointment_id"] = appointment_id.strip()
-    if payment_status:
+    if isinstance(payment_status, str) and payment_status:
         query["payment_status"] = payment_status.upper()
-    if bill_status:
+    if isinstance(bill_status, str) and bill_status:
         query["status"] = bill_status.upper()
-    if payment_method:
+    if isinstance(payment_method, str) and payment_method:
         query["payment_method"] = payment_method.upper()
-    if staff_id:
+    if isinstance(staff_id, str) and staff_id:
         query["items.staff_id"] = staff_id
-    if staff_name and staff_name.strip():
+    if isinstance(staff_name, str) and staff_name.strip():
         query["items.staff_name"] = {"$regex": staff_name.strip(), "$options": "i"}
 
-    start_dt = _parse_date_yyyy_mm_dd(start_date)
-    end_dt = _parse_date_yyyy_mm_dd(end_date)
-    if start_dt or end_dt:
-        query["created_at"] = {}
-        if start_dt:
-            query["created_at"]["$gte"] = datetime.combine(
-                start_dt.date(), time.min, tzinfo=timezone.utc
-            )
-        if end_dt:
-            query["created_at"]["$lte"] = datetime.combine(
-                end_dt.date(), time.max, tzinfo=timezone.utc
-            )
-        if (
-            query["created_at"].get("$gte")
-            and query["created_at"].get("$lte")
-            and query["created_at"]["$gte"] > query["created_at"]["$lte"]
-        ):
-            query["created_at"]["$gte"], query["created_at"]["$lte"] = (
-                query["created_at"]["$lte"],
-                query["created_at"]["$gte"],
-            )
+    # Sanitize month & year
+    filter_month = month if isinstance(month, int) else None
+    filter_year = year if isinstance(year, int) else None
+    start_date_str = start_date if isinstance(start_date, str) else None
+    end_date_str = end_date if isinstance(end_date, str) else None
+    search_str = search if isinstance(search, str) else None
+    page_num = page if isinstance(page, int) and page >= 1 else 1
+    limit_num = limit if isinstance(limit, int) and limit >= 1 else 20
 
-    if search and search.strip():
-        term = search.strip()
+    # Month & Year filtering takes precedence when provided
+    if filter_month is not None or filter_year is not None:
+        if filter_month is not None and not (1 <= filter_month <= 12):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid month '{filter_month}'. Expected month between 1 and 12.",
+            )
+        if filter_year is not None and not (2000 <= filter_year <= 2100):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid year '{filter_year}'. Expected year between 2000 and 2100.",
+            )
+        now_local = datetime.now(KOLKATA_TZ)
+        resolved_year = filter_year if filter_year is not None else now_local.year
+        if filter_month is not None:
+            # start_date = first day of selected month at 00:00:00 local time
+            start_dt = datetime(resolved_year, filter_month, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            # end_date = first day of next month at 00:00:00 local time
+            if filter_month == 12:
+                end_dt = datetime(resolved_year + 1, 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            else:
+                end_dt = datetime(resolved_year, filter_month + 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            query["created_at"] = {
+                "$gte": start_dt,
+                "$lt": end_dt,
+            }
+        else:
+            start_dt = datetime(resolved_year, 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            end_dt = datetime(resolved_year + 1, 1, 1, 0, 0, 0, tzinfo=KOLKATA_TZ)
+            query["created_at"] = {
+                "$gte": start_dt,
+                "$lt": end_dt,
+            }
+    else:
+        start_dt = _parse_date_yyyy_mm_dd(start_date_str)
+        end_dt = _parse_date_yyyy_mm_dd(end_date_str)
+        if start_dt or end_dt:
+            query["created_at"] = {}
+            if start_dt:
+                query["created_at"]["$gte"] = datetime.combine(
+                    start_dt.date(), time.min, tzinfo=timezone.utc
+                )
+            if end_dt:
+                query["created_at"]["$lte"] = datetime.combine(
+                    end_dt.date(), time.max, tzinfo=timezone.utc
+                )
+            if (
+                query["created_at"].get("$gte")
+                and query["created_at"].get("$lte")
+                and query["created_at"]["$gte"] > query["created_at"]["$lte"]
+            ):
+                query["created_at"]["$gte"], query["created_at"]["$lte"] = (
+                    query["created_at"]["$lte"],
+                    query["created_at"]["$gte"],
+                )
+
+    if search_str and search_str.strip():
+        term = search_str.strip()
         query["$or"] = [
             {"customer_name": {"$regex": term, "$options": "i"}},
             {"invoice_number": {"$regex": term, "$options": "i"}},
             {"customer_phone": {"$regex": term, "$options": "i"}},
         ]
 
-    invoices_query = Invoice.find(query).sort("-created_at")
+    # Latest billing entry MUST appear first, deterministic tie-breaker with _id DESC
+    invoices_query = Invoice.find(query).sort("-created_at", "-_id")
     total = await Invoice.find(query).count()
 
-    skip = (page - 1) * limit
-    raw_invoices = await invoices_query.skip(skip).limit(limit).to_list()
+    # Calculate month-wide / query-wide aggregate statistics
+    total_amount = 0.0
+    total_paid = 0.0
+    total_pending = 0.0
+    total_tax = 0.0
+    total_discount = 0.0
+
+    if total > 0:
+        try:
+            pipeline = [
+                {"$match": query},
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_amount": {"$sum": "$total_amount"},
+                        "total_paid": {"$sum": "$paid_amount"},
+                        "total_pending": {"$sum": "$remaining_amount"},
+                        "total_tax": {"$sum": "$tax_amount"},
+                        "total_discount": {"$sum": "$discount_amount"},
+                    }
+                },
+            ]
+            agg_result = await Invoice.aggregate(pipeline).to_list()
+            if agg_result:
+                agg_data = agg_result[0]
+                total_amount = round(float(agg_data.get("total_amount") or 0.0), 2)
+                total_paid = round(float(agg_data.get("total_paid") or 0.0), 2)
+                total_pending = round(float(agg_data.get("total_pending") or 0.0), 2)
+                total_tax = round(float(agg_data.get("total_tax") or 0.0), 2)
+                total_discount = round(float(agg_data.get("total_discount") or 0.0), 2)
+        except Exception:
+            pass
+
+    skip = (page_num - 1) * limit_num
+    raw_invoices = await invoices_query.skip(skip).limit(limit_num).to_list()
 
     inv_ids = [str(inv.id) for inv in raw_invoices if inv.id]
     whatsapp_statuses = await whatsapp_service.latest_statuses_for_invoices(inv_ids)
@@ -182,15 +267,25 @@ async def list_bills(
         item["whatsapp_status"] = whatsapp_statuses.get(str(inv.id), "pending")
         items.append(item)
 
-    pages = max(1, (total + limit - 1) // limit) if total > 0 else 1
+    pages = max(1, (total + limit_num - 1) // limit_num) if total > 0 else 1
     return success_response(
         "Bills retrieved successfully",
         data={
             "items": items,
             "total": total,
-            "page": page,
-            "limit": limit,
+            "page": page_num,
+            "limit": limit_num,
             "pages": pages,
+            "totals": {
+                "total_bills": total,
+                "total_amount": total_amount,
+                "total_paid": total_paid,
+                "total_pending": total_pending,
+                "total_tax": total_tax,
+                "total_discount": total_discount,
+            },
+            "month": filter_month,
+            "year": filter_year,
         },
     )
 

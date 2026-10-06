@@ -162,6 +162,8 @@ export const appointmentsApi = baseApi.injectEndpoints({
         if (params.sort_order) queryParams.sort_order = params.sort_order;
         if (params.date_from) queryParams.date_from = params.date_from;
         if (params.date_to) queryParams.date_to = params.date_to;
+        if (params.month !== undefined && params.month !== null) queryParams.month = params.month;
+        if (params.year !== undefined && params.year !== null) queryParams.year = params.year;
         return {
           url: API_PATHS.APPOINTMENTS.LIST,
           method: HTTP_METHODS.GET,

@@ -53,6 +53,8 @@ export interface BillListParams {
   staff_name?: string;
   startDate?: string;
   endDate?: string;
+  month?: number;
+  year?: number;
   search?: string;
 }
 
@@ -62,6 +64,16 @@ export interface PaginatedBillData {
   page: number;
   limit: number;
   pages: number;
+  totals?: {
+    total_bills: number;
+    total_amount: number;
+    total_paid: number;
+    total_pending: number;
+    total_tax?: number;
+    total_discount?: number;
+  };
+  month?: number;
+  year?: number;
 }
 
 export interface BillTaxBreakdown {

@@ -79,6 +79,7 @@ export const API_PATHS = {
   },
   BILLING: {
     BILLS: '/billing/bills',
+    HISTORY: '/billing/history',
     BILL_DETAIL: (id: string) => `/billing/bills/${id}`,
     BULK_TEMPLATE_SERVICE: '/billing/bulk-upload/templates/service',
     BULK_TEMPLATE_PRODUCT: '/billing/bulk-upload/templates/product',
