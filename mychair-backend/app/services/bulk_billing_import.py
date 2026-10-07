@@ -2456,33 +2456,33 @@ class BulkImportBillingService:
 
                 # 8. Historical Timestamp Preservation via direct motor operations
                 # (Guarantees Beanie before_insert hook does not overwrite historical dates)
-                inv_col = Invoice.get_motor_collection()
+                inv_col = Invoice.get_pymongo_collection()
                 await inv_col.update_one(
                     {"_id": created_invoice.id},
                     {"$set": {"created_at": bill_dt, "finalized_at": bill_dt}},
                 )
 
-                bill_col = Bill.get_motor_collection()
+                bill_col = Bill.get_pymongo_collection()
                 await bill_col.update_one(
                     {"_id": created_bill.id},
                     {"$set": {"created_at": bill_dt, "bill_date": bill_dt}},
                 )
 
-                appt_col = Appointment.get_motor_collection()
+                appt_col = Appointment.get_pymongo_collection()
                 await appt_col.update_one(
                     {"_id": created_appointment.id},
                     {"$set": {"created_at": bill_dt}},
                 )
 
                 if created_payment:
-                    pay_col = Payment.get_motor_collection()
+                    pay_col = Payment.get_pymongo_collection()
                     await pay_col.update_one(
                         {"_id": created_payment.id},
                         {"$set": {"created_at": bill_dt, "payment_date": bill_dt}},
                     )
 
                 # 9. Update customer aggregate visit count/spend safely
-                cust_col = Customer.get_motor_collection()
+                cust_col = Customer.get_pymongo_collection()
                 cust_update: Dict[str, Any] = {
                     "$inc": {"total_visits": 1, "total_spent": computed_total}
                 }
@@ -2531,22 +2531,22 @@ class BulkImportBillingService:
                 # Roll back / cleanup any partially created documents for this specific bill
                 if created_payment:
                     try:
-                        await Payment.get_motor_collection().delete_one({"_id": created_payment.id})
+                        await Payment.get_pymongo_collection().delete_one({"_id": created_payment.id})
                     except Exception:
                         pass
                 if created_bill:
                     try:
-                        await Bill.get_motor_collection().delete_one({"_id": created_bill.id})
+                        await Bill.get_pymongo_collection().delete_one({"_id": created_bill.id})
                     except Exception:
                         pass
                 if created_invoice:
                     try:
-                        await Invoice.get_motor_collection().delete_one({"_id": created_invoice.id})
+                        await Invoice.get_pymongo_collection().delete_one({"_id": created_invoice.id})
                     except Exception:
                         pass
                 if created_appointment:
                     try:
-                        await Appointment.get_motor_collection().delete_one({"_id": created_appointment.id})
+                        await Appointment.get_pymongo_collection().delete_one({"_id": created_appointment.id})
                     except Exception:
                         pass
 

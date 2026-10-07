@@ -52,8 +52,8 @@ class InventoryTransactionRepository(BaseRepository[InventoryTransaction]):
             }
         ]
         
-        # In Beanie, aggregation on collection uses self.model.get_motor_collection().aggregate()
-        collection = self.model.get_motor_collection()
+        # In Beanie, aggregation on collection uses self.model.get_pymongo_collection().aggregate()
+        collection = self.model.get_pymongo_collection()
         cursor = collection.aggregate(pipeline)
         results = await cursor.to_list(length=1)
         

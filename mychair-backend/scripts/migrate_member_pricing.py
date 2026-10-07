@@ -31,11 +31,11 @@ async def run() -> None:
 
     await init_db()
 
-    customers_updated = await Customer.get_motor_collection().update_many(
+    customers_updated = await Customer.get_pymongo_collection().update_many(
         {"is_member": {"$exists": False}},
         {"$set": {"is_member": False}},
     )
-    services_updated = await SalonService.get_motor_collection().update_many(
+    services_updated = await SalonService.get_pymongo_collection().update_many(
         {"member_price": {"$exists": False}},
         {"$set": {"member_price": None}},
     )

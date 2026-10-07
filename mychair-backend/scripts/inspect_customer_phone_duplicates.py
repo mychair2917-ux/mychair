@@ -72,7 +72,7 @@ async def _create_unique_index_if_safe(duplicates: Dict[str, Any]) -> None:
         )
         return
 
-    collection = Customer.get_motor_collection()
+    collection = Customer.get_pymongo_collection()
     try:
         await collection.create_index(
             [("tenant_id", ASCENDING), ("phone", ASCENDING)],
