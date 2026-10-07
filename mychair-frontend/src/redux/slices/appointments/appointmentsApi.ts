@@ -135,7 +135,15 @@ export const appointmentsApi = baseApi.injectEndpoints({
         method: HTTP_METHODS.PUT,
         body,
       }),
-      invalidatesTags: ['Appointments', 'Bills', 'Inventory', 'Dashboard'],
+      invalidatesTags: [
+        'Appointments',
+        'Bills',
+        'Inventory',
+        'Dashboard',
+        'Notifications',
+        'CustomerAnalytics',
+        'Customers',
+      ],
     }),
     updateAppointmentPayment: builder.mutation<
       ApiResponse<AppointmentListItem>,

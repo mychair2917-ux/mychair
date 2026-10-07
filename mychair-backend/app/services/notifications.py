@@ -216,6 +216,7 @@ class NotificationService:
             notification_type=payload.get("notification_type", "GENERAL"),
             priority=payload.get("priority", "NORMAL"),
             source_event="MANUAL",
+            role_targets=payload.get("role_targets") or [],
             metadata={"created_by": str(current_user.id)},
         )
         await self._audit(current_user, "CREATE", "Notification", None, None, payload)
@@ -233,9 +234,11 @@ class NotificationService:
         notification_type: str,
         priority: str = "NORMAL",
         source_event: Optional[str] = None,
+        role_targets: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> List[Notification]:
         created: List[Notification] = []
+        normalized_role_targets = [normalize_role(r) or r for r in role_targets] if role_targets else []
         for user in recipients:
             preference = await self.get_or_create_preferences(user)
             cat_pref = preference.categories.get(category.upper(), {})
@@ -255,6 +258,7 @@ class NotificationService:
                 notification_type=notification_type.upper(),
                 priority=priority.upper(),
                 source_event=source_event,
+                role_targets=normalized_role_targets,
                 status="SENT",
                 sent_at=now_utc(),
                 metadata=metadata or {},
@@ -792,6 +796,16 @@ class NotificationService:
         query["tenant_id"] = current_user.tenant_id
         if normalized == ROLE_EMPLOYEE:
             query["recipient_id"] = str(current_user.id)
+
+        user_roles = [normalized] if normalized else []
+        if current_user.role and current_user.role not in user_roles:
+            user_roles.append(current_user.role)
+
+        query["$or"] = [
+            {"role_targets": {"$exists": False}},
+            {"role_targets": []},
+            {"role_targets": {"$in": user_roles}},
+        ]
         return query
 
     async def _tenant_scope_query(self, current_user: User, salon_id: Optional[str]) -> Dict[str, Any]:

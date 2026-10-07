@@ -16,6 +16,8 @@ from app.auth.rbac_config import (
 from app.core import tenant_context
 from app.core.exceptions import PermissionDeniedException, ResourceNotFoundException
 from app.models.appointment import Appointment
+from app.models.audit import AuditLog
+from app.models.billing import Invoice
 from app.models.brand import Brand
 from app.models.customer import Customer
 from app.models.product import Product
@@ -154,7 +156,12 @@ def _can_manage_membership(current_user: User) -> bool:
 
 
 def _can_edit_appointment(current_user: User) -> bool:
-    return normalize_role(current_user.role) in {ROLE_SUPER_ADMIN, ROLE_SALON_OWNER}
+    return normalize_role(current_user.role) in {
+        ROLE_SUPER_ADMIN,
+        ROLE_SALON_OWNER,
+        ROLE_SALON_ADMIN,
+        ROLE_SALON_MANAGER,
+    }
 
 
 def _customer_response(customer: Customer) -> dict:
@@ -1064,11 +1071,24 @@ async def update_frontdesk_booking(
     payload: FrontDeskAppointmentCreate,
     current_user: User = Depends(get_current_user),
 ):
-    """Update full appointment details (services, products, pricing, payment, notes). Restricted to Super Admin and Salon Owner."""
+    """Update full appointment details (services, products, pricing, payment, notes). Restricted to Super Admin, Salon Owner, Salon Admin, and Salon Manager."""
     if not _can_edit_appointment(current_user):
         raise PermissionDeniedException(
-            detail="Editing appointments is restricted to salon owners and super admins only"
+            detail="Editing appointments is restricted to salon owners, admins, and managers"
         )
+
+    # Capture previous appointment state before update for audit & notification tracking
+    existing_appt = await appointment_repo.get(id)
+    if not existing_appt:
+        raise ResourceNotFoundException("Appointment not found")
+
+    prev_total = float(existing_appt.total_price or 0.0)
+    prev_payment_status = existing_appt.payment_status
+    prev_payment_type = existing_appt.payment_type
+    prev_notes = existing_appt.notes or ""
+    prev_services = [s.model_dump() for s in (existing_appt.services or [])]
+    prev_products = [p.model_dump() for p in (existing_appt.products or [])]
+
     appt = await appointment_service.update_frontdesk_appointment(
         appointment_id=id,
         salon_id=payload.salon_id,
@@ -1083,6 +1103,149 @@ async def update_frontdesk_booking(
         notes=payload.notes,
         booking_source=payload.booking_source,
     )
+
+    # If updated by a Manager, generate audit record and role-targeted notification (Manager role only)
+    user_role = normalize_role(current_user.role)
+    if user_role == ROLE_SALON_MANAGER:
+        new_total = float(appt.total_price or 0.0)
+        new_services = [s.model_dump() for s in (appt.services or [])]
+        new_products = [p.model_dump() for p in (appt.products or [])]
+
+        changed_fields = []
+        if abs(prev_total - new_total) > 0.01:
+            changed_fields.append(f"Total: ₹{prev_total:g} → ₹{new_total:g}")
+
+        # Check service differences
+        old_svc_map = {s.get("service_id"): s for s in prev_services if s.get("service_id")}
+        for ns in new_services:
+            ns_id = ns.get("service_id")
+            ns_name = ns.get("name") or "Service"
+            ns_price = float(ns.get("price") or 0.0)
+            if ns_id in old_svc_map:
+                os_price = float(old_svc_map[ns_id].get("price") or 0.0)
+                if abs(os_price - ns_price) > 0.01:
+                    changed_fields.append(f"{ns_name} price: ₹{os_price:g} → ₹{ns_price:g}")
+            else:
+                changed_fields.append(f"Added service: {ns_name} (₹{ns_price:g})")
+        for os_id, os in old_svc_map.items():
+            if not any(ns.get("service_id") == os_id for ns in new_services):
+                changed_fields.append(f"Removed service: {os.get('name') or 'Service'}")
+
+        # Check product differences
+        old_prod_map = {p.get("product_id") or p.get("salon_product_id"): p for p in prev_products}
+        for np in new_products:
+            np_key = np.get("product_id") or np.get("salon_product_id")
+            np_name = np.get("name") or "Product"
+            np_price = float(np.get("price") or 0.0)
+            np_qty = int(np.get("quantity") or 1)
+            if np_key and np_key in old_prod_map:
+                op = old_prod_map[np_key]
+                op_price = float(op.get("price") or 0.0)
+                op_qty = int(op.get("quantity") or 1)
+                if abs(op_price - np_price) > 0.01:
+                    changed_fields.append(f"{np_name} price: ₹{op_price:g} → ₹{np_price:g}")
+                if op_qty != np_qty:
+                    changed_fields.append(f"{np_name} quantity: {op_qty} → {np_qty}")
+            elif np_key:
+                changed_fields.append(f"Added product: {np_name} (qty {np_qty}, ₹{np_price:g})")
+
+        if prev_payment_status != appt.payment_status:
+            changed_fields.append(f"Payment status: {prev_payment_status} → {appt.payment_status}")
+        if prev_payment_type != appt.payment_type:
+            changed_fields.append(f"Payment method: {prev_payment_type} → {appt.payment_type}")
+        if prev_notes != (appt.notes or ""):
+            changed_fields.append("Notes updated")
+
+        if not changed_fields:
+            changed_fields.append("Bill details updated")
+
+        # Resolve bill reference
+        invoice = await Invoice.find_one({"appointment_id": str(appt.id), "is_deleted": False})
+        bill_ref = invoice.invoice_number if invoice and invoice.invoice_number else str(appt.id)[-8:].upper()
+
+        # Resolve customer name
+        customer = await Customer.find_one({"_id": PydanticObjectId(appt.customer_id)}) if appt.customer_id else None
+        customer_name = customer.full_name.strip() if customer and customer.full_name else "Customer"
+        manager_name = user_display_name(current_user)
+        now_dt = datetime.now(KOLKATA_TZ).strftime("%d %b %Y, %I:%M %p")
+
+        # Create AuditLog record
+        try:
+            await AuditLog(
+                tenant_id=current_user.tenant_id or "system",
+                user_id=str(current_user.id),
+                action="UPDATE",
+                entity_name="Bill",
+                entity_id=str(appt.id),
+                before_state={
+                    "total": prev_total,
+                    "payment_status": prev_payment_status,
+                    "payment_type": prev_payment_type,
+                    "notes": prev_notes,
+                    "services": prev_services,
+                    "products": prev_products,
+                },
+                after_state={
+                    "total": new_total,
+                    "payment_status": appt.payment_status,
+                    "payment_type": appt.payment_type,
+                    "notes": appt.notes,
+                    "services": new_services,
+                    "products": new_products,
+                    "changed_fields": changed_fields,
+                },
+            ).insert()
+        except Exception:
+            pass
+
+        # Build notification body and send to Manager role recipients only
+        changes_bullets = "\n".join(f"• {c}" for c in changed_fields)
+        notif_body = (
+            f"Manager edited bill #{bill_ref}\n\n"
+            f"Customer: {customer_name}\n"
+            f"Previous total: ₹{prev_total:g}\n"
+            f"Updated total: ₹{new_total:g}\n"
+            f"Changed by: {manager_name}\n"
+            f"Date/time: {now_dt}\n\n"
+            f"Changes:\n{changes_bullets}"
+        )
+
+        try:
+            mgr_recipients = await notification_service._tenant_users_for_roles(
+                current_user.tenant_id,
+                payload.salon_id,
+                [ROLE_SALON_MANAGER],
+            )
+            mgr_dict = {str(u.id): u for u in mgr_recipients}
+            if str(current_user.id) not in mgr_dict:
+                mgr_dict[str(current_user.id)] = current_user
+            recipients = list(mgr_dict.values())
+
+            await notification_service.create_event_notifications(
+                tenant_id=current_user.tenant_id,
+                salon_id=payload.salon_id,
+                recipients=recipients,
+                title=f"Manager edited bill #{bill_ref}",
+                body=notif_body,
+                category="BILLING",
+                notification_type="BILL_EDITED",
+                priority="NORMAL",
+                source_event="BILL_EDITED",
+                role_targets=[ROLE_SALON_MANAGER],
+                metadata={
+                    "appointment_id": str(appt.id),
+                    "bill_reference": bill_ref,
+                    "customer_name": customer_name,
+                    "manager_name": manager_name,
+                    "manager_id": str(current_user.id),
+                    "previous_total": prev_total,
+                    "updated_total": new_total,
+                    "changed_fields": changed_fields,
+                },
+            )
+        except Exception:
+            pass
+
     return success_response("Appointment updated successfully", data=await _appointment_response(appt))
 
 

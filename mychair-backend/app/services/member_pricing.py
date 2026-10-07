@@ -47,11 +47,8 @@ def resolve_applied_service_price(
     """
     Resolve the price to snapshot on an appointment line.
 
-    - Default / catalog match → membership-correct catalog price
-    - Submitted price matching the *other* catalog price → still enforce catalog
-      (prevents non-members from selecting member price via the API,
-       and ensures members receive member pricing if standard price was sent)
-    - Any other submitted amount → treated as a manual override (existing POS behavior)
+    - Default / catalog match or submitted_price is None → membership-correct catalog price
+    - Any other entered/overridden price → treated as authoritative manual price (PRICING_TYPE_MANUAL)
     """
     catalog_price, pricing_type = resolve_catalog_service_price(
         is_member=is_member,
@@ -66,8 +63,5 @@ def resolve_applied_service_price(
     if abs(submitted - catalog_price) < _PRICE_EPSILON:
         return catalog_price, pricing_type
 
-    other_price = float(normal_price) if pricing_type == PRICING_TYPE_MEMBER else (float(member_price) if _has_member_price(member_price) else None)
-    if other_price is not None and abs(submitted - other_price) < _PRICE_EPSILON:
-        return catalog_price, pricing_type
-
     return submitted, PRICING_TYPE_MANUAL
+

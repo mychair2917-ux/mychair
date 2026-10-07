@@ -514,7 +514,7 @@ class AppointmentService:
             snapshot_service_id = str(svc.id) if svc else (salon_service_id or service_id or "")
 
             normal_catalog_price = float(salon_service.price) if salon_service else (float(svc.price) if svc else float(submitted_price or 0.0))
-            calc_discount = max(0.0, round(normal_catalog_price - float(snapshot_price), 2)) if (pricing_type == "MEMBER" or is_member) and normal_catalog_price > float(snapshot_price) else 0.0
+            calc_discount = max(0.0, round(normal_catalog_price - float(snapshot_price), 2)) if pricing_type == "MEMBER" and normal_catalog_price > float(snapshot_price) else 0.0
             calc_unit_price = normal_catalog_price if calc_discount > 0 else float(snapshot_price)
 
             total_duration += duration_minutes
@@ -997,7 +997,7 @@ class AppointmentService:
             snapshot_service_id = str(svc.id) if svc else (salon_service_id or service_id or "")
 
             normal_catalog_price = float(salon_service.price) if salon_service else (float(svc.price) if svc else float(submitted_price or 0.0))
-            calc_discount = max(0.0, round(normal_catalog_price - float(snapshot_price), 2)) if (pricing_type == "MEMBER" or is_member) and normal_catalog_price > float(snapshot_price) else 0.0
+            calc_discount = max(0.0, round(normal_catalog_price - float(snapshot_price), 2)) if pricing_type == "MEMBER" and normal_catalog_price > float(snapshot_price) else 0.0
             calc_unit_price = normal_catalog_price if calc_discount > 0 else float(snapshot_price)
 
             total_duration += duration_minutes

@@ -106,6 +106,8 @@ export interface AppointmentListItem {
   whatsapp_status?: 'sent' | 'failed' | 'pending' | string;
   services: AppointmentServiceSnapshot[];
   products: AppointmentProductSnapshot[];
+  all_services?: AppointmentServiceSnapshot[];
+  all_products?: AppointmentProductSnapshot[];
   billing_details?: AppointmentBillingDetails;
   appointment_timeline?: AppointmentTimelineItem[];
 }

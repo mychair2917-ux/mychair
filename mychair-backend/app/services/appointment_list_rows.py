@@ -154,6 +154,8 @@ def _base_row(
     row["bill_reference"] = bill_reference
     row["row_id"] = row_id
     row["row_kind"] = row_kind
+    row["all_services"] = list(item.get("services") or [])
+    row["all_products"] = list(item.get("products") or [])
     row["services"] = []
     row["products"] = []
     row["service_by"] = None

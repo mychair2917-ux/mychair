@@ -156,7 +156,13 @@ function canManageMembership(role: string | undefined): boolean {
 
 function canEditAppointment(role: string | undefined): boolean {
   const normalized = normalizeRole(role);
-  return normalized === ROLES.SUPER_ADMIN || normalized === ROLES.SALON_OWNER;
+  return (
+    normalized === ROLES.SUPER_ADMIN ||
+    normalized === ROLES.SALON_OWNER ||
+    normalized === ROLES.SALON_ADMIN ||
+    normalized === ROLES.ADMIN ||
+    normalized === ROLES.SALON_MANAGER
+  );
 }
 
 function resolveServicePriceForClient(
@@ -510,9 +516,14 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     setInvalidServiceRowIds([]);
     setInvalidProductRowIds([]);
 
-    if (appointment.services && appointment.services.length > 0) {
+    const fullServices =
+      appointment.all_services && appointment.all_services.length > 0
+        ? appointment.all_services
+        : appointment.services ?? [];
+
+    if (fullServices && fullServices.length > 0) {
       setServiceRows(
-        appointment.services.map((s) => {
+        fullServices.map((s) => {
           const matched = services.find(
             (item) => item.service_id === s.service_id || item.salon_service_id === s.service_id || item.service_name === s.name
           );
@@ -529,9 +540,14 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       setServiceRows([]);
     }
 
-    if (appointment.products && appointment.products.length > 0) {
+    const fullProducts =
+      appointment.all_products && appointment.all_products.length > 0
+        ? appointment.all_products
+        : appointment.products ?? [];
+
+    if (fullProducts && fullProducts.length > 0) {
       setProductRows(
-        appointment.products.map((p) => {
+        fullProducts.map((p) => {
           const matched = products.find(
             (item) => item.product_id === p.product_id || item.salon_product_id === p.product_id || item.product_name === p.name
           );
@@ -1433,7 +1449,10 @@ const AppointmentListTab: React.FC<{
         appointment={editingAppointment}
         salonId={salonId}
         onClose={() => setEditingAppointment(null)}
-        onSuccess={() => setEditingAppointment(null)}
+        onSuccess={() => {
+          setEditingAppointment(null);
+          refetch();
+        }}
       />
 
       <BulkBillingModal
