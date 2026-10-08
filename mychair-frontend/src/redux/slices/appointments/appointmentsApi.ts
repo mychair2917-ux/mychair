@@ -199,6 +199,13 @@ export const appointmentsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Appointments'],
     }),
+    getAppointmentDetail: builder.query<ApiResponse<AppointmentListItem>, string>({
+      query: (id) => ({
+        url: API_PATHS.APPOINTMENTS.DETAIL(id),
+        method: HTTP_METHODS.GET,
+      }),
+      providesTags: ['Appointments'],
+    }),
     generateAppointmentClientId: builder.query<ApiResponse<{ client_id: string }>, void>({
       query: () => ({
         url: API_PATHS.APPOINTMENTS.CLIENTS_GENERATE_ID,
@@ -226,4 +233,6 @@ export const {
   useListAppointmentsQuery,
   useLazyGetBillByAppointmentQuery,
   useDeleteAppointmentMutation,
+  useGetAppointmentDetailQuery,
+  useLazyGetAppointmentDetailQuery,
 } = appointmentsApi;

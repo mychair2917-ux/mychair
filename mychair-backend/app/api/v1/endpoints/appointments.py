@@ -1065,6 +1065,36 @@ async def get_today_appointments(
 
 
 
+@router.get("/{id}")
+async def get_appointment_by_id(
+    id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve full appointment detail by ID (or through linked Invoice/Bill ID)."""
+    appointment = await appointment_repo.get(id)
+    if not appointment:
+        try:
+            inv = await Invoice.get(id)
+            if inv and inv.appointment_id:
+                appointment = await appointment_repo.get(inv.appointment_id)
+        except Exception:
+            pass
+        if not appointment:
+            try:
+                from app.models.bill import Bill
+                b = await Bill.get(id)
+                if b and b.appointment_id:
+                    appointment = await appointment_repo.get(b.appointment_id)
+            except Exception:
+                pass
+    if not appointment:
+        raise ResourceNotFoundException("Appointment not found")
+    return success_response(
+        "Appointment retrieved successfully",
+        data=await _appointment_response(appointment),
+    )
+
+
 @router.put("/{id}", response_model=None)
 async def update_frontdesk_booking(
     id: str,
@@ -1086,8 +1116,14 @@ async def update_frontdesk_booking(
     prev_payment_status = existing_appt.payment_status
     prev_payment_type = existing_appt.payment_type
     prev_notes = existing_appt.notes or ""
-    prev_services = [s.model_dump() for s in (existing_appt.services or [])]
-    prev_products = [p.model_dump() for p in (existing_appt.products or [])]
+    prev_services = [
+        s.model_dump() if hasattr(s, "model_dump") else (dict(s) if isinstance(s, dict) else vars(s))
+        for s in (existing_appt.services or [])
+    ]
+    prev_products = [
+        p.model_dump() if hasattr(p, "model_dump") else (dict(p) if isinstance(p, dict) else vars(p))
+        for p in (existing_appt.products or [])
+    ]
 
     appt = await appointment_service.update_frontdesk_appointment(
         appointment_id=id,
@@ -1108,8 +1144,14 @@ async def update_frontdesk_booking(
     user_role = normalize_role(current_user.role)
     if user_role == ROLE_SALON_MANAGER:
         new_total = float(appt.total_price or 0.0)
-        new_services = [s.model_dump() for s in (appt.services or [])]
-        new_products = [p.model_dump() for p in (appt.products or [])]
+        new_services = [
+            s.model_dump() if hasattr(s, "model_dump") else (dict(s) if isinstance(s, dict) else vars(s))
+            for s in (appt.services or [])
+        ]
+        new_products = [
+            p.model_dump() if hasattr(p, "model_dump") else (dict(p) if isinstance(p, dict) else vars(p))
+            for p in (appt.products or [])
+        ]
 
         changed_fields = []
         if abs(prev_total - new_total) > 0.01:
@@ -1164,7 +1206,12 @@ async def update_frontdesk_booking(
         bill_ref = invoice.invoice_number if invoice and invoice.invoice_number else str(appt.id)[-8:].upper()
 
         # Resolve customer name
-        customer = await Customer.find_one({"_id": PydanticObjectId(appt.customer_id)}) if appt.customer_id else None
+        customer = None
+        if appt.customer_id:
+            try:
+                customer = await Customer.find_one({"_id": PydanticObjectId(appt.customer_id)})
+            except Exception:
+                pass
         customer_name = customer.full_name.strip() if customer and customer.full_name else "Customer"
         manager_name = user_display_name(current_user)
         now_dt = datetime.now(KOLKATA_TZ).strftime("%d %b %Y, %I:%M %p")

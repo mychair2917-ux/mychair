@@ -58,6 +58,7 @@ const ALL_MODULES: ModuleKey[] = Object.values(MODULES);
 const ROLE_ALIASES: Record<string, string> = {
   admin: ROLES.SALON_ADMIN,
   standard: ROLES.EMPLOYEE,
+  manager: ROLES.SALON_MANAGER,
 };
 
 /** Module access per role (mirrors backend ROLE_MODULE_ACCESS). */
@@ -95,7 +96,8 @@ const ROLE_MODULE_ACCESS: Record<string, readonly ModuleKey[]> = {
 
 export function normalizeRole(role: string | undefined): string | undefined {
   if (!role) return undefined;
-  return ROLE_ALIASES[role] ?? role;
+  const lower = role.trim().toLowerCase();
+  return ROLE_ALIASES[lower] ?? lower;
 }
 
 export function canShowRolesPermissionsSidebar(role: string | undefined): boolean {

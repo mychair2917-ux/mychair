@@ -13,6 +13,7 @@ ROLE_EMPLOYEE = "employee"
 ROLE_ALIASES = {
     "admin": ROLE_SALON_ADMIN,
     "standard": ROLE_EMPLOYEE,
+    "manager": ROLE_SALON_MANAGER,
 }
 
 ALL_ROLES: FrozenSet[str] = frozenset(
@@ -96,7 +97,8 @@ EMPLOYEE_TABLE_ROLES: FrozenSet[str] = frozenset({ROLE_SALON_ADMIN, ROLE_SALON_M
 def normalize_role(role: Optional[str]) -> Optional[str]:
     if not role:
         return None
-    return ROLE_ALIASES.get(role, role)
+    cleaned = role.strip().lower()
+    return ROLE_ALIASES.get(cleaned, cleaned)
 
 
 def can_access_module(role: Optional[str], module: Module) -> bool:

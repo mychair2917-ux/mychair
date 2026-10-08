@@ -366,3 +366,30 @@ async def test_invoice_and_bill_services_preserve_manual_price_as_final():
         assert updated_bill.items[0].discount == 0.0
         assert updated_bill.items[0].line_total == 200.0
 
+
+def test_manager_role_alias_normalization():
+    from app.auth.rbac_config import normalize_role, ROLE_SALON_MANAGER
+    assert normalize_role("manager") == ROLE_SALON_MANAGER
+    assert normalize_role("Manager") == ROLE_SALON_MANAGER
+    assert normalize_role("SALON_MANAGER") == ROLE_SALON_MANAGER
+    assert normalize_role("salon_manager") == ROLE_SALON_MANAGER
+    assert _can_edit_appointment(MagicMock(role="manager")) is True
+    assert _can_edit_appointment(MagicMock(role="Manager")) is True
+
+
+@pytest.mark.asyncio
+async def test_get_appointment_by_id_endpoint():
+    from app.api.v1.endpoints.appointments import get_appointment_by_id
+    mock_appt = MagicMock()
+    mock_appt.id = ObjectId()
+    manager_user = MagicMock(role=ROLE_SALON_MANAGER)
+
+    with patch("app.api.v1.endpoints.appointments.appointment_repo.get", new=AsyncMock(return_value=mock_appt)), \
+         patch("app.api.v1.endpoints.appointments._appointment_response", new=AsyncMock(return_value={"id": str(mock_appt.id)})):
+        res = await get_appointment_by_id(id=str(mock_appt.id), current_user=manager_user)
+        import json
+        body = json.loads(res.body.decode())
+        assert body["success"] is True
+        assert body["data"]["id"] == str(mock_appt.id)
+
+

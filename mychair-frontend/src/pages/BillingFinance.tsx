@@ -7,6 +7,7 @@ import {
   ChevronRight,
   FileText,
   IndianRupee,
+  Pencil,
   Plus,
   Printer,
   ReceiptText,
@@ -27,6 +28,14 @@ import { ROLES } from '../constants';
 import { useAppSelector } from '../redux/hooks';
 import { useLazyGetBillDetailQuery, useListBillsQuery } from '../redux/slices/billing/billingApi';
 import { BillListItem } from '../redux/slices/billing/Types';
+import { EditAppointmentModal, canEditAppointment } from '../components/appointments/EditAppointmentModal';
+import { useLazyGetAppointmentDetailQuery } from '../redux/slices/appointments/appointmentsApi';
+import type {
+  AppointmentListItem,
+  AppointmentProductSnapshot,
+  AppointmentServiceSnapshot,
+} from '../redux/slices/appointments/Types';
+import { getApiErrorMessage } from '../utils/apiErrors';
 import { cn } from '../utils/cn';
 import { formatCurrency } from '../utils/currency';
 import { downloadInvoicePDF } from '../utils/invoicePdf';
@@ -420,6 +429,55 @@ const BillsSkeletonRow: React.FC = () => (
   </tr>
 );
 
+function convertBillToAppointment(bill: BillListItem): AppointmentListItem {
+  const billItems = bill.items || [];
+  const services: AppointmentServiceSnapshot[] = billItems
+    .filter((item) => (item.item_type || '').toUpperCase() !== 'PRODUCT')
+    .map((item) => ({
+      service_id: item.item_id || '',
+      name: item.name || '',
+      price: Number(item.unit_price || 0),
+      duration_minutes: 30,
+      tax_rate: Number(item.tax_rate || 0),
+      staff_id: item.staff_id || null,
+      staff_name: item.staff_name || null,
+    }));
+
+  const products: AppointmentProductSnapshot[] = billItems
+    .filter((item) => (item.item_type || '').toUpperCase() === 'PRODUCT')
+    .map((item) => ({
+      product_id: item.item_id || '',
+      name: item.name || '',
+      price: Number(item.unit_price || 0),
+      tax_rate: Number(item.tax_rate || 0),
+      quantity: Number(item.quantity || 1),
+      staff_id: item.staff_id || null,
+      staff_name: item.staff_name || null,
+    }));
+
+  return {
+    id: bill.appointment_id || bill.id,
+    salon_id: bill.salon_id,
+    customer_id: bill.customer_id,
+    customer_name: bill.customer_name || 'Walk-in Customer',
+    customer_phone: bill.customer_phone || '',
+    staff_id: billItems[0]?.staff_id || '',
+    start_datetime: bill.created_at || new Date().toISOString(),
+    end_datetime: bill.created_at || new Date().toISOString(),
+    total_price: bill.total_amount,
+    status: bill.status || 'COMPLETED',
+    booking_source: 'WALK_IN',
+    payment_type: bill.payment_method || 'CASH',
+    payment_status: bill.payment_status || 'PAID',
+    paid_amount: bill.paid_amount || 0,
+    services,
+    products,
+    all_services: services,
+    all_products: products,
+    notes: bill.notes || '',
+  };
+}
+
 const BillsSection: React.FC<{
   salonId: string;
   activeTab: string;
@@ -450,9 +508,40 @@ const BillsSection: React.FC<{
   const [staffName, setStaffName] = useState('');
   const [branchId, setBranchId] = useState(salonId);
   const [printingBillId, setPrintingBillId] = useState<string | null>(null);
+  const [editingAppointment, setEditingAppointment] = useState<AppointmentListItem | null>(null);
+  const [loadingEditBillId, setLoadingEditBillId] = useState<string | null>(null);
+  const [fetchAppointmentDetail] = useLazyGetAppointmentDetailQuery();
+  const userRole = useAppSelector((state) => state.auth.user?.role);
+  const canEdit = canEditAppointment(userRole);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const LIMIT = 20;
   const [fetchBillDetail] = useLazyGetBillDetailQuery();
+
+  const handleEditBill = async (bill: BillListItem) => {
+    setLoadingEditBillId(bill.id);
+    try {
+      const targetId = bill.appointment_id || bill.id;
+      let appt: AppointmentListItem | null = null;
+      if (targetId) {
+        try {
+          const res = await fetchAppointmentDetail(targetId).unwrap();
+          if (res?.data) {
+            appt = res.data;
+          }
+        } catch {
+          // Fallback to synthesizing appointment from bill if detail query fails
+        }
+      }
+      if (!appt) {
+        appt = convertBillToAppointment(bill);
+      }
+      setEditingAppointment(appt);
+    } catch (err) {
+      showToast('error', getApiErrorMessage(err, 'Failed to open bill for editing'));
+    } finally {
+      setLoadingEditBillId(null);
+    }
+  };
 
   const handleMonthChange = (newMonth: number, newYear: number) => {
     setSelectedMonth(newMonth);
@@ -842,16 +931,30 @@ const BillsSection: React.FC<{
                         {formatDateDMY(bill.created_at)}
                       </td>
                       <td className="sticky right-0 bg-white px-4 py-4">
-                        <button
-                          type="button"
-                          onClick={() => handlePrint(bill.id)}
-                          title="Download PDF invoice"
-                          disabled={printingBillId === bill.id}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--color-border-strong)] bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-[var(--color-brand-gold)] hover:text-[var(--color-brand-gold-dark)]"
-                        >
-                          <Printer className="h-3.5 w-3.5" />
-                          {printingBillId === bill.id ? 'Printing...' : 'Print'}
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => handleEditBill(bill)}
+                              title="Edit bill"
+                              disabled={loadingEditBillId === bill.id}
+                              className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-border-strong)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[var(--color-brand-gold-dark)] shadow-sm transition hover:border-[var(--color-brand-gold)] hover:bg-[var(--color-brand-gold)]/10 disabled:opacity-40"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              {loadingEditBillId === bill.id ? 'Loading...' : 'Edit'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handlePrint(bill.id)}
+                            title="Download PDF invoice"
+                            disabled={printingBillId === bill.id}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--color-border-strong)] bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-[var(--color-brand-gold)] hover:text-[var(--color-brand-gold-dark)]"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            {printingBillId === bill.id ? 'Printing...' : 'Print'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -915,6 +1018,17 @@ const BillsSection: React.FC<{
             </div>
           </div>
         )}
+        {/* Edit Bill Modal */}
+        <EditAppointmentModal
+          open={Boolean(editingAppointment)}
+          appointment={editingAppointment}
+          salonId={branchId || salonId}
+          onClose={() => setEditingAppointment(null)}
+          onSuccess={() => {
+            setEditingAppointment(null);
+            refetch();
+          }}
+        />
       </div>
     </SectionStack>
   );

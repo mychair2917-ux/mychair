@@ -66,6 +66,7 @@ export const API_PATHS = {
     CREATE_QUICK: '/appointments/quick',
     CREATE_FRONTDESK: '/appointments/frontdesk',
     LIST: '/appointments/list',
+    DETAIL: (id: string) => `/appointments/${id}`,
     UPDATE: (id: string) => `/appointments/${id}`,
     UPDATE_PAYMENT: (id: string) => `/appointments/${id}/payment`,
     CLIENTS: '/appointments/clients',

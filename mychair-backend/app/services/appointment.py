@@ -944,6 +944,23 @@ class AppointmentService:
                     SalonService.is_deleted == False,
                 )
                 if not salon_service:
+                    salon_service = await SalonService.find_one(
+                        SalonService.service_id == str(salon_service_id),
+                        SalonService.salon_id == salon_id,
+                        SalonService.is_deleted == False,
+                    )
+                if not salon_service:
+                    try:
+                        svc_check = await Service.find_one(
+                            Service.id == salon_service_obj_id,
+                            Service.is_deleted == False,
+                        )
+                        if svc_check:
+                            service_id = str(svc_check.id)
+                            salon_service_id = None
+                    except Exception:
+                        pass
+                if not salon_service and not service_id:
                     raise ResourceNotFoundException(
                         f"Salon service ID '{salon_service_id}' not found"
                     )
@@ -1045,6 +1062,23 @@ class AppointmentService:
                     SalonProduct.is_deleted == False,
                 )
                 if not salon_product:
+                    salon_product = await SalonProduct.find_one(
+                        SalonProduct.product_id == str(salon_product_id),
+                        SalonProduct.salon_id == salon_id,
+                        SalonProduct.is_deleted == False,
+                    )
+                if not salon_product:
+                    try:
+                        prod_check = await Product.find_one(
+                            Product.id == salon_product_obj_id,
+                            Product.is_deleted == False,
+                        )
+                        if prod_check:
+                            product_id = str(prod_check.id)
+                            salon_product_id = None
+                    except Exception:
+                        pass
+                if not salon_product and not product_id:
                     raise ResourceNotFoundException(
                         f"Salon product ID '{salon_product_id}' not found"
                     )
