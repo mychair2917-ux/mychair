@@ -1065,34 +1065,6 @@ async def get_today_appointments(
 
 
 
-@router.get("/{id}")
-async def get_appointment_by_id(
-    id: str,
-    current_user: User = Depends(get_current_user),
-):
-    """Retrieve full appointment detail by ID (or through linked Invoice/Bill ID)."""
-    appointment = await appointment_repo.get(id)
-    if not appointment:
-        try:
-            inv = await Invoice.get(id)
-            if inv and inv.appointment_id:
-                appointment = await appointment_repo.get(inv.appointment_id)
-        except Exception:
-            pass
-        if not appointment:
-            try:
-                from app.models.bill import Bill
-                b = await Bill.get(id)
-                if b and b.appointment_id:
-                    appointment = await appointment_repo.get(b.appointment_id)
-            except Exception:
-                pass
-    if not appointment:
-        raise ResourceNotFoundException("Appointment not found")
-    return success_response(
-        "Appointment retrieved successfully",
-        data=await _appointment_response(appointment),
-    )
 
 
 @router.put("/{id}", response_model=None)
@@ -1567,4 +1539,34 @@ async def get_salon_calendar(
         start_range=start_dt,
         end_range=end_dt,
         staff_id=staff_id
+    )
+
+
+@router.get("/{id}")
+async def get_appointment_by_id(
+    id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve full appointment detail by ID (or through linked Invoice/Bill ID)."""
+    appointment = await appointment_repo.get(id)
+    if not appointment:
+        try:
+            inv = await Invoice.get(id)
+            if inv and inv.appointment_id:
+                appointment = await appointment_repo.get(inv.appointment_id)
+        except Exception:
+            pass
+        if not appointment:
+            try:
+                from app.models.bill import Bill
+                b = await Bill.get(id)
+                if b and b.appointment_id:
+                    appointment = await appointment_repo.get(b.appointment_id)
+            except Exception:
+                pass
+    if not appointment:
+        raise ResourceNotFoundException("Appointment not found")
+    return success_response(
+        "Appointment retrieved successfully",
+        data=await _appointment_response(appointment),
     )

@@ -393,3 +393,21 @@ async def test_get_appointment_by_id_endpoint():
         assert body["data"]["id"] == str(mock_appt.id)
 
 
+def test_appointment_router_route_order():
+    """Verify static routes like /list and /calendar are not shadowed by /{id}."""
+    from app.api.v1.endpoints.appointments import router
+    from starlette.routing import Match
+
+    def get_matched_endpoint_name(path: str, method: str = "GET"):
+        for r in router.routes:
+            match, _ = r.matches({"type": "http", "method": method, "path": path})
+            if match == Match.FULL:
+                return getattr(r, "endpoint", None).__name__
+        return None
+
+    assert get_matched_endpoint_name("/list") == "list_appointments"
+    assert get_matched_endpoint_name("/calendar") == "get_salon_calendar"
+    assert get_matched_endpoint_name("/today") == "get_today_appointments"
+    assert get_matched_endpoint_name("/6a70b50d4298efb3fc9522df") == "get_appointment_by_id"
+
+

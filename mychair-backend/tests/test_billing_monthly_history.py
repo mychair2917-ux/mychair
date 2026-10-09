@@ -261,7 +261,7 @@ async def test_list_bills_search_combined_with_month():
 
 def test_history_route_registered():
     """Verify /history route is registered on billing router alongside /bills."""
-    paths = [route.path for route in billing_router.routes]
+    paths = [route.path for route in billing_router.routes if hasattr(route, "path")]
     assert "/bills" in paths
     assert "/history" in paths
 
