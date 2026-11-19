@@ -65,6 +65,8 @@ const tabs: Array<{ key: InventoryTab; label: string }> = [
 const categories = ['General', 'Shampoo', 'Wax', 'Color', 'Conditioner', 'Treatment', 'Retail'];
 
 const emptyPurchase = {
+  inventoryId: undefined as string | undefined,
+  selectedSalonProductId: undefined as string | undefined,
   productName: '',
   productId: undefined as string | undefined,
   brandName: '',
@@ -155,8 +157,13 @@ const ProductsInventory: React.FC = () => {
     },
     { skip }
   );
+  const currentProductTypeQuery =
+    activeTab === 'purchase' || isAddStockModalOpen
+      ? purchaseDraft.productType
+      : productType;
+
   const { data: productsData, isLoading: isLoadingProducts } = useGetSalonProductsQuery(
-    { salon_id: salonId || '', product_type: productType },
+    { salon_id: salonId || '', product_type: currentProductTypeQuery },
     { skip: !salonId }
   );
   const { data: brandsData, isLoading: isLoadingBrands } = useGetBrandsQuery(
@@ -222,14 +229,25 @@ const ProductsInventory: React.FC = () => {
 
   const updatePurchaseProduct = (value: string) => {
     const matched = (productsData?.data ?? []).find((p) => p.id === value);
+    const matchingStock = stocks.find(
+      (s) =>
+        (matched?.product_id && s.product_id === matched.product_id) ||
+        (matched?.product_name && s.product_name.toLowerCase() === matched.product_name.toLowerCase()) ||
+        (matched?.custom_product_name && s.product_name.toLowerCase() === matched.custom_product_name.toLowerCase())
+    );
     setPurchaseDraft((current) => ({
       ...current,
-      productName: matched?.product_name ?? value,
+      selectedSalonProductId: matched?.id,
+      inventoryId: matchingStock?.id,
+      productName: matched?.base_product_name || matched?.custom_product_name || matched?.product_name || value,
       productId: matched?.product_id || undefined,
-      brandName: matched?.brand_name ?? '',
+      brandName: matched?.brand_name || matched?.custom_brand_name || current.brandName,
       brandId: matched?.brand_id || undefined,
-      buyingPrice: matched?.price ? String(matched.price) : current.buyingPrice,
+      buyingPrice: matchingStock?.buying_price ? String(matchingStock.buying_price) : (matched?.price ? String(matched.price) : current.buyingPrice),
+      sellingPrice: matched?.price ? String(matched.price) : current.sellingPrice,
       productType: (matched?.product_type as ProductTypeFilter) || current.productType,
+      category: matchingStock?.category || current.category,
+      minThreshold: matchingStock?.min_threshold ? String(matchingStock.min_threshold) : current.minThreshold,
     }));
   };
 
@@ -242,7 +260,12 @@ const ProductsInventory: React.FC = () => {
     }));
   };
 
-  const showSellingPrice = purchaseDraft.productType === 'SELLING' && !purchaseDraft.productId;
+  const isExistingProduct = Boolean(
+    purchaseDraft.selectedSalonProductId ||
+    purchaseDraft.productId ||
+    purchaseDraft.inventoryId
+  );
+  const showSellingPrice = purchaseDraft.productType === 'SELLING' && !isExistingProduct;
 
   const handleQuickDeduct = async (stockItem: InventoryStockItem, qty = 1) => {
     if (!salonId) return;
@@ -309,7 +332,11 @@ const ProductsInventory: React.FC = () => {
     const buyingPrice = Number(purchaseDraft.buyingPrice);
     const sellingPrice = Number(purchaseDraft.sellingPrice);
     const minThreshold = Number(purchaseDraft.minThreshold || 0);
-    const isNewProduct = !purchaseDraft.productId && Boolean(productName);
+    const isNewProduct =
+      !purchaseDraft.productId &&
+      !purchaseDraft.selectedSalonProductId &&
+      !purchaseDraft.inventoryId &&
+      Boolean(productName);
     const isSellingType = purchaseDraft.productType === 'SELLING';
 
     if (!productName || !quantity || quantity <= 0 || Number.isNaN(quantity)) {
@@ -338,6 +365,7 @@ const ProductsInventory: React.FC = () => {
       const response = await createPurchase({
         salon_id: salonId,
         body: {
+          ...(purchaseDraft.inventoryId ? { inventory_id: purchaseDraft.inventoryId } : {}),
           ...(purchaseDraft.productId
             ? { product_id: purchaseDraft.productId }
             : { custom_product_name: productName }),
@@ -347,7 +375,7 @@ const ProductsInventory: React.FC = () => {
               : { custom_brand_name: brandName }
             : {}),
           buying_price: buyingPrice,
-          ...(isSellingType && isNewProduct && !Number.isNaN(sellingPrice)
+          ...(isSellingType && (sellingPrice > 0 || isNewProduct) && !Number.isNaN(sellingPrice)
             ? { selling_price: sellingPrice }
             : {}),
           quantity,
@@ -682,7 +710,7 @@ const ProductsInventory: React.FC = () => {
                   setBillFile(null);
                   setIsAddStockModalOpen(true);
                 }}
-                icon={<PackagePlus className="h-4 w-4" />}
+                icon={<Plus className="h-4 w-4" />}
               >
                 Add Stock
               </Button>
@@ -749,9 +777,32 @@ const ProductsInventory: React.FC = () => {
             },
             {
               type: 'custom',
-              label: 'Add Stock (+1)',
+              label: 'Add Stock',
               icon: <Plus className="h-4 w-4" />,
-              onClick: (row) => handleQuickAdd(row, 1),
+              onClick: (row) => {
+                const matchedProduct = (productsData?.data ?? []).find(
+                  (p) =>
+                    (row.product_id && p.product_id === row.product_id) ||
+                    p.product_name.toLowerCase() === row.product_name.toLowerCase()
+                );
+                setPurchaseDraft({
+                  ...emptyPurchase,
+                  productType,
+                  inventoryId: row.id,
+                  selectedSalonProductId: matchedProduct?.id,
+                  productId: row.product_id,
+                  productName: row.product_name,
+                  brandId: row.brand_id || undefined,
+                  brandName: row.brand_name || '',
+                  buyingPrice: String(row.buying_price),
+                  sellingPrice: String(row.selling_price || ''),
+                  category: row.category,
+                  minThreshold: String(row.min_threshold),
+                  quantity: '1',
+                });
+                setBillFile(null);
+                setIsAddStockModalOpen(true);
+              },
             },
             {
               type: 'custom',
@@ -765,7 +816,7 @@ const ProductsInventory: React.FC = () => {
             },
           ]}
           emptyTitle={`No ${productType === 'SELLING' ? 'selling' : 'service'} products found`}
-          emptyDescription="Use Purchase Entry to create products, brands, and stock records."
+          emptyDescription="Use the + Add Stock button above to create products, brands, and stock records."
         />
       )}
 
@@ -815,7 +866,7 @@ const ProductsInventory: React.FC = () => {
               <FormField label="Product" name="purchaseProduct" required>
                 <CommonDropdown
                   options={productOptions}
-                  value={purchaseDraft.productId}
+                  value={purchaseDraft.selectedSalonProductId}
                   onChange={(value) => updatePurchaseProduct(String(value))}
                   placeholder="Search product"
                   loading={isLoadingProducts}
@@ -829,6 +880,8 @@ const ProductsInventory: React.FC = () => {
                       ...current,
                       productName: event.target.value,
                       productId: undefined,
+                      selectedSalonProductId: undefined,
+                      inventoryId: undefined,
                     }))
                   }
                 />
@@ -977,7 +1030,7 @@ const ProductsInventory: React.FC = () => {
             </p>
           )}
           <div className="mt-5 flex justify-end">
-            <Button icon={<PackagePlus className="h-4 w-4" />} onClick={handlePurchase} isLoading={isCreatingPurchase}>
+            <Button icon={<Plus className="h-4 w-4" />} onClick={handlePurchase} isLoading={isCreatingPurchase}>
               Record Purchase
             </Button>
           </div>
@@ -1347,7 +1400,11 @@ const ProductsInventory: React.FC = () => {
         setIsAddStockModalOpen(false);
         setBillFile(null);
       }}>
-        <ModalHeader>Purchase Entry & Add Stock</ModalHeader>
+        <ModalHeader>
+          {purchaseDraft.productType === 'SELLING'
+            ? 'Add Selling Product Stock'
+            : 'Add Service Product Stock'}
+        </ModalHeader>
         <ModalBody>
           <div className="space-y-4 py-2">
             <p className="text-sm text-gray-500">
@@ -1392,7 +1449,7 @@ const ProductsInventory: React.FC = () => {
               <FormField label="Product" name="purchaseProduct" required>
                 <CommonDropdown
                   options={productOptions}
-                  value={purchaseDraft.productId}
+                  value={purchaseDraft.selectedSalonProductId}
                   onChange={(value) => updatePurchaseProduct(String(value))}
                   placeholder="Select product"
                   loading={isLoadingProducts}
@@ -1406,6 +1463,8 @@ const ProductsInventory: React.FC = () => {
                       ...current,
                       productName: event.target.value,
                       productId: undefined,
+                      selectedSalonProductId: undefined,
+                      inventoryId: undefined,
                     }))
                   }
                 />
@@ -1609,7 +1668,7 @@ const ProductsInventory: React.FC = () => {
               Cancel
             </Button>
             <Button
-              icon={<PackagePlus className="h-4 w-4" />}
+              icon={<Plus className="h-4 w-4" />}
               onClick={handlePurchase}
               isLoading={isCreatingPurchase}
             >
