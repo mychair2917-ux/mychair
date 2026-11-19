@@ -52,7 +52,7 @@ import {
 } from '../../redux/slices/appointments/Types';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { cn } from '../../utils/cn';
-import { formatDateDMY } from '../../utils/utilities';
+import { formatDateDMY, formatTimeTo12Hour, toDateTimeInputValue, IST_TIMEZONE } from '../../utils/utilities';
 import { downloadInvoicePDF } from '../../utils/invoicePdf';
 import { showToast } from '../../components/common/Toast/toastService';
 import { normalizeRole } from '../../config/rbac';
@@ -217,11 +217,6 @@ function formatProductListLabel(product: {
   return product.display_name || product.name;
 }
 
-function toDateTimeInputValue(date: Date): string {
-  const pad = (v: number) => String(v).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 function formatTime(value?: string | null): string {
   if (!value) return '-';
   const rawIso =
@@ -229,43 +224,16 @@ function formatTime(value?: string | null): string {
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) &&
     !value.endsWith('Z') &&
     !/[+-]\d{2}:\d{2}$/.test(value)
-      ? `${value}Z`
+      ? `${value}+05:30`
       : value;
   const d = new Date(rawIso);
   if (isNaN(d.getTime())) return value;
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-}
-
-function formatTimeTo12Hour(timeStr?: string, startDatetime?: string): string {
-  if (startDatetime) {
-    const rawIso =
-      typeof startDatetime === 'string' &&
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(startDatetime) &&
-      !startDatetime.endsWith('Z') &&
-      !/[+-]\d{2}:\d{2}$/.test(startDatetime)
-        ? `${startDatetime}Z`
-        : startDatetime;
-    const d = new Date(rawIso);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    }
-  }
-  if (!timeStr) return '-';
-  if (/am|pm/i.test(timeStr)) {
-    return timeStr;
-  }
-  const parts = timeStr.split(':');
-  if (parts.length >= 2) {
-    let hours = parseInt(parts[0], 10);
-    const minutes = parts[1].padStart(2, '0');
-    if (!isNaN(hours)) {
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12;
-      if (hours === 0) hours = 12;
-      return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
-    }
-  }
-  return timeStr;
+  return d.toLocaleTimeString('en-US', {
+    timeZone: IST_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 /* ─── List tab skeleton row ─────────────────────────────── */
@@ -1483,7 +1451,11 @@ const Appointments: React.FC = () => {
       salon_id: salonId,
       customer_id: selectedClient.id,
       appointment_id: selectedAppointmentForBilling?.id || undefined,
-      start_datetime: new Date(startDateTime).toISOString(),
+      start_datetime: new Date(
+        startDateTime.includes('+') || startDateTime.endsWith('Z')
+          ? startDateTime
+          : `${startDateTime}:00+05:30`
+      ).toISOString(),
       services: serviceRowsToSubmit.map((row) => ({
         service_id: row.service_id || undefined,
         salon_service_id: row.salon_service_id,

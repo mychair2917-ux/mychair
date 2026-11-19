@@ -57,7 +57,16 @@ from app.services.websocket import manager
 from app.services.whatsapp import WhatsAppService
 from app.utils.api_response import error_response, success_response
 from app.utils.phone import PHONE_INVALID, PHONE_MISSING, normalize_mobile, phone_lookup_variants
-from app.utils.timezone import make_aware, now_utc, to_utc_iso, timezone, KOLKATA_TZ
+from app.utils.timezone import (
+    make_aware,
+    now_utc,
+    to_utc_iso,
+    timezone,
+    KOLKATA_TZ,
+    to_ist,
+    now_ist,
+    combine_ist_datetime,
+)
 
 router = APIRouter()
 appointment_service = AppointmentService()
@@ -201,6 +210,8 @@ def _format_appointment_item(
         "customer_phone": customer_phone,
         "staff_id": appointment.staff_id,
         "staff_name": staff_name,
+        "appointment_date": appointment.appointment_date or (to_ist(appointment.start_datetime).strftime("%Y-%m-%d") if getattr(appointment, "start_datetime", None) else None),
+        "appointment_time": appointment.appointment_time or (to_ist(appointment.start_datetime).strftime("%H:%M") if getattr(appointment, "start_datetime", None) else None),
         "start_datetime": to_utc_iso(appointment.start_datetime),
         "end_datetime": to_utc_iso(appointment.end_datetime),
         "total_price": appointment.total_price,
@@ -891,11 +902,10 @@ async def create_quick_appointment(
             customer.last_name = name_parts[1] if len(name_parts) > 1 else ""
             await customer.save()
 
-    # Parse date and time
+    # Parse date and time in Asia/Kolkata (IST) then convert to UTC
     try:
-        dt_str = f"{payload.appointment_date} {payload.appointment_time}"
-        naive_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
-        start_dt = make_aware(naive_dt)
+        ist_dt = combine_ist_datetime(payload.appointment_date, payload.appointment_time)
+        start_dt = ist_dt.astimezone(timezone.utc)
     except Exception:
         return error_response("Invalid appointment_date (YYYY-MM-DD) or appointment_time (HH:MM).", status_code=400)
         
@@ -969,14 +979,21 @@ async def get_today_appointments(
             parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
             today_str = date
         except ValueError:
-            parsed_date = datetime.now(timezone.utc).date()
+            parsed_date = now_ist().date()
             today_str = parsed_date.strftime("%Y-%m-%d")
     else:
-        parsed_date = datetime.now(timezone.utc).date()
+        parsed_date = now_ist().date()
         today_str = parsed_date.strftime("%Y-%m-%d")
         
-    today_start = datetime.combine(parsed_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-    today_end = datetime.combine(parsed_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+    # Start and end of the day in Asia/Kolkata converted to UTC
+    ist_day_start = datetime.combine(parsed_date, datetime.min.time()).replace(tzinfo=KOLKATA_TZ)
+    ist_day_end = datetime.combine(parsed_date, datetime.max.time()).replace(tzinfo=KOLKATA_TZ)
+    utc_day_start = ist_day_start.astimezone(timezone.utc)
+    utc_day_end = ist_day_end.astimezone(timezone.utc)
+
+    # Legacy naive/UTC support for historical records
+    legacy_utc_start = datetime.combine(parsed_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+    legacy_utc_end = datetime.combine(parsed_date, datetime.max.time()).replace(tzinfo=timezone.utc)
     
     base_query: dict = {
         "salon_id": salon_id,
@@ -985,8 +1002,14 @@ async def get_today_appointments(
             {"appointment_date": today_str},
             {
                 "start_datetime": {
-                    "$gte": today_start,
-                    "$lte": today_end
+                    "$gte": utc_day_start,
+                    "$lte": utc_day_end
+                }
+            },
+            {
+                "start_datetime": {
+                    "$gte": legacy_utc_start,
+                    "$lte": legacy_utc_end
                 }
             }
         ]
@@ -1000,13 +1023,26 @@ async def get_today_appointments(
     today_walkins_count = sum(1 for a in all_today if a.type == "Walk-in")
     completed_today_count = sum(1 for a in all_today if a.status == "COMPLETED")
     
-    now_dt = datetime.utcnow()
-    # Fallback if start_datetime happens to be tz-aware
+    current_utc = now_utc()
+    # Grace period: up to 30 mins overdue appointments are considered active in queue
+    cutoff_utc = current_utc - timedelta(minutes=30)
+
+    def _appt_instant(a: Appointment) -> datetime:
+        if a.appointment_date and a.appointment_time:
+            try:
+                return combine_ist_datetime(a.appointment_date, a.appointment_time).astimezone(timezone.utc)
+            except Exception:
+                pass
+        if getattr(a, "start_datetime", None):
+            return make_aware(a.start_datetime)
+        return datetime.min.replace(tzinfo=timezone.utc)
+
     upcoming_items = [
         a for a in all_today 
         if a.status in {"SCHEDULED", "BOOKED", "CONFIRMED", "CHECKED_IN"} 
-        and (a.start_datetime.replace(tzinfo=None) if getattr(a, 'start_datetime', None) else datetime.min) >= now_dt
+        and _appt_instant(a) >= cutoff_utc
     ]
+    upcoming_items.sort(key=_appt_instant)
     upcoming_appointments_count = len(upcoming_items)
     
     next_upcoming = upcoming_items[0] if upcoming_items else None
@@ -1031,13 +1067,14 @@ async def get_today_appointments(
         
     res_items = []
     for appt in active_items:
+        ist_dt = to_ist(appt.start_datetime) if getattr(appt, "start_datetime", None) else None
         res_items.append({
             "id": str(appt.id),
             "customer_id": appt.customer_id,
             "customer_name": appt.customer_name or "Unknown Client",
             "customer_phone": appt.customer_phone or "",
-            "appointment_date": appt.appointment_date or appt.start_datetime.strftime("%Y-%m-%d"),
-            "appointment_time": appt.appointment_time or appt.start_datetime.strftime("%H:%M"),
+            "appointment_date": appt.appointment_date or (ist_dt.strftime("%Y-%m-%d") if ist_dt else ""),
+            "appointment_time": appt.appointment_time or (ist_dt.strftime("%H:%M") if ist_dt else ""),
             "type": appt.type or "Appointment",
             "status": appt.status,
             "start_datetime": to_utc_iso(appt.start_datetime),
@@ -1055,7 +1092,7 @@ async def get_today_appointments(
                 "next_upcoming": {
                     "customer_name": next_upcoming.customer_name,
                     "phone": next_upcoming.customer_phone,
-                    "time": next_upcoming.appointment_time or next_upcoming.start_datetime.strftime("%H:%M")
+                    "time": next_upcoming.appointment_time or (to_ist(next_upcoming.start_datetime).strftime("%H:%M") if next_upcoming.start_datetime else "")
                 } if next_upcoming else None
             },
             "items": res_items

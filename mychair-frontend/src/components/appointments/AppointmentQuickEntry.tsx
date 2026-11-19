@@ -53,10 +53,25 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
     ROLES.SALON_MANAGER,
   ].includes(normalizedRole as any);
 
-  const now = new Date();
-  const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
+  const getIstNowDetails = () => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date());
+    const find = (type: string) => parts.find((p) => p.type === type)?.value || '0';
+    const todayStr = `${find('year')}-${find('month')}-${find('day')}`;
+    let currentHour = parseInt(find('hour'), 10);
+    if (currentHour === 24) currentHour = 0;
+    const currentMinute = parseInt(find('minute'), 10);
+    return { todayStr, currentHour, currentMinute };
+  };
+
+  const { todayStr, currentHour, currentMinute } = getIstNowDetails();
   
   // Round up to nearest 5 minutes for default selection
   const roundedMinute = Math.ceil(currentMinute / 5) * 5;
@@ -335,10 +350,10 @@ export const AppointmentQuickEntry: React.FC<AppointmentQuickEntryProps> = ({
       setPhone('');
       setNotes('');
       setShowNotes(false);
-      setAppointmentDate(todayStr);
-      const n = new Date();
-      const nH = n.getHours();
-      const nM = n.getMinutes();
+      const resetIst = getIstNowDetails();
+      setAppointmentDate(resetIst.todayStr);
+      const nH = resetIst.currentHour;
+      const nM = resetIst.currentMinute;
       const roundM = Math.ceil(nM / 5) * 5;
       const initialM = roundM === 60 ? '00' : String(roundM).padStart(2, '0');
       const initialH = roundM === 60 ? nH + 1 : nH;

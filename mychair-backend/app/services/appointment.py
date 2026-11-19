@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+~~from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from beanie import PydanticObjectId
 from app.models.appointment import Appointment, ProductSnapshot, ServiceSnapshot
@@ -23,7 +23,7 @@ from app.core.exceptions import (
     ResourceNotFoundException,
 )
 from app.core import tenant_context
-from app.utils.timezone import make_aware, now_utc, to_utc_iso
+from app.utils.timezone import make_aware, now_utc, to_utc_iso, to_ist
 from app.services.member_pricing import resolve_applied_service_price
 
 class AppointmentService:
@@ -32,6 +32,8 @@ class AppointmentService:
         self.billing_service = BillingService()
         self.bill_service = BillService()
         self.whatsapp_service = WhatsAppService()
+        from app.services.inventory import InventoryService
+        self.inventory_service = InventoryService()
 
     async def get_customer_for_history(
         self,
@@ -331,9 +333,11 @@ class AppointmentService:
             
         end_dt = start_dt + timedelta(minutes=total_duration)
         
-        # 3. Verify staff schedule and available hours
-        day_of_week = start_dt.weekday()  # Monday = 0, Sunday = 6
-        date_str = start_dt.strftime("%Y-%m-%d")
+        # 3. Verify staff schedule and available hours in IST
+        ist_start = to_ist(start_dt)
+        ist_end = to_ist(end_dt)
+        day_of_week = ist_start.weekday()  # Monday = 0, Sunday = 6
+        date_str = ist_start.strftime("%Y-%m-%d")
         
         # Look for a specific date schedule first (leaves/holidays or modified hours), otherwise recurring weekday
         schedule = await StaffSchedule.find_one(
@@ -355,8 +359,8 @@ class AppointmentService:
             raise BookingConflictException("Stylist is not scheduled to work or on leave for this timeframe")
             
         # Convert scheduling bounds for string comparisons
-        req_start_time = start_dt.strftime("%H:%M")
-        req_end_time = end_dt.strftime("%H:%M")
+        req_start_time = ist_start.strftime("%H:%M")
+        req_end_time = ist_end.strftime("%H:%M")
         
         if req_start_time < schedule.start_time or req_end_time > schedule.end_time:
             raise BookingConflictException(
@@ -382,6 +386,8 @@ class AppointmentService:
             "salon_id": salon_id,
             "customer_id": customer_id,
             "staff_id": staff_id,
+            "appointment_date": ist_start.strftime("%Y-%m-%d"),
+            "appointment_time": ist_start.strftime("%H:%M"),
             "start_datetime": start_dt,
             "end_datetime": end_dt,
             "services": service_snapshots,
@@ -672,6 +678,10 @@ class AppointmentService:
             paid_at=now_utc(),
         )
 
+        ist_dt = to_ist(start_dt)
+        appt_date_str = ist_dt.strftime("%Y-%m-%d")
+        appt_time_str = ist_dt.strftime("%H:%M")
+
         existing_appt = None
         if appointment_id:
             try:
@@ -685,6 +695,8 @@ class AppointmentService:
             existing_appt.staff_id = appointment_staff_id
             existing_appt.customer_name = customer.full_name.strip() if customer and customer.full_name else existing_appt.customer_name
             existing_appt.customer_phone = customer.phone if customer else existing_appt.customer_phone
+            existing_appt.appointment_date = appt_date_str
+            existing_appt.appointment_time = appt_time_str
             existing_appt.start_datetime = start_dt
             existing_appt.end_datetime = end_dt
             existing_appt.services = service_snapshots
@@ -712,6 +724,8 @@ class AppointmentService:
                 "staff_id": appointment_staff_id,
                 "customer_name": customer.full_name.strip() if customer and customer.full_name else None,
                 "customer_phone": customer.phone if customer else None,
+                "appointment_date": appt_date_str,
+                "appointment_time": appt_time_str,
                 "type": "Walk-in" if booking_source == "WALK_IN" else "Appointment",
                 "start_datetime": start_dt,
                 "end_datetime": end_dt,
@@ -916,6 +930,10 @@ class AppointmentService:
         total_duration = 0
         service_snapshots: List[ServiceSnapshot] = []
         product_snapshots: List[ProductSnapshot] = []
+        old_product_map: Dict[tuple, int] = {}
+        for p in (appointment.products or []):
+            key = (p.product_id, getattr(p, "brand_id", None))
+            old_product_map[key] = old_product_map.get(key, 0) + max(int(getattr(p, "quantity", 1) or 1), 1)
         primary_row = (services or products)
         appointment_staff_id = primary_row[0]["staff_id"] if primary_row else appointment.staff_id
         submitted_lines_total = 0.0
@@ -1166,8 +1184,11 @@ class AppointmentService:
         else:
             effective_paid = float(paid_amount or 0.0)
 
+        ist_dt = to_ist(start_dt)
         appointment.customer_id = customer_id
         appointment.staff_id = appointment_staff_id
+        appointment.appointment_date = ist_dt.strftime("%Y-%m-%d")
+        appointment.appointment_time = ist_dt.strftime("%H:%M")
         appointment.start_datetime = start_dt
         appointment.end_datetime = end_dt
         appointment.services = service_snapshots
@@ -1181,6 +1202,43 @@ class AppointmentService:
             appointment.booking_source = booking_source
 
         await appointment.save()
+
+        # Synchronize inventory changes on appointment edit (only for active, non-cancelled appointments)
+        appt_status = getattr(appointment, "status", None) or getattr(appointment, "current_status", None)
+        if appt_status != "CANCELLED":
+            new_product_map: Dict[tuple, int] = {}
+            for p in product_snapshots:
+                key = (p.product_id, getattr(p, "brand_id", None))
+                new_product_map[key] = new_product_map.get(key, 0) + max(int(getattr(p, "quantity", 1) or 1), 1)
+
+            all_product_keys = set(old_product_map.keys()) | set(new_product_map.keys())
+            for prod_id, br_id in all_product_keys:
+                old_qty = old_product_map.get((prod_id, br_id), 0)
+                new_qty = new_product_map.get((prod_id, br_id), 0)
+                diff = new_qty - old_qty
+                if diff > 0:
+                    try:
+                        await self.inventory_service.deduct_sold_product(
+                            salon_id=salon_id,
+                            product_id=prod_id,
+                            brand_id=br_id,
+                            quantity=diff,
+                            reference_id=str(appointment.id),
+                        )
+                    except Exception:
+                        pass
+                elif diff < 0:
+                    try:
+                        await self.inventory_service.restore_sold_product(
+                            salon_id=salon_id,
+                            product_id=prod_id,
+                            brand_id=br_id,
+                            quantity=abs(diff),
+                            reference_id=str(appointment.id),
+                            notes=f"Stock restored from edited appointment {appointment.id}",
+                        )
+                    except Exception:
+                        pass
 
         # Update associated Bill and Invoice
         try:
@@ -1276,9 +1334,26 @@ class AppointmentService:
         """Changes the status of an appointment with audited tracking."""
         appointment = await self.appointment_repo.get(appointment_id)
         user_id = tenant_context.get_user_id()
+        old_status = getattr(appointment, "status", None) or appointment.current_status
         
         appointment.add_status(new_status, changed_by=user_id, reason=reason)
         await appointment.save()
+
+        if new_status.upper() == "CANCELLED" and (old_status or "").upper() != "CANCELLED":
+            for prod in (appointment.products or []):
+                qty = max(int(getattr(prod, "quantity", 1) or 1), 1)
+                try:
+                    await self.inventory_service.restore_sold_product(
+                        salon_id=appointment.salon_id,
+                        product_id=prod.product_id,
+                        brand_id=getattr(prod, "brand_id", None),
+                        quantity=qty,
+                        reference_id=str(appointment.id),
+                        notes=f"Stock restored from cancelled appointment {appointment.id}",
+                    )
+                except Exception:
+                    pass
+
         return appointment
 
     async def update_payment_status(

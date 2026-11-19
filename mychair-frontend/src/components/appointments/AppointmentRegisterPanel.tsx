@@ -17,6 +17,11 @@ import {
 import { TodayAppointmentItem } from '../../redux/slices/appointments/Types';
 import { AppointmentQuickEntry } from './AppointmentQuickEntry';
 import { showToast } from '../common/Toast/toastService';
+import {
+  formatTimeTo12Hour,
+  getAppointmentTargetDate,
+  getTodayIstDateStr,
+} from '../../utils/utilities';
 
 interface AppointmentRegisterPanelProps {
   salonId: string;
@@ -51,43 +56,29 @@ const NextBookingCountdown: React.FC<{
         return;
       }
 
-      let targetDate: Date | null = null;
-
-      if (nextAppt) {
-        if (nextAppt.start_datetime) {
-          targetDate = new Date(nextAppt.start_datetime);
-        } else if (nextAppt.appointment_date && nextAppt.appointment_time) {
-          const parts = nextAppt.appointment_time.split(':');
-          const h = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10);
-          targetDate = new Date(nextAppt.appointment_date);
-          targetDate.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
-        }
-      } else if (fallbackSummaryNext?.time) {
-        const today = new Date();
-        const parts = fallbackSummaryNext.time.split(':');
-        const h = parseInt(parts[0], 10);
-        const m = parseInt(parts[1], 10);
-        targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
-      }
+      const targetDate = getAppointmentTargetDate(nextAppt, fallbackSummaryNext?.time);
 
       if (!targetDate || isNaN(targetDate.getTime())) {
         const name = nextAppt?.customer_name || fallbackSummaryNext?.customer_name || 'Upcoming';
         const timeStr = nextAppt?.appointment_time || fallbackSummaryNext?.time || '';
         setTimeLeft({
           text: name,
-          subtext: timeStr ? `Scheduled at ${timeStr}` : 'Scheduled',
+          subtext: timeStr ? `Scheduled at ${formatTimeTo12Hour(timeStr)}` : 'Scheduled',
           isOverdue: false,
           isNow: false,
         });
         return;
       }
 
-      const now = new Date();
-      const diffMs = targetDate.getTime() - now.getTime();
+      const nowMs = Date.now();
+      const diffMs = targetDate.getTime() - nowMs;
       const diffSec = Math.floor(diffMs / 1000);
 
       const customerName = nextAppt?.customer_name || fallbackSummaryNext?.customer_name || 'Client';
+      const formattedScheduledTime = formatTimeTo12Hour(
+        nextAppt?.appointment_time,
+        nextAppt?.start_datetime || targetDate.toISOString()
+      );
 
       if (diffSec > 0) {
         const hrs = Math.floor(diffSec / 3600);
@@ -105,7 +96,7 @@ const NextBookingCountdown: React.FC<{
 
         setTimeLeft({
           text: formatted,
-          subtext: `${customerName} (${targetDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })})`,
+          subtext: `${customerName} (${formattedScheduledTime})`,
           isOverdue: false,
           isNow: false,
         });
@@ -115,7 +106,7 @@ const NextBookingCountdown: React.FC<{
         const secs = overdueSec % 60;
         setTimeLeft({
           text: mins === 0 ? 'Starting Now' : `Overdue ${mins}m ${secs}s`,
-          subtext: `${customerName} (${targetDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })})`,
+          subtext: `${customerName} (${formattedScheduledTime})`,
           isOverdue: mins > 0,
           isNow: mins === 0,
         });
@@ -162,38 +153,6 @@ const NextBookingCountdown: React.FC<{
   );
 };
 
-function formatTimeTo12Hour(timeStr?: string, startDatetime?: string): string {
-  if (startDatetime) {
-    const rawIso =
-      typeof startDatetime === 'string' &&
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(startDatetime) &&
-      !startDatetime.endsWith('Z') &&
-      !/[+-]\d{2}:\d{2}$/.test(startDatetime)
-        ? `${startDatetime}Z`
-        : startDatetime;
-    const d = new Date(rawIso);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    }
-  }
-  if (!timeStr) return '-';
-  if (/am|pm/i.test(timeStr)) {
-    return timeStr;
-  }
-  const parts = timeStr.split(':');
-  if (parts.length >= 2) {
-    let hours = parseInt(parts[0], 10);
-    const minutes = parts[1].padStart(2, '0');
-    if (!isNaN(hours)) {
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12;
-      if (hours === 0) hours = 12;
-      return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
-    }
-  }
-  return timeStr;
-}
-
 export const AppointmentRegisterPanel: React.FC<AppointmentRegisterPanelProps> = ({
   salonId,
   onSelectAppointmentForBilling,
@@ -214,7 +173,7 @@ export const AppointmentRegisterPanel: React.FC<AppointmentRegisterPanelProps> =
     }
   };
 
-  const localDateStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  const localDateStr = getTodayIstDateStr();
   const {
     data: registerData,
     isLoading,
@@ -239,33 +198,25 @@ export const AppointmentRegisterPanel: React.FC<AppointmentRegisterPanelProps> =
   // Find next upcoming appointment
   const nextAppt = useMemo(() => {
     const upcomingList = appointmentOnlyItems.filter(
-      (item) => item.status !== 'COMPLETED' && item.status !== 'CANCELLED'
+      (item) => item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && item.status !== 'BILLED'
     );
     if (upcomingList.length === 0) return undefined;
     
-    const now = new Date();
-    // Sort by proximity to now
-    return upcomingList.sort((a, b) => {
-      let timeA = new Date().getTime();
-      let timeB = new Date().getTime();
-      if (a.start_datetime) {
-        timeA = new Date(a.start_datetime).getTime();
-      } else if (a.appointment_date && a.appointment_time) {
-        const [h, m] = a.appointment_time.split(':').map(Number);
-        const d = new Date(a.appointment_date);
-        d.setHours(h || 0, m || 0, 0, 0);
-        timeA = d.getTime();
-      }
-      if (b.start_datetime) {
-        timeB = new Date(b.start_datetime).getTime();
-      } else if (b.appointment_date && b.appointment_time) {
-        const [h, m] = b.appointment_time.split(':').map(Number);
-        const d = new Date(b.appointment_date);
-        d.setHours(h || 0, m || 0, 0, 0);
-        timeB = d.getTime();
-      }
-      return Math.abs(timeA - now.getTime()) - Math.abs(timeB - now.getTime());
-    })[0];
+    const nowMs = Date.now();
+    const activeUpcoming = upcomingList
+      .map((item) => {
+        const target = getAppointmentTargetDate(item);
+        const ts = target ? target.getTime() : 0;
+        const diffSec = target ? Math.floor((ts - nowMs) / 1000) : -999999;
+        return { item, ts, diffSec };
+      })
+      .filter((a) => a.diffSec >= -1800);
+
+    if (activeUpcoming.length === 0) return undefined;
+
+    // Sort chronologically: closest upcoming first
+    activeUpcoming.sort((a, b) => a.ts - b.ts);
+    return activeUpcoming[0].item;
   }, [appointmentOnlyItems]);
 
   const pendingAppointmentsCount = useMemo(() => {

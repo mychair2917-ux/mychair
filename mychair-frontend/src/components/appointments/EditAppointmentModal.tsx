@@ -7,6 +7,7 @@ import ModalHeader from '../common/Modal/ModalHeader';
 import { showToast } from '../common/Toast/toastService';
 import { getApiErrorMessage } from '../../utils/apiErrors';
 import { cn } from '../../utils/cn';
+import { toDateTimeInputValue } from '../../utils/utilities';
 import { useAppSelector } from '../../redux/hooks';
 import { normalizeRole } from '../../config/rbac';
 import { ROLES } from '../../constants';
@@ -117,10 +118,7 @@ export function productLineTotal(unitPrice: string | number, quantity: string | 
   return price * qty;
 }
 
-export function toDateTimeInputValue(date: Date): string {
-  const pad = (v: number) => String(v).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+export { toDateTimeInputValue } from '../../utils/utilities';
 
 export interface EditAppointmentModalProps {
   open: boolean;
@@ -419,7 +417,11 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       id: appointment.id,
       salon_id: salonId,
       customer_id: appointment.customer_id,
-      start_datetime: new Date(startDateTime).toISOString(),
+      start_datetime: new Date(
+        startDateTime.includes('+') || startDateTime.endsWith('Z')
+          ? startDateTime
+          : `${startDateTime}:00+05:30`
+      ).toISOString(),
       services: serviceRowsToSubmit.map((row) => ({
         service_id: row.service_id || undefined,
         salon_service_id: row.salon_service_id,

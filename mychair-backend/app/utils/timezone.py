@@ -27,6 +27,13 @@ def to_ist(dt: datetime) -> datetime:
     return make_aware(dt).astimezone(KOLKATA_TZ)
 
 
+def ist_to_utc(dt: datetime) -> datetime:
+    """Converts an IST datetime (naive or aware) to aware UTC datetime."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=KOLKATA_TZ).astimezone(timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def today_ist_str() -> str:
     """Returns today's date in Asia/Kolkata in YYYY-MM-DD format."""
     return now_ist().strftime("%Y-%m-%d")

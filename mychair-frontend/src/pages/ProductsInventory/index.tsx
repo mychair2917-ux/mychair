@@ -269,8 +269,13 @@ const ProductsInventory: React.FC = () => {
       const response = await createPurchase({
         salon_id: salonId,
         body: {
+          inventory_id: stockItem.id,
           product_id: stockItem.product_id,
+          brand_id: stockItem.brand_id || undefined,
+          custom_product_name: stockItem.product_name,
+          custom_brand_name: stockItem.brand_name || undefined,
           buying_price: stockItem.buying_price,
+          selling_price: stockItem.selling_price > 0 ? stockItem.selling_price : undefined,
           quantity: qty,
           category: stockItem.category,
           product_type: stockItem.product_type,

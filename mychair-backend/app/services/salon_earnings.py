@@ -27,6 +27,7 @@ from app.schemas.salon_earnings import (
     StaffPerformanceRow,
 )
 from app.utils.timezone import now_utc
+from app.services.incentive import IncentiveCalculationService, StaffIncentiveConfig as CanonicalStaffConfig
 
 
 PAID_INVOICE_STATUSES = {"PAID", "PARTIALLY_PAID"}
@@ -502,26 +503,36 @@ class SalonEarningsService:
                 continue
 
             payments = payment_map.get(str(invoice.id), [])
-            refund_ratio = self._refund_ratio(invoice, payments)
-            incentive_eligible = self._eligible_for_incentive(invoice, appointment)
+            canonical_configs = {
+                uid: CanonicalStaffConfig(
+                    incentive_base=cfg.incentive_base,
+                    service_incentive_percent=cfg.service_pct * 100.0,
+                    product_incentive_percent=cfg.product_pct * 100.0,
+                )
+                for uid, cfg in staff_configs.items()
+            }
+            summary = IncentiveCalculationService.calculate_invoice_incentives(
+                invoice=invoice,
+                staff_configs=canonical_configs,
+                appointment_status=appointment.status if appointment else None,
+                payments=payments,
+            )
+            refund_ratio = summary.refund_ratio
             raw_date = invoice.finalized_at or invoice.created_at
             ledger_date = _ensure_utc(raw_date) or start
             day_key = ledger_date.strftime("%Y-%m-%d")
             if day_key not in day_aggs:
                 day_aggs[day_key] = _DayAgg()
 
-            matching_items = [
-                item
-                for item in invoice.items
+            matching_indices = [
+                idx
+                for idx, item in enumerate(invoice.items)
                 if self._item_matches_filters(
                     item, staff_id, service_id, product_id, revenue_type
                 )
             ]
-            if not matching_items:
+            if not matching_indices:
                 continue
-
-            matching_gross = sum(max(item.unit_price * item.quantity, 0.0) for item in matching_items)
-            invoice_discount_share = float(invoice.discount_amount or 0.0)
 
             inv_agg = _InvoiceAgg(
                 invoice=invoice,
@@ -531,29 +542,18 @@ class SalonEarningsService:
             )
             invoice_line_refund = 0.0
 
-            for item in matching_items:
-                line_gross = round(max(item.unit_price * item.quantity, 0.0), 2)
-                line_discount = float(item.discount or 0.0)
-                if invoice_discount_share > 0 and matching_gross > 0:
-                    line_discount += round(
-                        invoice_discount_share * (line_gross / matching_gross), 2
-                    )
-                sales_subtotal = round(max(line_gross - line_discount, 0.0), 2)
-                tax_amount = self._line_tax(sales_subtotal, item.tax_rate)
-                refund_on_sales = round(sales_subtotal * refund_ratio, 2)
-                net_sales = round(max(sales_subtotal - refund_on_sales, 0.0), 2)
-                tax_after_refund = round(tax_amount * (1.0 - refund_ratio), 2)
+            for idx in matching_indices:
+                item = invoice.items[idx]
+                line = summary.lines[idx] if idx < len(summary.lines) else None
 
-                incentive = 0.0
-                if incentive_eligible and item.staff_id:
-                    cfg = staff_configs.get(item.staff_id, _StaffIncentiveConfig())
-                    if cfg.incentive_base:
-                        pct = (
-                            cfg.service_pct
-                            if item.item_type == "SERVICE"
-                            else cfg.product_pct
-                        )
-                        incentive = round(net_sales * pct, 2)
+                line_gross = line.line_gross if line else round(max(item.unit_price * item.quantity, 0.0), 2)
+                line_discount = line.total_line_discount if line else float(item.discount or 0.0)
+                sales_subtotal = line.sales_subtotal if line else round(max(line_gross - line_discount, 0.0), 2)
+                tax_amount = self._line_tax(sales_subtotal, item.tax_rate)
+                refund_on_sales = line.refund_amount if line else round(sales_subtotal * refund_ratio, 2)
+                net_sales = line.net_collected_sales if line else round(max(sales_subtotal - refund_on_sales, 0.0), 2)
+                tax_after_refund = round(tax_amount * (1.0 - refund_ratio), 2)
+                incentive = line.incentive_amount if line else 0.0
 
                 inv_agg.line_gross += line_gross
                 inv_agg.line_discount += line_discount

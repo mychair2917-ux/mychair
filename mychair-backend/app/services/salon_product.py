@@ -190,6 +190,9 @@ class SalonProductService:
     async def create_salon_product(
         self, actor: User, payload: SalonProductCreate, salon_id: str | None = None
     ) -> SalonProductListItem:
+        if payload.price is None or payload.price <= 0:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail="Selling price must be strictly greater than ₹0")
         resolved_salon_id = await self._resolve_actor_salon_scope(actor, salon_id)
         resolved_product_id, product_name = await self._get_or_create_product(
             actor, payload, resolved_salon_id
@@ -315,6 +318,9 @@ class SalonProductService:
         salon_id: str | None = None,
     ) -> SalonProductListItem:
         resolved_salon_id = await self._resolve_actor_salon_scope(actor, salon_id)
+        if payload.price is None or payload.price <= 0:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail="Selling price must be strictly greater than ₹0")
         item = await SalonProduct.find_one(
             SalonProduct.id == PydanticObjectId(salon_product_id),
             SalonProduct.salon_id == resolved_salon_id,

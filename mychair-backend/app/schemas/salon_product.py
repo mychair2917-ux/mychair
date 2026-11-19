@@ -16,11 +16,13 @@ class SalonProductCreate(BaseModel):
     brand_id: str | None = None
     custom_product_name: str | None = Field(default=None, max_length=150)
     custom_brand_name: str | None = Field(default=None, max_length=100)
-    price: float = Field(..., ge=0)
+    price: float = Field(..., gt=0, description="Selling price must be strictly greater than ₹0")
     product_type: str = Field(default="SELLING", max_length=20)
 
     @model_validator(mode="after")
     def validate_product_source(self) -> "SalonProductCreate":
+        if self.price is None or self.price <= 0:
+            raise ValueError("Selling price must be strictly greater than ₹0")
         has_product_id = bool((self.product_id or "").strip())
         has_custom_name = bool((self.custom_product_name or "").strip())
         if has_product_id == has_custom_name:
@@ -45,12 +47,14 @@ class SalonProductUpdate(BaseModel):
     brand_id: str | None = None
     custom_product_name: str | None = Field(default=None, max_length=150)
     custom_brand_name: str | None = Field(default=None, max_length=100)
-    price: float = Field(..., ge=0)
+    price: float = Field(..., gt=0, description="Selling price must be strictly greater than ₹0")
     status: str = Field(default="ACTIVE", max_length=20)
     product_type: str = Field(default="SELLING", max_length=20)
 
     @model_validator(mode="after")
     def validate_product_source(self) -> "SalonProductUpdate":
+        if self.price is None or self.price <= 0:
+            raise ValueError("Selling price must be strictly greater than ₹0")
         has_product_id = bool((self.product_id or "").strip())
         has_custom_name = bool((self.custom_product_name or "").strip())
         if has_product_id == has_custom_name:

@@ -360,58 +360,90 @@ class InventoryService:
         notes: str | None = None,
         product_type: str | None = "SELLING",
         selling_price: float | None = None,
+        inventory_id: str | None = None,
     ) -> InventoryStockItem:
         resolved_product_type = (product_type or "SELLING").strip().upper()
         product_retail_price = selling_price if (selling_price is not None and selling_price > 0) else buying_price
-        resolved_product_id, product_name = await self._resolve_product_for_inventory(
-            actor,
-            salon_id,
-            product_id,
-            custom_product_name,
-            product_retail_price,
-        )
-        resolved_brand_id, brand_name = await self.brand_service.resolve_brand(
-            actor,
-            brand_id,
-            custom_brand_name,
-            salon_id,
-        )
+        active_tenant = tenant_context.get_tenant_id() or actor.tenant_id
 
-        query = {
-            "salon_id": salon_id,
-            "product_id": resolved_product_id,
-            "brand_id": resolved_brand_id,
-            "is_deleted": False,
-        }
-        active_tenant = tenant_context.get_tenant_id()
-        if active_tenant:
-            query["tenant_id"] = active_tenant
-        inventory = await ProductInventory.find_one(query)
-        if not inventory:
-            inventory = ProductInventory(
-                salon_id=salon_id,
-                product_id=resolved_product_id,
-                brand_id=resolved_brand_id,
-                product_name_snapshot=product_name,
-                brand_name_snapshot=brand_name,
-                category=(category or "General").strip() or "General",
-                product_type=resolved_product_type,
-                stock_quantity=0,
-                min_threshold=min_threshold,
-                buying_price=buying_price,
-                total_value=0,
-                created_by=str(actor.id),
-            )
-            await inventory.insert()
-        else:
-            inventory.product_name_snapshot = product_name
-            inventory.brand_name_snapshot = brand_name
-            inventory.category = (category or inventory.category or "General").strip() or "General"
-            inventory.product_type = resolved_product_type
+        inventory: Optional[ProductInventory] = None
+        if inventory_id:
+            try:
+                inv_oid = PydanticObjectId(inventory_id)
+                inv_query: dict[str, Any] = {
+                    "_id": inv_oid,
+                    "salon_id": salon_id,
+                    "is_deleted": False,
+                }
+                if active_tenant:
+                    inv_query["tenant_id"] = active_tenant
+                inventory = await ProductInventory.find_one(inv_query)
+            except Exception:
+                inventory = None
+
+        if inventory:
+            resolved_product_id = inventory.product_id
+            resolved_brand_id = inventory.brand_id
+            product_name = inventory.product_name_snapshot
+            brand_name = inventory.brand_name_snapshot
+            if resolved_product_type:
+                inventory.product_type = resolved_product_type
+            if category:
+                inventory.category = category.strip()
             inventory.min_threshold = min_threshold
             inventory.buying_price = buying_price
             inventory.updated_by = str(actor.id)
             await inventory.save()
+        else:
+            resolved_product_id, product_name = await self._resolve_product_for_inventory(
+                actor,
+                salon_id,
+                product_id,
+                custom_product_name,
+                product_retail_price,
+            )
+            resolved_brand_id, brand_name = await self.brand_service.resolve_brand(
+                actor,
+                brand_id,
+                custom_brand_name,
+                salon_id,
+            )
+
+            query = {
+                "salon_id": salon_id,
+                "product_id": resolved_product_id,
+                "brand_id": resolved_brand_id,
+                "is_deleted": False,
+            }
+            if active_tenant:
+                query["tenant_id"] = active_tenant
+            inventory = await ProductInventory.find_one(query)
+            if not inventory:
+                inventory = ProductInventory(
+                    tenant_id=active_tenant,
+                    salon_id=salon_id,
+                    product_id=resolved_product_id,
+                    brand_id=resolved_brand_id,
+                    product_name_snapshot=product_name,
+                    brand_name_snapshot=brand_name,
+                    category=(category or "General").strip() or "General",
+                    product_type=resolved_product_type,
+                    stock_quantity=0,
+                    min_threshold=min_threshold,
+                    buying_price=buying_price,
+                    total_value=0,
+                    created_by=str(actor.id),
+                )
+                await inventory.insert()
+            else:
+                inventory.product_name_snapshot = product_name
+                inventory.brand_name_snapshot = brand_name
+                inventory.category = (category or inventory.category or "General").strip() or "General"
+                inventory.product_type = resolved_product_type
+                inventory.min_threshold = min_threshold
+                inventory.buying_price = buying_price
+                inventory.updated_by = str(actor.id)
+                await inventory.save()
 
         stock_before = await self.calculate_product_stock(
             salon_id,
@@ -421,6 +453,7 @@ class InventoryService:
         stock_after = stock_before + quantity
 
         tx = InventoryTransaction(
+            tenant_id=active_tenant or inventory.tenant_id,
             salon_id=salon_id,
             product_id=resolved_product_id,
             brand_id=resolved_brand_id,
@@ -430,7 +463,8 @@ class InventoryService:
             quantity_change=quantity,
             price=buying_price,
             unit_cost=buying_price,
-            notes=notes,
+            notes=notes or "Stock purchase",
+            reference_id=str(inventory.id),
             created_by=str(actor.id),
             stock_before=stock_before,
             stock_after=stock_after,
@@ -448,23 +482,26 @@ class InventoryService:
             }
         )
         if not salon_product:
+            catalog_price = product_retail_price if product_retail_price > 0 else max(buying_price, 1.0)
             salon_product = await self.salon_product_service.create_salon_product(
                 actor,
                 SalonProductCreate(
                     product_id=resolved_product_id,
                     brand_id=resolved_brand_id,
-                    price=buying_price,
+                    price=catalog_price,
                     product_type=resolved_product_type,
                 ),
                 salon_id=salon_id,
             )
-        elif getattr(salon_product, "product_type", None) != resolved_product_type:
-            salon_product.product_type = resolved_product_type
+        else:
+            if getattr(salon_product, "product_type", None) != resolved_product_type:
+                salon_product.product_type = resolved_product_type
+            if selling_price is not None and selling_price > 0:
+                salon_product.price = selling_price
             await salon_product.save()
 
-
-        selling_price = salon_product.price if salon_product else buying_price
-        return self._inventory_to_item(inventory, selling_price)
+        final_selling_price = salon_product.price if salon_product else buying_price
+        return self._inventory_to_item(inventory, final_selling_price)
 
     async def record_use(
         self,
@@ -586,8 +623,10 @@ class InventoryService:
         stock_before = current_stock
         stock_after = stock_before - quantity
         sold_while_out_of_stock = (stock_before <= 0)
+        active_tenant = tenant_context.get_tenant_id() or inventory.tenant_id
 
         tx = InventoryTransaction(
+            tenant_id=active_tenant,
             salon_id=salon_id,
             product_id=inventory.product_id,
             brand_id=inventory.brand_id,
@@ -617,6 +656,74 @@ class InventoryService:
                 display_name,
                 actor_id=tenant_context.get_user_id(),
             )
+
+    async def restore_sold_product(
+        self,
+        salon_id: str,
+        product_id: str,
+        brand_id: str | None,
+        quantity: int,
+        reference_id: str | None,
+        notes: str = "Stock restored from appointment",
+    ) -> None:
+        if quantity <= 0:
+            return
+        await self._ensure_salon_products_inventory(salon_id)
+        inventory = await ProductInventory.find_one(
+            {
+                "salon_id": salon_id,
+                "product_id": product_id,
+                "brand_id": brand_id,
+                "is_deleted": False,
+            }
+        )
+        if not inventory:
+            return
+
+        if reference_id and notes and "cancelled" in notes.lower():
+            existing_tx = await InventoryTransaction.find_one(
+                {
+                    "salon_id": salon_id,
+                    "product_id": inventory.product_id,
+                    "brand_id": inventory.brand_id,
+                    "reference_id": reference_id,
+                    "transaction_type": "ADJUSTMENT",
+                    "notes": notes,
+                    "is_deleted": False,
+                }
+            )
+            if existing_tx:
+                return
+
+        current_stock = await self.calculate_product_stock(
+            salon_id,
+            inventory.product_id,
+            inventory.brand_id,
+        )
+        stock_before = current_stock
+        stock_after = stock_before + quantity
+        active_tenant = tenant_context.get_tenant_id() or inventory.tenant_id
+
+        tx = InventoryTransaction(
+            tenant_id=active_tenant,
+            salon_id=salon_id,
+            product_id=inventory.product_id,
+            brand_id=inventory.brand_id,
+            type="ADJUSTMENT",
+            transaction_type="ADJUSTMENT",
+            quantity=quantity,
+            quantity_change=quantity,
+            price=inventory.buying_price,
+            unit_cost=inventory.buying_price,
+            reference_id=reference_id,
+            notes=notes,
+            created_by=tenant_context.get_user_id(),
+            stock_before=stock_before,
+            stock_after=stock_after,
+            sold_while_out_of_stock=False,
+        )
+        await tx.insert()
+        await self._sync_product_inventory(inventory)
 
     async def overview(self, salon_id: str) -> InventoryOverview:
         stocks = await self.list_stocks(salon_id)

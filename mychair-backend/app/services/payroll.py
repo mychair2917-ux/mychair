@@ -1,3 +1,4 @@
+import calendar
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,6 +36,7 @@ from app.schemas.payroll import (
     SalaryStructureItem,
     SalaryStructureUpdate,
 )
+from app.services.incentive import IncentiveCalculationService, StaffIncentiveConfig
 from app.services.leave import AttendanceReconciliationService
 from app.utils.timezone import now_utc
 
@@ -179,6 +181,47 @@ class PayrollService:
 
         return self._to_structure_item(user)
 
+    @staticmethod
+    def calculate_base_salary(
+        salary: float,
+        salary_type: Optional[str],
+        joining_date: Optional[datetime],
+        month: int,
+        year: int,
+    ) -> float:
+        """
+        Calculate employee base salary for the month considering salary_type (monthly, daily, weekly)
+        and joining date pro-rating.
+        """
+        configured_salary = float(salary or 0.0)
+        if configured_salary <= 0:
+            return 0.0
+
+        stype = (salary_type or DEFAULT_SALARY_TYPE).strip().lower()
+        month_days = calendar.monthrange(year, month)[1]
+
+        # Handle joining date if employee joined during or after this period
+        if joining_date is not None:
+            j_date = joining_date.date() if isinstance(joining_date, datetime) else joining_date
+            if (j_date.year, j_date.month) > (year, month):
+                return 0.0
+            elif (j_date.year, j_date.month) == (year, month):
+                effective_days = max(month_days - j_date.day + 1, 0)
+            else:
+                effective_days = month_days
+        else:
+            effective_days = month_days
+
+        if effective_days <= 0:
+            return 0.0
+
+        if stype == "daily":
+            return round(configured_salary * effective_days, 2)
+        elif stype == "weekly":
+            return round((configured_salary / 7.0) * effective_days, 2)
+        else:  # "monthly"
+            return round(configured_salary * (effective_days / float(month_days)), 2)
+
     # ------------------------------------------------------------------ #
     # Incentive calculation
     # ------------------------------------------------------------------ #
@@ -186,7 +229,8 @@ class PayrollService:
         self, salon_id: str, month: int, year: int
     ) -> Tuple[Dict[str, Dict[str, float]], int, int]:
         """
-        Aggregate non-voided invoice line totals per staff for the given period.
+        Aggregate eligible invoice line totals per staff for the given period
+        using the unified IncentiveCalculationService.
         Returns: ({ staff_id: {"service": float, "product": float} }, eligible_invoice_count, cancelled_app_count)
         """
         start, end = self._month_range(month, year)
@@ -223,38 +267,35 @@ class PayrollService:
                 "is_deleted": False,
             }
         ).to_list()
-        refunds_by_invoice: Dict[str, float] = {}
-        for payment in payments:
-            refunds_by_invoice[payment.invoice_id] = round(
-                refunds_by_invoice.get(payment.invoice_id, 0.0)
-                + max(payment.refunded_amount, 0.0),
-                2,
-            )
+        payments_by_invoice: Dict[str, List[Payment]] = {}
+        for p in payments:
+            payments_by_invoice.setdefault(p.invoice_id, []).append(p)
 
         totals: Dict[str, Dict[str, float]] = {}
         eligible_count = 0
         for invoice in invoices:
-            if invoice.appointment_id and invoice.appointment_id in cancelled_ids:
+            is_cancelled = bool(invoice.appointment_id and invoice.appointment_id in cancelled_ids)
+            appt_status = "CANCELLED" if is_cancelled else None
+            inv_payments = payments_by_invoice.get(str(invoice.id), [])
+
+            summary = IncentiveCalculationService.calculate_invoice_incentives(
+                invoice=invoice,
+                staff_configs={},
+                appointment_status=appt_status,
+                payments=inv_payments,
+            )
+            if not summary.is_eligible or summary.net_collection_ratio <= 0:
                 continue
             eligible_count += 1
-            refund_ratio = 0.0
-            if invoice.total_amount > 0:
-                refund_ratio = min(
-                    max(refunds_by_invoice.get(str(invoice.id), 0.0) / invoice.total_amount, 0.0),
-                    1.0,
-                )
-            for item in invoice.items:
-                if not item.staff_id:
+
+            for line in summary.lines:
+                if not line.staff_id:
                     continue
-                line_total = (item.unit_price * item.quantity) - item.discount
-                if line_total < 0:
-                    line_total = 0.0
-                line_total = round(line_total * (1.0 - refund_ratio), 2)
-                bucket = totals.setdefault(item.staff_id, {"service": 0.0, "product": 0.0})
-                if item.item_type == "SERVICE":
-                    bucket["service"] = round(bucket["service"] + line_total, 2)
-                elif item.item_type == "PRODUCT":
-                    bucket["product"] = round(bucket["product"] + line_total, 2)
+                bucket = totals.setdefault(line.staff_id, {"service": 0.0, "product": 0.0})
+                if line.item_type == "SERVICE":
+                    bucket["service"] = round(bucket["service"] + line.net_collected_sales, 2)
+                elif line.item_type == "PRODUCT":
+                    bucket["product"] = round(bucket["product"] + line.net_collected_sales, 2)
 
         return totals, eligible_count, len(cancelled_ids)
 
@@ -309,7 +350,13 @@ class PayrollService:
             product_incentive = (
                 round(product_sales * prod_pct / 100.0, 2) if incentive_enabled else 0.0
             )
-            base_salary = round(emp.salary or 0.0, 2)
+            base_salary = self.calculate_base_salary(
+                salary=emp.salary,
+                salary_type=emp.salary_type,
+                joining_date=emp.joining_date,
+                month=month,
+                year=year,
+            )
 
             # Manager incentive calculation for manager role if configured
             is_manager = emp.role in {"salon_manager", "salon_admin"}
@@ -443,7 +490,13 @@ class PayrollService:
             product_incentive = (
                 round(product_sales * prod_pct / 100.0, 2) if incentive_enabled else 0.0
             )
-            base_salary = round(emp.salary or 0.0, 2)
+            base_salary = self.calculate_base_salary(
+                salary=emp.salary,
+                salary_type=emp.salary_type,
+                joining_date=emp.joining_date,
+                month=month,
+                year=year,
+            )
             manager_incentive = 0.0
             bonus = 0.0
             # Strict rule: Attendance deduction is NEVER automatically applied.

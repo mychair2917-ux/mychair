@@ -28,6 +28,7 @@ from app.schemas.my_earnings import (
     WalletTransaction,
 )
 from app.utils.timezone import now_utc
+from app.services.incentive import IncentiveCalculationService, StaffIncentiveConfig
 
 
 PAID_INVOICE_STATUSES = {"PAID", "PARTIALLY_PAID"}
@@ -243,42 +244,51 @@ class MyEarningsService:
         )
 
         ledgers: List[_LineLedger] = []
-        service_pct = (actor.service_incentive_percent or 0.0) / 100.0
-        product_pct = (actor.product_incentive_percent or 0.0) / 100.0
-        incentives_enabled = bool(actor.incentive_base)
+        staff_cfg = {
+            str(actor.id): StaffIncentiveConfig(
+                incentive_base=bool(actor.incentive_base),
+                service_incentive_percent=actor.service_incentive_percent or 0.0,
+                product_incentive_percent=actor.product_incentive_percent or 0.0,
+            )
+        }
 
         for invoice in invoices:
             appointment = appointment_map.get(invoice.appointment_id or "")
-            if not self._eligible_for_incentive(invoice, appointment):
+            appt_status = appointment.status if appointment else None
+            payments = payment_map.get(str(invoice.id), [])
+
+            summary = IncentiveCalculationService.calculate_invoice_incentives(
+                invoice=invoice,
+                staff_configs=staff_cfg,
+                appointment_status=appt_status,
+                payments=payments,
+            )
+            if not summary.is_eligible:
                 continue
 
-            refund_ratio = self._refund_ratio(invoice, payment_map.get(str(invoice.id), []))
             raw_date = invoice.finalized_at or invoice.created_at
             ledger_date = _ensure_utc(raw_date) or start
-            for index, item in enumerate(invoice.items):
-                if item.staff_id != str(actor.id):
+
+            for index, line in enumerate(summary.lines):
+                if line.staff_id != str(actor.id):
                     continue
-                # Incentive base matches payroll: pre-tax line total after refund.
-                sales_subtotal = self._line_total(item.unit_price, item.quantity, item.discount)
-                tax_amount = self._line_tax(sales_subtotal, item.tax_rate)
-                gross_with_tax = round(sales_subtotal + tax_amount, 2)
-                refund_on_sales = round(sales_subtotal * refund_ratio, 2)
-                net_sales = round(max(sales_subtotal - refund_on_sales, 0.0), 2)
-                pct = service_pct if item.item_type == "SERVICE" else product_pct
-                incentive = round(net_sales * pct, 2) if incentives_enabled else 0.0
+                orig_item = invoice.items[index] if index < len(invoice.items) else None
+                item_tax_rate = orig_item.tax_rate if orig_item else 0.0
+                tax_amount = self._line_tax(line.sales_subtotal, item_tax_rate)
+                gross_with_tax = round(line.sales_subtotal + tax_amount, 2)
                 ledgers.append(
                     _LineLedger(
                         key=f"{invoice.id}:{index}",
                         date=ledger_date,
-                        item_type=item.item_type,
-                        item_name=item.name,
+                        item_type=line.item_type,
+                        item_name=line.item_name,
                         appointment_id=invoice.appointment_id,
                         invoice_id=str(invoice.id),
                         invoice_number=invoice.invoice_number,
                         gross_amount=gross_with_tax,
-                        net_amount=net_sales,
-                        incentive_amount=incentive,
-                        refund_amount=refund_on_sales,
+                        net_amount=line.net_collected_sales,
+                        incentive_amount=line.incentive_amount,
+                        refund_amount=line.refund_amount,
                         tax_amount=tax_amount,
                     )
                 )

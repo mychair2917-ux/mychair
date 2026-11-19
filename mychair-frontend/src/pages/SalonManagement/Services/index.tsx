@@ -404,8 +404,8 @@ const Services: React.FC = () => {
       showToast('warning', 'Select or enter a brand before adding');
       return;
     }
-    if (!productDraft.price || Number.isNaN(price) || price < 0) {
-      showToast('warning', 'Enter a valid price before adding');
+    if (!productDraft.price || Number.isNaN(price) || price <= 0) {
+      showToast('warning', 'Selling price must be strictly greater than ₹0');
       return;
     }
     if (duplicateProductExists) {
@@ -500,8 +500,8 @@ const Services: React.FC = () => {
       showToast('warning', 'Select or enter a brand before saving');
       return;
     }
-    if (!editProductDraft.price || Number.isNaN(price) || price < 0) {
-      showToast('warning', 'Enter a valid price before saving');
+    if (!editProductDraft.price || Number.isNaN(price) || price <= 0) {
+      showToast('warning', 'Selling price must be strictly greater than ₹0');
       return;
     }
 

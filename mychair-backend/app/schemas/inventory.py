@@ -26,6 +26,7 @@ class StockReconciliationRequest(BaseModel):
 
 
 class InventoryPurchaseRequest(BaseModel):
+    inventory_id: Optional[str] = None
     product_id: Optional[str] = None
     custom_product_name: Optional[str] = Field(default=None, max_length=150)
     brand_id: Optional[str] = None

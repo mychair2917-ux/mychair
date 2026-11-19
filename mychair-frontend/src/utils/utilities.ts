@@ -390,6 +390,141 @@ export const formatDateDMY = (
   return `${day}/${month}/${year}`;
 };
 
+export const IST_TIMEZONE = 'Asia/Kolkata';
+
+export const getTodayIstDateStr = (): string => {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: IST_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+};
+
+export const toDateTimeInputValue = (dateInput?: string | Date | null): string => {
+  if (!dateInput) return '';
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: IST_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const find = (type: string) => parts.find((p) => p.type === type)?.value || '00';
+  let hour = find('hour');
+  if (hour === '24') hour = '00';
+  return `${find('year')}-${find('month')}-${find('day')}T${hour}:${find('minute')}`;
+};
+
+export function formatTimeTo12Hour(timeStr?: string | null, startDatetime?: string | null): string {
+  if (timeStr && timeStr.trim()) {
+    const trimmed = timeStr.trim();
+    if (/am|pm/i.test(trimmed)) {
+      return trimmed;
+    }
+    const parts = trimmed.split(':');
+    if (parts.length >= 2) {
+      let hours = parseInt(parts[0], 10);
+      const minutes = parts[1].padStart(2, '0');
+      if (!isNaN(hours)) {
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+      }
+    }
+  }
+
+  if (startDatetime) {
+    const rawIso =
+      typeof startDatetime === 'string' &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(startDatetime) &&
+      !startDatetime.endsWith('Z') &&
+      !/[+-]\d{2}:\d{2}$/.test(startDatetime)
+        ? `${startDatetime}+05:30`
+        : startDatetime;
+    const d = new Date(rawIso);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('en-US', {
+        timeZone: IST_TIMEZONE,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    }
+  }
+
+  return timeStr || '-';
+}
+
+export function getAppointmentTargetDate(
+  appt?: { appointment_date?: string; appointment_time?: string; start_datetime?: string } | null,
+  fallbackTime?: string | null
+): Date | null {
+  if (appt) {
+    if (appt.appointment_date && appt.appointment_time) {
+      const cleanTime = appt.appointment_time.trim();
+      let time24 = cleanTime;
+      if (/am|pm/i.test(cleanTime)) {
+        const match = cleanTime.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+        if (match) {
+          let h = parseInt(match[1], 10);
+          const m = match[2];
+          const isPm = match[3].toLowerCase() === 'pm';
+          if (isPm && h < 12) h += 12;
+          if (!isPm && h === 12) h = 0;
+          time24 = `${String(h).padStart(2, '0')}:${m}`;
+        }
+      }
+      const parts = time24.split(':');
+      const h = String(parts[0] || '00').padStart(2, '0');
+      const m = String(parts[1] || '00').padStart(2, '0');
+      const isoWithOffset = `${appt.appointment_date}T${h}:${m}:00+05:30`;
+      const d = new Date(isoWithOffset);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (appt.start_datetime) {
+      const rawIso =
+        typeof appt.start_datetime === 'string' &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(appt.start_datetime) &&
+        !appt.start_datetime.endsWith('Z') &&
+        !/[+-]\d{2}:\d{2}$/.test(appt.start_datetime)
+          ? `${appt.start_datetime}+05:30`
+          : appt.start_datetime;
+      const d = new Date(rawIso);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  if (fallbackTime) {
+    const todayIst = getTodayIstDateStr();
+    let time24 = fallbackTime.trim();
+    if (/am|pm/i.test(time24)) {
+      const match = time24.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+      if (match) {
+        let h = parseInt(match[1], 10);
+        const m = match[2];
+        const isPm = match[3].toLowerCase() === 'pm';
+        if (isPm && h < 12) h += 12;
+        if (!isPm && h === 12) h = 0;
+        time24 = `${String(h).padStart(2, '0')}:${m}`;
+      }
+    }
+    const parts = time24.split(':');
+    const h = String(parts[0] || '00').padStart(2, '0');
+    const m = String(parts[1] || '00').padStart(2, '0');
+    const isoWithOffset = `${todayIst}T${h}:${m}:00+05:30`;
+    const d = new Date(isoWithOffset);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  return null;
+}
+
 /**
   Converts a Date or ISO string into a value usable by `<input type="date">` (YYYY-MM-DD).
   Native date inputs always use the ISO value internally while displaying per the user

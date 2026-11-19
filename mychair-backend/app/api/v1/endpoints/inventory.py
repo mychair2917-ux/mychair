@@ -74,6 +74,7 @@ async def create_inventory_purchase(
         min_threshold=payload.min_threshold,
         notes=payload.notes,
         product_type=payload.product_type,
+        inventory_id=payload.inventory_id,
     )
     return success_response(
         "Inventory purchase recorded successfully",

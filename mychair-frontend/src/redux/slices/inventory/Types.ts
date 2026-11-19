@@ -71,6 +71,7 @@ export interface InventoryQueryParams {
 }
 
 export interface InventoryPurchaseRequest {
+  inventory_id?: string;
   product_id?: string;
   custom_product_name?: string;
   brand_id?: string;
