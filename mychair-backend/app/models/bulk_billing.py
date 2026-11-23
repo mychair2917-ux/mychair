@@ -30,6 +30,8 @@ class BulkBillingRowRecord(BaseModel):
     client_id_status: Optional[str] = None  # "EXISTING", "NEW_WITH_PHONE", "WILL_GENERATE"
     notes: Optional[str] = None
     status: str = "VALID"  # "VALID", "FAILED", "DUPLICATE", "COMMITTED"
+    column_name: Optional[str] = None
+    invalid_value: Optional[str] = None
     error_category: Optional[str] = None
     error_message: Optional[str] = None
     action_required: Optional[str] = None
@@ -51,6 +53,9 @@ class BulkBillingBatch(BaseTenantDocument):
     status: str = "PENDING"  # "PENDING", "VALIDATED", "IMPORTING", "COMPLETED", "PARTIAL", "FAILED"
 
     total_rows: int = 0
+    valid_rows: int = 0
+    invalid_rows: int = 0
+    skipped_rows: int = 0
     total_bills: int = 0
     valid_bills: int = 0
     invalid_bills: int = 0

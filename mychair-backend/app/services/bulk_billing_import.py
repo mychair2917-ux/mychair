@@ -102,6 +102,8 @@ PRODUCT_HEADERS = [
 def _safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
     if val is None:
         return default
+    if isinstance(val, bool):
+        return default
     if isinstance(val, (int, float)):
         if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
             return default
@@ -1158,40 +1160,56 @@ class BulkImportBillingService:
         def _scan_sheet_header_and_rows(ws) -> Tuple[int, Dict[str, int], List[Tuple[int, List[Any]]], Optional[int]]:
             """
             Scans rows of a sheet to detect header row and collect data rows.
+            Scans up to first 15 rows to find the best header row with maximum matching required columns.
             Returns (matched_required_count, header_map, parsed_rows, header_row_num).
             """
-            header_map: Dict[str, int] = {}
-            header_row_num = None
-            rows_list: List[Tuple[int, List[Any]]] = []
+            all_rows = list(ws.iter_rows(values_only=True))
+            best_cand_map: Dict[str, int] = {}
+            best_cand_row_idx: Optional[int] = None
+            best_cand_score = 0
 
-            for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            scanned_count = 0
+            for r_idx, row in enumerate(all_rows, start=1):
                 if not row or all(v is None or str(v).strip() == "" for v in row):
                     continue
+                scanned_count += 1
+                if scanned_count > 15:
+                    break
 
-                if header_row_num is None:
-                    if row_idx <= 15:
-                        cand_map: Dict[str, int] = {}
-                        for idx, col in enumerate(row):
-                            if col is not None:
-                                alias = _HEADER_ALIASES.get(_norm_header(col))
-                                if alias and alias not in cand_map:
-                                    cand_map[alias] = idx
-                        matched_reqs = sum(1 for req in required_aliases if req in cand_map)
-                        # Header detected if it contains at least 3 required columns (or all if fewer than 3)
-                        if matched_reqs >= min(3, len(required_aliases)):
-                            header_map = cand_map
-                            header_row_num = row_idx
-                            continue
-                else:
-                    first_val = str(row[0] or "")
-                    if "[example" in first_val.lower() or ("example" in str(row).lower() and "delete" in str(row).lower()):
-                        continue
-                    rows_list.append((row_idx, [_sanitize_for_storage(v) for v in row]))
-                    if len(rows_list) > MAX_ROWS:
-                        raise ValueError(f"File exceeds maximum allowed rows ({MAX_ROWS:,}).")
+                cand_map: Dict[str, int] = {}
+                for idx, col in enumerate(row):
+                    if col is not None:
+                        alias = _HEADER_ALIASES.get(_norm_header(col))
+                        if alias and alias not in cand_map:
+                            cand_map[alias] = idx
+                score = sum(1 for req in required_aliases if req in cand_map)
+                if score > best_cand_score:
+                    best_cand_score = score
+                    best_cand_map = cand_map
+                    best_cand_row_idx = r_idx
+                    if score == len(required_aliases):
+                        break
 
-            score = sum(1 for req in required_aliases if req in header_map)
-            return score, header_map, rows_list, header_row_num
+            if best_cand_score < min(3, len(required_aliases)) or best_cand_row_idx is None:
+                return 0, {}, [], None
+
+            header_map = best_cand_map
+            header_row_num = best_cand_row_idx
+            rows_list: List[Tuple[int, List[Any]]] = []
+
+            for r_idx in range(header_row_num, len(all_rows)):
+                row = all_rows[r_idx]
+                actual_row_num = r_idx + 1
+                if not row or all(v is None or str(v).strip() == "" for v in row):
+                    continue
+                first_val = str(row[0] or "")
+                if "[example" in first_val.lower() or ("example" in str(row).lower() and "delete" in str(row).lower()):
+                    continue
+                rows_list.append((actual_row_num, [_sanitize_for_storage(v) for v in row]))
+                if len(rows_list) > MAX_ROWS:
+                    raise ValueError(f"File exceeds maximum allowed rows ({MAX_ROWS:,}).")
+
+            return best_cand_score, header_map, rows_list, header_row_num
 
         # 1. First priority: Sheet named exactly "Billing Data" (case-insensitive)
         chosen_sheet = None
@@ -1448,10 +1466,18 @@ class BulkImportBillingService:
                 s_name = (getattr(master_svc_by_id[str(ss.service_id)], "name", "") or "").strip()
             if s_name:
                 svc_name_map[s_name.lower()] = ss
+                svc_name_map[re.sub(r"\s+", " ", s_name.lower()).strip()] = ss
         for ms in master_services:
             svc_id_map[str(ms.id)] = ms
-            if ms.name and ms.name.strip().lower() not in svc_name_map:
-                svc_name_map[ms.name.strip().lower()] = ms
+            if ms.name:
+                norm_m = re.sub(r"\s+", " ", ms.name.lower()).strip()
+                if norm_m not in svc_name_map:
+                    svc_name_map[norm_m] = ms
+                if ms.name.strip().lower() not in svc_name_map:
+                    svc_name_map[ms.name.strip().lower()] = ms
+            cat = (getattr(ms, "category", None) or "").strip().lower()
+            if cat and cat not in svc_name_map:
+                svc_name_map[cat] = ms
 
         # Preload retail products
         salon_products = await SalonProduct.find({
@@ -1510,12 +1536,17 @@ class BulkImportBillingService:
             elif raw_ref:
                 all_refs.add(raw_ref)
 
-        existing_invoices = await Invoice.find({
-            "$or": [{"salon_id": str(salon.id)}, {"salon_id": salon_id}, {"tenant_id": effective_tenant}],
-            "original_bill_reference": {"$in": list(all_refs)},
-            "is_deleted": False,
-        }).to_list()
-        existing_ref_map = {inv.original_bill_reference: inv.invoice_number for inv in existing_invoices if inv.original_bill_reference}
+        existing_ref_map: Dict[str, str] = {}
+        if all_refs:
+            try:
+                existing_invoices = await Invoice.find({
+                    "$or": [{"salon_id": str(salon.id)}, {"salon_id": salon_id}, {"tenant_id": effective_tenant}],
+                    "original_bill_reference": {"$in": list(all_refs)},
+                    "is_deleted": False,
+                }).to_list()
+                existing_ref_map = {inv.original_bill_reference: inv.invoice_number for inv in existing_invoices if inv.original_bill_reference}
+            except Exception as inv_lookup_err:
+                logger.warning("Could not check duplicate invoices: %s", inv_lookup_err)
 
         # Bill group dictionary: ref -> dict of bill info and rows
         bill_groups: Dict[str, Dict[str, Any]] = {}
@@ -1525,662 +1556,856 @@ class BulkImportBillingService:
 
         # Process Service Rows
         for r_num, r_vals, h_map in service_rows:
-            raw_ref = str(get_val(r_vals, h_map, "original_bill_reference") or "").strip()
-            raw_grp = str(get_val(r_vals, h_map, "bill_group") or "").strip()
-            if raw_grp:
-                ref = f"GROUP-{raw_grp}"
-                bg_val = raw_grp
-            elif raw_ref:
-                ref = raw_ref
-                bg_val = raw_ref
-            else:
-                ref = f"AUTO-ROW-S-{r_num}"
-                bg_val = None
-
-            date_raw = get_val(r_vals, h_map, "bill_date")
-            time_raw = get_val(r_vals, h_map, "bill_time")
-            client_name = to_title_case(str(get_val(r_vals, h_map, "client_name") or "").strip())
-            client_phone_raw = get_val(r_vals, h_map, "client_phone")
-            service_name = str(get_val(r_vals, h_map, "item_name") or "").strip()
-            staff_ident = str(get_val(r_vals, h_map, "staff_identifier") or "").strip()
-            unit_price_raw = get_val(r_vals, h_map, "unit_price")
-            discount_raw = get_val(r_vals, h_map, "discount", 0.0)
-            tax_rate_raw = get_val(r_vals, h_map, "tax_rate", 0.0)
-
-            status_val = get_val(r_vals, h_map, "payment_status")
-            status_raw = str(status_val).strip().upper() if status_val is not None and str(status_val).strip() != "" else None
-            method_val = get_val(r_vals, h_map, "payment_method")
-            method_raw = str(method_val).strip().upper() if method_val is not None and str(method_val).strip() != "" else None
-            paid_amount_raw = get_val(r_vals, h_map, "paid_amount")
-            notes = str(get_val(r_vals, h_map, "notes", "") or "").strip()
-
-            row_rec = BulkBillingRowRecord(
-                file_type="SERVICE",
-                excel_row=r_num,
-                original_bill_reference=ref,
-                bill_group=bg_val,
-                client_name=client_name,
-                item_name=service_name,
-                item_type="SERVICE",
-                staff_identifier=staff_ident,
-                quantity=1,
-                raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
-            )
-
-            # Validations
-            err_cat = None
-            err_msg = None
-            action_req = None
-
-            if not client_name:
-                err_cat = ERR_MISSING_REQUIRED
-                err_msg = "Client Name is missing."
-                action_req = "Enter customer name."
-            elif not service_name:
-                err_cat = ERR_MISSING_REQUIRED
-                err_msg = "Service name is missing."
-                action_req = "Enter service performed."
-            elif not staff_ident:
-                err_cat = ERR_MISSING_REQUIRED
-                err_msg = "Staff Identifier is missing."
-                action_req = "Assign performing stylist or employee."
-
-            # Date parsing
-            utc_dt = None
-            if not err_cat:
-                utc_dt, date_err = self._parse_row_date(date_raw, time_raw, salon_tz)
-                if date_err:
-                    err_cat = ERR_INVALID_DATE
-                    err_msg = date_err
-                    action_req = "Correct date format to YYYY-MM-DD."
-
-            # Price & numeric parsing
-            unit_price = 0.0
-            discount = 0.0
-            tax_rate = 0.0
-            if not err_cat:
-                parsed_price = _safe_float(unit_price_raw)
-                if parsed_price is None or parsed_price < 0:
-                    err_cat = ERR_INVALID_PRICE
-                    err_msg = f"Invalid service price '{unit_price_raw}'."
-                    action_req = "Enter a valid numeric price."
+            try:
+                raw_ref = str(get_val(r_vals, h_map, "original_bill_reference") or "").strip()
+                raw_grp = str(get_val(r_vals, h_map, "bill_group") or "").strip()
+                if raw_grp:
+                    ref = f"GROUP-{raw_grp}"
+                    bg_val = raw_grp
+                elif raw_ref:
+                    ref = raw_ref
+                    bg_val = raw_ref
                 else:
-                    unit_price = parsed_price
+                    ref = f"AUTO-ROW-S-{r_num}"
+                    bg_val = None
 
-            if not err_cat:
-                discount = max(0.0, _safe_float(discount_raw, 0.0) or 0.0)
-                tax_rate = max(0.0, _safe_float(tax_rate_raw, 0.0) or 0.0)
+                date_raw = get_val(r_vals, h_map, "bill_date")
+                time_raw = get_val(r_vals, h_map, "bill_time")
+                client_name = to_title_case(str(get_val(r_vals, h_map, "client_name") or "").strip())
+                client_phone_raw = get_val(r_vals, h_map, "client_phone")
+                service_name = str(get_val(r_vals, h_map, "item_name") or "").strip()
+                staff_ident = str(get_val(r_vals, h_map, "staff_identifier") or "").strip()
+                unit_price_raw = get_val(r_vals, h_map, "unit_price")
+                discount_raw = get_val(r_vals, h_map, "discount", 0.0)
+                tax_rate_raw = get_val(r_vals, h_map, "tax_rate", 0.0)
 
-            # Catalog resolution
-            matched_svc = None
-            if not err_cat:
-                svc_clean = service_name.lower()
-                matched_svc = svc_name_map.get(svc_clean) or svc_id_map.get(service_name)
-                if not matched_svc:
-                    err_cat = ERR_SERVICE_NOT_FOUND
-                    err_msg = f"Service '{service_name}' not found in salon catalog."
-                    action_req = f"Add '{service_name}' to Salon Services catalog or verify spelling."
+                status_val = get_val(r_vals, h_map, "payment_status")
+                status_raw = str(status_val).strip().upper() if status_val is not None and str(status_val).strip() != "" else None
+                method_val = get_val(r_vals, h_map, "payment_method")
+                method_raw = str(method_val).strip().upper() if method_val is not None and str(method_val).strip() != "" else None
+                paid_amount_raw = get_val(r_vals, h_map, "paid_amount")
+                notes = str(get_val(r_vals, h_map, "notes", "") or "").strip()
 
-            # Staff resolution
-            resolved_staff: Optional[User] = None
-            if not err_cat:
-                name_prefix, suffix_code = _extract_staff_parts(staff_ident)
+                row_rec = BulkBillingRowRecord(
+                    file_type="SERVICE",
+                    excel_row=r_num,
+                    original_bill_reference=ref,
+                    bill_group=bg_val,
+                    client_name=client_name,
+                    item_name=service_name,
+                    item_type="SERVICE",
+                    staff_identifier=staff_ident,
+                    quantity=1,
+                    raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
+                )
 
-                user_mapped_id = user_staff_mappings.get(staff_ident)
-                if user_mapped_id and user_mapped_id in staff_by_id:
-                    resolved_staff = staff_by_id[user_mapped_id]
-                elif suffix_code and suffix_code.lower() in staff_by_code:
-                    resolved_staff = staff_by_code[suffix_code.lower()]
-                elif suffix_code:
-                    norm_suf, _ = normalize_mobile(suffix_code)
-                    if norm_suf and norm_suf in staff_by_phone:
-                        resolved_staff = staff_by_phone[norm_suf]
+                # Validations
+                err_cat = None
+                err_msg = None
+                action_req = None
+                err_col = None
+                err_val = None
 
-                if not resolved_staff:
-                    if staff_ident in staff_by_id:
-                        resolved_staff = staff_by_id[staff_ident]
-                    elif staff_ident.lower() in staff_by_code:
-                        resolved_staff = staff_by_code[staff_ident.lower()]
+                if not client_name:
+                    err_cat = ERR_MISSING_REQUIRED
+                    err_msg = "Client Name is missing."
+                    action_req = "Enter customer name."
+                    err_col = "Client Name"
+                    err_val = None
+                elif not service_name:
+                    err_cat = ERR_MISSING_REQUIRED
+                    err_msg = "Service name is missing."
+                    action_req = "Enter service performed."
+                    err_col = "Service Name"
+                    err_val = None
+                elif not staff_ident:
+                    err_cat = ERR_MISSING_REQUIRED
+                    err_msg = "Staff Identifier is missing."
+                    action_req = "Assign performing stylist or employee."
+                    err_col = "Staff Name"
+                    err_val = None
+
+                # Date parsing
+                utc_dt = None
+                if not err_cat:
+                    utc_dt, date_err = self._parse_row_date(date_raw, time_raw, salon_tz)
+                    if date_err:
+                        err_cat = ERR_INVALID_DATE
+                        err_msg = date_err
+                        action_req = "Correct date format to YYYY-MM-DD."
+                        err_col = "Bill Date"
+                        err_val = str(date_raw) if date_raw is not None else None
+
+                # Price & numeric parsing
+                unit_price = 0.0
+                discount = 0.0
+                tax_rate = 0.0
+                if not err_cat:
+                    parsed_price = _safe_float(unit_price_raw)
+                    if parsed_price is None or parsed_price < 0:
+                        err_cat = ERR_INVALID_PRICE
+                        err_msg = f"Invalid service price '{unit_price_raw}'."
+                        action_req = "Enter a valid numeric price."
+                        err_col = "Service Amount"
+                        err_val = str(unit_price_raw) if unit_price_raw is not None else None
                     else:
-                        norm_sp, _ = normalize_mobile(staff_ident)
-                        if norm_sp and norm_sp in staff_by_phone:
-                            resolved_staff = staff_by_phone[norm_sp]
+                        unit_price = parsed_price
 
-                if not resolved_staff and staff_ident.lower() in staff_by_label:
-                    cand_list = staff_by_name.get(name_prefix.lower(), [])
-                    if len(cand_list) <= 1:
-                        resolved_staff = staff_by_label[staff_ident.lower()]
+                if not err_cat:
+                    discount = max(0.0, _safe_float(discount_raw, 0.0) or 0.0)
+                    tax_rate = max(0.0, _safe_float(tax_rate_raw, 0.0) or 0.0)
 
-                if not resolved_staff:
-                    lookup_name = (name_prefix or staff_ident).strip().lower()
-                    cand_list = staff_by_name.get(lookup_name, [])
-                    if len(cand_list) == 1:
-                        resolved_staff = cand_list[0]
-                    elif len(cand_list) > 1:
-                        err_cat = ERR_AMBIGUOUS_STAFF
-                        err_msg = f"Multiple staff members match '{staff_ident}'. Please select the correct employee."
-                        action_req = "Select correct employee from the mapping dropdown."
-                        ambiguous_staff_map[staff_ident] = [
-                            {"id": str(u.id), "name": f"{user_display_name(u)} ({u.employee_code or u.role})"}
-                            for u in cand_list
-                        ]
+                # Catalog resolution
+                matched_svc = None
+                if not err_cat:
+                    svc_clean = service_name.lower()
+                    matched_svc = svc_name_map.get(svc_clean) or svc_id_map.get(service_name)
+                    if not matched_svc:
+                        norm_svc = re.sub(r"\s+", " ", svc_clean).strip()
+                        matched_svc = svc_name_map.get(norm_svc)
+                    if not matched_svc:
+                        err_cat = ERR_SERVICE_NOT_FOUND
+                        err_msg = f"Service '{service_name}' not found in salon catalog."
+                        action_req = f"Add '{service_name}' to Salon Services catalog or verify spelling."
+                        err_col = "Service Name"
+                        err_val = service_name
+
+                # Staff resolution
+                resolved_staff: Optional[User] = None
+                if not err_cat:
+                    name_prefix, suffix_code = _extract_staff_parts(staff_ident)
+
+                    user_mapped_id = user_staff_mappings.get(staff_ident)
+                    if user_mapped_id and user_mapped_id in staff_by_id:
+                        resolved_staff = staff_by_id[user_mapped_id]
+                    elif suffix_code and suffix_code.lower() in staff_by_code:
+                        resolved_staff = staff_by_code[suffix_code.lower()]
+                    elif suffix_code:
+                        norm_suf, _ = normalize_mobile(suffix_code)
+                        if norm_suf and norm_suf in staff_by_phone:
+                            resolved_staff = staff_by_phone[norm_suf]
+
+                    if not resolved_staff:
+                        if staff_ident in staff_by_id:
+                            resolved_staff = staff_by_id[staff_ident]
+                        elif staff_ident.lower() in staff_by_code:
+                            resolved_staff = staff_by_code[staff_ident.lower()]
+                        else:
+                            norm_sp, _ = normalize_mobile(staff_ident)
+                            if norm_sp and norm_sp in staff_by_phone:
+                                resolved_staff = staff_by_phone[norm_sp]
+
+                    if not resolved_staff and staff_ident.lower() in staff_by_label:
+                        cand_list = staff_by_name.get(name_prefix.lower(), [])
+                        if len(cand_list) <= 1:
+                            resolved_staff = staff_by_label[staff_ident.lower()]
+
+                    if not resolved_staff:
+                        lookup_name = (name_prefix or staff_ident).strip().lower()
+                        cand_list = staff_by_name.get(lookup_name, [])
+                        if len(cand_list) == 1:
+                            resolved_staff = cand_list[0]
+                        elif len(cand_list) > 1:
+                            err_cat = ERR_AMBIGUOUS_STAFF
+                            err_msg = f"Multiple staff members match '{staff_ident}'. Please select the correct employee."
+                            action_req = "Select correct employee from the mapping dropdown."
+                            err_col = "Staff Name"
+                            err_val = staff_ident
+                            ambiguous_staff_map[staff_ident] = [
+                                {"id": str(u.id), "name": f"{user_display_name(u)} ({u.employee_code or u.role})"}
+                                for u in cand_list
+                            ]
+                        else:
+                            err_cat = ERR_STAFF_NOT_FOUND
+                            err_msg = f"Staff '{staff_ident}' not found in this salon."
+                            action_req = "Verify employee name, employee code, or active status."
+                            err_col = "Staff Name"
+                            err_val = staff_ident
+
+                # Duplicate check
+                if not err_cat and not ref.startswith("AUTO-ROW-") and ref in existing_ref_map:
+                    err_cat = ERR_DUPLICATE_BILL
+                    err_msg = f"Bill reference '{ref}' already exists in salon billing history (Invoice: {existing_ref_map[ref]})."
+                    action_req = "Skip or verify this bill was not imported previously."
+                    err_col = "Original Bill Reference"
+                    err_val = ref
+
+                # Phone validation and Client ID status
+                client_phone_clean = str(client_phone_raw or "").strip() if client_phone_raw is not None else ""
+                norm_phone = None
+                client_id_status = None
+                if client_phone_clean:
+                    if client_phone_clean.upper().startswith("CL-"):
+                        existing_cust = None
+                        try:
+                            existing_cust = await Customer.find_one({
+                                "phone": client_phone_clean.upper(),
+                                "tenant_id": effective_tenant,
+                                "is_deleted": False,
+                            })
+                        except Exception as cust_err:
+                            logger.warning("Error querying customer by CL-ID %s: %s", client_phone_clean, cust_err)
+                        if existing_cust:
+                            client_id_status = "EXISTING"
+                            norm_phone = client_phone_clean.upper()
+                        else:
+                            client_id_status = "NOT_FOUND"
+                            err_cat = ERR_MISSING_REQUIRED
+                            err_msg = f"Client ID '{client_phone_clean}' not found in salon records."
+                            action_req = "Verify Client ID or leave mobile blank to create a new client."
+                            err_col = "Mobile Number"
+                            err_val = client_phone_clean
                     else:
-                        err_cat = ERR_STAFF_NOT_FOUND
-                        err_msg = f"Staff '{staff_ident}' not found in this salon."
-                        action_req = "Verify employee name, employee code, or active status."
-
-            # Duplicate check
-            if not err_cat and not ref.startswith("AUTO-ROW-") and ref in existing_ref_map:
-                err_cat = ERR_DUPLICATE_BILL
-                err_msg = f"Bill reference '{ref}' already exists in salon billing history (Invoice: {existing_ref_map[ref]})."
-                action_req = "Skip or verify this bill was not imported previously."
-
-            # Phone validation and Client ID status
-            client_phone_clean = str(client_phone_raw or "").strip() if client_phone_raw is not None else ""
-            norm_phone = None
-            client_id_status = None
-            if client_phone_clean:
-                if client_phone_clean.upper().startswith("CL-"):
-                    existing_cust = await Customer.find_one({
-                        "phone": client_phone_clean.upper(),
-                        "tenant_id": effective_tenant,
-                        "is_deleted": False,
-                    })
-                    if existing_cust:
-                        client_id_status = "EXISTING"
-                        norm_phone = client_phone_clean.upper()
-                    else:
-                        client_id_status = "NOT_FOUND"
-                        err_cat = ERR_MISSING_REQUIRED
-                        err_msg = f"Client ID '{client_phone_clean}' not found in salon records."
-                        action_req = "Verify Client ID or leave mobile blank to create a new client."
+                        norm_p, phone_err = normalize_mobile(client_phone_clean)
+                        if phone_err:
+                            err_cat = ERR_MISSING_REQUIRED
+                            err_msg = f"Invalid mobile number '{client_phone_clean}': {phone_err}."
+                            action_req = "Enter a valid 10-digit Indian mobile number or leave blank."
+                            err_col = "Mobile Number"
+                            err_val = client_phone_clean
+                        else:
+                            norm_phone = norm_p
+                            existing_cust = None
+                            try:
+                                existing_cust = await find_client_by_phone(norm_p, effective_tenant)
+                            except Exception as phone_lookup_err:
+                                logger.warning("Error finding client by phone %s: %s", norm_p, phone_lookup_err)
+                            client_id_status = "EXISTING" if existing_cust else "NEW_WITH_PHONE"
                 else:
-                    norm_p, phone_err = normalize_mobile(client_phone_clean)
-                    if phone_err:
-                        err_cat = ERR_MISSING_REQUIRED
-                        err_msg = f"Invalid mobile number '{client_phone_clean}': {phone_err}."
-                        action_req = "Enter a valid 10-digit Indian mobile number or leave blank."
+                    client_id_status = "WILL_GENERATE"
+
+                row_rec.client_phone = norm_phone or (client_phone_clean if client_phone_clean else None)
+                row_rec.client_id_status = client_id_status
+
+                # Payment validation & multi-row consistency
+                if not err_cat:
+                    if ref in bill_groups:
+                        grp_exist = bill_groups[ref]
+                        if status_raw:
+                            if status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
+                                err_cat = ERR_INVALID_PAYMENT
+                                err_msg = f"Invalid payment status '{status_raw}'. Allowed: PAID, PARTIALLY_PAID, PENDING."
+                                action_req = "Select a valid payment status from the dropdown."
+                                err_col = "Payment Status"
+                                err_val = str(status_val) if status_val is not None else None
+                            elif grp_exist.get("payment_status") and status_raw != grp_exist["payment_status"]:
+                                err_cat = ERR_CONFLICTING_BILL
+                                err_msg = f"Conflicting payment status in bill '{ref}' ('{grp_exist['payment_status']}' vs '{status_raw}')."
+                                action_req = "Ensure payment status matches across all rows of the same bill."
+                                err_col = "Payment Status"
+                                err_val = str(status_val) if status_val is not None else None
+                        else:
+                            status_raw = grp_exist.get("payment_status")
+
+                        if not err_cat:
+                            if method_raw:
+                                if method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
+                                    err_cat = ERR_INVALID_PAYMENT
+                                    err_msg = f"Invalid payment method '{method_raw}'. Allowed: CASH, UPI, CARD, SPLIT."
+                                    action_req = "Select a valid payment method from the dropdown."
+                                    err_col = "Payment Method"
+                                    err_val = str(method_val) if method_val is not None else None
+                                elif grp_exist.get("payment_method") and method_raw != grp_exist["payment_method"]:
+                                    err_cat = ERR_CONFLICTING_BILL
+                                    err_msg = f"Conflicting payment method in bill '{ref}' ('{grp_exist['payment_method']}' vs '{method_raw}')."
+                                    action_req = "Ensure payment method matches across all rows of the same bill."
+                                    err_col = "Payment Method"
+                                    err_val = str(method_val) if method_val is not None else None
+                            else:
+                                method_raw = grp_exist.get("payment_method")
+
+                        if not err_cat and utc_dt and grp_exist.get("bill_date"):
+                            if utc_dt.date() != grp_exist["bill_date"].date():
+                                err_cat = ERR_CONFLICTING_BILL
+                                err_msg = f"Conflicting bill date in bill '{ref}'. All rows for the same bill must share the same date."
+                                action_req = "Ensure all rows for the same bill have the same date."
+                                err_col = "Bill Date"
+                                err_val = str(date_raw) if date_raw is not None else None
                     else:
-                        norm_phone = norm_p
-                        existing_cust = await find_client_by_phone(norm_p, effective_tenant)
-                        client_id_status = "EXISTING" if existing_cust else "NEW_WITH_PHONE"
-            else:
-                client_id_status = "WILL_GENERATE"
-
-            row_rec.client_phone = norm_phone or (client_phone_clean if client_phone_clean else None)
-            row_rec.client_id_status = client_id_status
-
-            # Payment validation & multi-row consistency
-            if not err_cat:
-                if ref in bill_groups:
-                    grp_exist = bill_groups[ref]
-                    if status_raw:
-                        if status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
+                        if not status_raw:
+                            err_cat = ERR_MISSING_REQUIRED
+                            err_msg = "Payment Status is required."
+                            action_req = "Select Payment Status (PAID, PARTIALLY_PAID, or PENDING)."
+                            err_col = "Payment Status"
+                            err_val = None
+                        elif status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
                             err_cat = ERR_INVALID_PAYMENT
                             err_msg = f"Invalid payment status '{status_raw}'. Allowed: PAID, PARTIALLY_PAID, PENDING."
                             action_req = "Select a valid payment status from the dropdown."
-                        elif grp_exist.get("payment_status") and status_raw != grp_exist["payment_status"]:
-                            err_cat = ERR_CONFLICTING_BILL
-                            err_msg = f"Conflicting payment status in bill '{ref}' ('{grp_exist['payment_status']}' vs '{status_raw}')."
-                            action_req = "Ensure payment status matches across all rows of the same bill."
-                    else:
-                        status_raw = grp_exist.get("payment_status")
+                            err_col = "Payment Status"
+                            err_val = str(status_val) if status_val is not None else None
 
-                    if not err_cat:
-                        if method_raw:
-                            if method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
+                        if not err_cat:
+                            if not method_raw:
+                                err_cat = ERR_MISSING_REQUIRED
+                                err_msg = "Payment Method is required."
+                                action_req = "Select Payment Method (CASH, UPI, CARD, or SPLIT)."
+                                err_col = "Payment Method"
+                                err_val = None
+                            elif method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
                                 err_cat = ERR_INVALID_PAYMENT
                                 err_msg = f"Invalid payment method '{method_raw}'. Allowed: CASH, UPI, CARD, SPLIT."
                                 action_req = "Select a valid payment method from the dropdown."
-                            elif grp_exist.get("payment_method") and method_raw != grp_exist["payment_method"]:
-                                err_cat = ERR_CONFLICTING_BILL
-                                err_msg = f"Conflicting payment method in bill '{ref}' ('{grp_exist['payment_method']}' vs '{method_raw}')."
-                                action_req = "Ensure payment method matches across all rows of the same bill."
-                        else:
-                            method_raw = grp_exist.get("payment_method")
+                                err_col = "Payment Method"
+                                err_val = str(method_val) if method_val is not None else None
 
-                    if not err_cat and utc_dt and grp_exist.get("bill_date"):
-                        if utc_dt.date() != grp_exist["bill_date"].date():
-                            err_cat = ERR_CONFLICTING_BILL
-                            err_msg = f"Conflicting bill date in bill '{ref}'. All rows for the same bill must share the same date."
-                            action_req = "Ensure all rows for the same bill have the same date."
-                else:
-                    if not status_raw:
-                        err_cat = ERR_MISSING_REQUIRED
-                        err_msg = "Payment Status is required."
-                        action_req = "Select Payment Status (PAID, PARTIALLY_PAID, or PENDING)."
-                    elif status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
+                # Paid amount validation
+                parsed_paid = _safe_float(paid_amount_raw)
+                if not err_cat and status_raw == "PARTIALLY_PAID":
+                    if parsed_paid is None:
                         err_cat = ERR_INVALID_PAYMENT
-                        err_msg = f"Invalid payment status '{status_raw}'. Allowed: PAID, PARTIALLY_PAID, PENDING."
-                        action_req = "Select a valid payment status from the dropdown."
+                        err_msg = "Paid Amount is required when Payment Status is PARTIALLY_PAID."
+                        action_req = "Enter the amount paid so far."
+                        err_col = "Paid Amount"
+                        err_val = str(paid_amount_raw) if paid_amount_raw is not None else None
+                    elif parsed_paid <= 0:
+                        err_cat = ERR_INVALID_PAYMENT
+                        err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
+                        action_req = "Enter the actual positive amount paid."
+                        err_col = "Paid Amount"
+                        err_val = str(paid_amount_raw) if paid_amount_raw is not None else None
 
-                    if not err_cat:
-                        if not method_raw:
-                            err_cat = ERR_MISSING_REQUIRED
-                            err_msg = "Payment Method is required."
-                            action_req = "Select Payment Method (CASH, UPI, CARD, or SPLIT)."
-                        elif method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
-                            err_cat = ERR_INVALID_PAYMENT
-                            err_msg = f"Invalid payment method '{method_raw}'. Allowed: CASH, UPI, CARD, SPLIT."
-                            action_req = "Select a valid payment method from the dropdown."
+                line_subtotal = max(0.0, unit_price - discount)
+                line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
+                line_total = round(line_subtotal + line_tax, 2)
 
-            # Paid amount validation
-            parsed_paid = _safe_float(paid_amount_raw)
-            if not err_cat and status_raw == "PARTIALLY_PAID":
-                if parsed_paid is None:
-                    err_cat = ERR_INVALID_PAYMENT
-                    err_msg = "Paid Amount is required when Payment Status is PARTIALLY_PAID."
-                    action_req = "Enter the amount paid so far."
-                elif parsed_paid <= 0:
-                    err_cat = ERR_INVALID_PAYMENT
-                    err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
-                    action_req = "Enter the actual positive amount paid."
+                row_rec.unit_price = unit_price
+                row_rec.discount = discount
+                row_rec.tax_rate = tax_rate
+                row_rec.line_total = line_total
+                row_rec.bill_date = utc_dt.isoformat() if utc_dt else None
+                row_rec.payment_status = status_raw
+                row_rec.payment_method = method_raw
+                row_rec.paid_amount = parsed_paid
+                row_rec.notes = notes
 
-            line_subtotal = max(0.0, unit_price - discount)
-            line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
-            line_total = round(line_subtotal + line_tax, 2)
+                if resolved_staff:
+                    row_rec.resolved_staff_id = str(resolved_staff.id)
+                    row_rec.resolved_staff_name = user_display_name(resolved_staff)
 
-            row_rec.unit_price = unit_price
-            row_rec.discount = discount
-            row_rec.tax_rate = tax_rate
-            row_rec.line_total = line_total
-            row_rec.bill_date = utc_dt.isoformat() if utc_dt else None
-            row_rec.payment_status = status_raw
-            row_rec.payment_method = method_raw
-            row_rec.paid_amount = parsed_paid
-            row_rec.notes = notes
+                if err_cat:
+                    row_rec.status = "DUPLICATE" if err_cat == ERR_DUPLICATE_BILL else "FAILED"
+                    row_rec.error_category = err_cat
+                    row_rec.error_message = err_msg
+                    row_rec.action_required = action_req
+                    row_rec.column_name = err_col
+                    row_rec.invalid_value = err_val
 
-            if resolved_staff:
-                row_rec.resolved_staff_id = str(resolved_staff.id)
-                row_rec.resolved_staff_name = user_display_name(resolved_staff)
+                row_records.append(row_rec)
 
-            if err_cat:
-                row_rec.status = "DUPLICATE" if err_cat == ERR_DUPLICATE_BILL else "FAILED"
-                row_rec.error_category = err_cat
-                row_rec.error_message = err_msg
-                row_rec.action_required = action_req
+                # Grouping
+                grp = bill_groups.setdefault(ref, {
+                    "ref": ref,
+                    "bill_group": bg_val,
+                    "client_name": client_name,
+                    "client_phone": norm_phone,
+                    "client_id_status": client_id_status,
+                    "bill_date": utc_dt,
+                    "payment_status": status_raw,
+                    "payment_method": method_raw,
+                    "paid_amount": parsed_paid,
+                    "service_items": [],
+                    "product_items": [],
+                    "row_records": [],
+                    "has_error": False,
+                    "is_duplicate": False,
+                })
+                grp["row_records"].append(row_rec)
+                if err_cat:
+                    grp["has_error"] = True
+                    if err_cat == ERR_DUPLICATE_BILL:
+                        grp["is_duplicate"] = True
 
-            row_records.append(row_rec)
+                # Sync phone across group if one row has it
+                if not grp.get("client_phone") and norm_phone:
+                    grp["client_phone"] = norm_phone
+                    grp["client_id_status"] = client_id_status
 
-            # Grouping
-            grp = bill_groups.setdefault(ref, {
-                "ref": ref,
-                "bill_group": bg_val,
-                "client_name": client_name,
-                "client_phone": norm_phone,
-                "client_id_status": client_id_status,
-                "bill_date": utc_dt,
-                "payment_status": status_raw,
-                "payment_method": method_raw,
-                "paid_amount": parsed_paid,
-                "service_items": [],
-                "product_items": [],
-                "row_records": [],
-                "has_error": False,
-                "is_duplicate": False,
-            })
-            grp["row_records"].append(row_rec)
-            if err_cat:
-                grp["has_error"] = True
-                if err_cat == ERR_DUPLICATE_BILL:
-                    grp["is_duplicate"] = True
+                # Check client consistency
+                if grp["client_name"] and client_name and grp["client_name"].lower() != client_name.lower():
+                    row_rec.status = "FAILED"
+                    row_rec.error_category = ERR_CONFLICTING_BILL
+                    row_rec.error_message = f"Conflicting client name in bill {ref} ('{grp['client_name']}' vs '{client_name}')."
+                    row_rec.action_required = "Ensure client name is consistent across rows of the same bill."
+                    row_rec.column_name = "Client Name"
+                    row_rec.invalid_value = client_name
+                    grp["has_error"] = True
 
-            # Sync phone across group if one row has it
-            if not grp.get("client_phone") and norm_phone:
-                grp["client_phone"] = norm_phone
-                grp["client_id_status"] = client_id_status
-
-            # Check client consistency
-            if grp["client_name"] and client_name and grp["client_name"].lower() != client_name.lower():
-                row_rec.status = "FAILED"
-                row_rec.error_category = ERR_CONFLICTING_BILL
-                row_rec.error_message = f"Conflicting client name in bill {ref} ('{grp['client_name']}' vs '{client_name}')."
-                row_rec.action_required = "Ensure client name is consistent across rows of the same bill."
-                grp["has_error"] = True
-
-            grp["service_items"].append({
-                "service": matched_svc,
-                "name": service_name,
-                "staff": resolved_staff,
-                "unit_price": unit_price,
-                "discount": discount,
-                "tax_rate": tax_rate,
-                "line_total": line_total,
-            })
+                grp["service_items"].append({
+                    "service": matched_svc,
+                    "name": service_name,
+                    "staff": resolved_staff,
+                    "unit_price": unit_price,
+                    "discount": discount,
+                    "tax_rate": tax_rate,
+                    "line_total": line_total,
+                })
+            except Exception as row_exc:
+                logger.warning("Unexpected error validating service row %d: %s", r_num, row_exc, exc_info=True)
+                fallback_rec = BulkBillingRowRecord(
+                    file_type="SERVICE",
+                    excel_row=r_num,
+                    original_bill_reference=f"AUTO-ROW-S-{r_num}",
+                    client_name="Unknown",
+                    item_type="SERVICE",
+                    status="FAILED",
+                    column_name="General",
+                    invalid_value=None,
+                    error_category="ROW_PARSING_ERROR",
+                    error_message=f"Row could not be processed due to unexpected data format: {str(row_exc)}",
+                    action_required="Check row data format in Excel and retry.",
+                    raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
+                )
+                row_records.append(fallback_rec)
+                grp = bill_groups.setdefault(fallback_rec.original_bill_reference, {
+                    "ref": fallback_rec.original_bill_reference,
+                    "bill_group": None,
+                    "client_name": "Unknown",
+                    "client_phone": None,
+                    "client_id_status": None,
+                    "bill_date": None,
+                    "payment_status": None,
+                    "payment_method": None,
+                    "paid_amount": None,
+                    "service_items": [],
+                    "product_items": [],
+                    "row_records": [],
+                    "has_error": True,
+                    "is_duplicate": False,
+                })
+                grp["row_records"].append(fallback_rec)
 
         # Process Product Rows
         for r_num, r_vals, h_map in product_rows:
-            raw_ref = str(get_val(r_vals, h_map, "original_bill_reference") or "").strip()
-            raw_grp = str(get_val(r_vals, h_map, "bill_group") or "").strip()
-            if raw_grp:
-                ref = f"GROUP-{raw_grp}"
-                bg_val = raw_grp
-            elif raw_ref:
-                ref = raw_ref
-                bg_val = raw_ref
-            else:
-                ref = f"AUTO-ROW-P-{r_num}"
-                bg_val = None
-
-            date_raw = get_val(r_vals, h_map, "bill_date")
-            time_raw = get_val(r_vals, h_map, "bill_time")
-            client_name = to_title_case(str(get_val(r_vals, h_map, "client_name") or "").strip())
-            client_phone_raw = get_val(r_vals, h_map, "client_phone")
-            product_name = str(get_val(r_vals, h_map, "item_name") or "").strip()
-            qty_raw = get_val(r_vals, h_map, "quantity", 1)
-            staff_ident = str(get_val(r_vals, h_map, "staff_identifier") or "").strip()
-            unit_price_raw = get_val(r_vals, h_map, "unit_price")
-            discount_raw = get_val(r_vals, h_map, "discount", 0.0)
-            tax_rate_raw = get_val(r_vals, h_map, "tax_rate", 0.0)
-
-            status_val = get_val(r_vals, h_map, "payment_status")
-            status_raw = str(status_val).strip().upper() if status_val is not None and str(status_val).strip() != "" else None
-            method_val = get_val(r_vals, h_map, "payment_method")
-            method_raw = str(method_val).strip().upper() if method_val is not None and str(method_val).strip() != "" else None
-            paid_amount_raw = get_val(r_vals, h_map, "paid_amount")
-            notes = str(get_val(r_vals, h_map, "notes", "") or "").strip()
-
-            row_rec = BulkBillingRowRecord(
-                file_type="PRODUCT",
-                excel_row=r_num,
-                original_bill_reference=ref,
-                bill_group=bg_val,
-                client_name=client_name,
-                item_name=product_name,
-                item_type="PRODUCT",
-                staff_identifier=staff_ident,
-                raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
-            )
-
-            err_cat = None
-            err_msg = None
-            action_req = None
-
-            if not client_name:
-                err_cat = ERR_MISSING_REQUIRED
-                err_msg = "Client Name is missing."
-                action_req = "Enter customer name."
-            elif not product_name:
-                err_cat = ERR_MISSING_REQUIRED
-                err_msg = "Product name is missing."
-                action_req = "Enter retail product sold."
-            elif not staff_ident:
-                err_cat = ERR_MISSING_REQUIRED
-                err_msg = "Selling staff (Sold By) is missing."
-                action_req = "Assign selling employee."
-
-            utc_dt = None
-            if not err_cat:
-                utc_dt, date_err = self._parse_row_date(date_raw, time_raw, salon_tz)
-                if date_err:
-                    err_cat = ERR_INVALID_DATE
-                    err_msg = date_err
-                    action_req = "Correct date format to YYYY-MM-DD."
-
-            # Parse quantity
-            quantity = 1
-            if not err_cat:
-                try:
-                    q_val = _safe_float(qty_raw, 1.0)
-                    quantity = int(q_val if q_val is not None else 1)
-                    if quantity < 1:
-                        raise ValueError("Quantity must be >= 1")
-                except Exception:
-                    err_cat = ERR_INVALID_QUANTITY
-                    err_msg = f"Invalid product quantity '{qty_raw}'."
-                    action_req = "Enter an integer quantity >= 1."
-
-            unit_price = 0.0
-            discount = 0.0
-            tax_rate = 0.0
-            if not err_cat:
-                parsed_price = _safe_float(unit_price_raw)
-                if parsed_price is None or parsed_price < 0:
-                    err_cat = ERR_INVALID_PRICE
-                    err_msg = f"Invalid product selling price '{unit_price_raw}'."
-                    action_req = "Enter a valid numeric price."
+            try:
+                raw_ref = str(get_val(r_vals, h_map, "original_bill_reference") or "").strip()
+                raw_grp = str(get_val(r_vals, h_map, "bill_group") or "").strip()
+                if raw_grp:
+                    ref = f"GROUP-{raw_grp}"
+                    bg_val = raw_grp
+                elif raw_ref:
+                    ref = raw_ref
+                    bg_val = raw_ref
                 else:
-                    unit_price = parsed_price
+                    ref = f"AUTO-ROW-P-{r_num}"
+                    bg_val = None
 
-            if not err_cat:
-                discount = max(0.0, _safe_float(discount_raw, 0.0) or 0.0)
-                tax_rate = max(0.0, _safe_float(tax_rate_raw, 0.0) or 0.0)
+                date_raw = get_val(r_vals, h_map, "bill_date")
+                time_raw = get_val(r_vals, h_map, "bill_time")
+                client_name = to_title_case(str(get_val(r_vals, h_map, "client_name") or "").strip())
+                client_phone_raw = get_val(r_vals, h_map, "client_phone")
+                product_name = str(get_val(r_vals, h_map, "item_name") or "").strip()
+                qty_raw = get_val(r_vals, h_map, "quantity", 1)
+                staff_ident = str(get_val(r_vals, h_map, "staff_identifier") or "").strip()
+                unit_price_raw = get_val(r_vals, h_map, "unit_price")
+                discount_raw = get_val(r_vals, h_map, "discount", 0.0)
+                tax_rate_raw = get_val(r_vals, h_map, "tax_rate", 0.0)
 
-            # Catalog resolution
-            matched_prod = None
-            if not err_cat:
-                prod_clean = product_name.lower()
-                matched_prod = prod_name_map.get(prod_clean) or prod_id_map.get(product_name)
-                if not matched_prod:
-                    err_cat = ERR_PRODUCT_NOT_FOUND
-                    err_msg = f"Product '{product_name}' not found in retail catalog."
-                    action_req = f"Add '{product_name}' to Salon Products catalog or verify spelling."
+                status_val = get_val(r_vals, h_map, "payment_status")
+                status_raw = str(status_val).strip().upper() if status_val is not None and str(status_val).strip() != "" else None
+                method_val = get_val(r_vals, h_map, "payment_method")
+                method_raw = str(method_val).strip().upper() if method_val is not None and str(method_val).strip() != "" else None
+                paid_amount_raw = get_val(r_vals, h_map, "paid_amount")
+                notes = str(get_val(r_vals, h_map, "notes", "") or "").strip()
 
-            # Staff resolution
-            resolved_staff: Optional[User] = None
-            if not err_cat:
-                name_prefix, suffix_code = _extract_staff_parts(staff_ident)
+                row_rec = BulkBillingRowRecord(
+                    file_type="PRODUCT",
+                    excel_row=r_num,
+                    original_bill_reference=ref,
+                    bill_group=bg_val,
+                    client_name=client_name,
+                    item_name=product_name,
+                    item_type="PRODUCT",
+                    staff_identifier=staff_ident,
+                    raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
+                )
 
-                user_mapped_id = user_staff_mappings.get(staff_ident)
-                if user_mapped_id and user_mapped_id in staff_by_id:
-                    resolved_staff = staff_by_id[user_mapped_id]
-                elif suffix_code and suffix_code.lower() in staff_by_code:
-                    resolved_staff = staff_by_code[suffix_code.lower()]
-                elif suffix_code:
-                    norm_suf, _ = normalize_mobile(suffix_code)
-                    if norm_suf and norm_suf in staff_by_phone:
-                        resolved_staff = staff_by_phone[norm_suf]
+                err_cat = None
+                err_msg = None
+                action_req = None
+                err_col = None
+                err_val = None
 
-                if not resolved_staff:
-                    if staff_ident in staff_by_id:
-                        resolved_staff = staff_by_id[staff_ident]
-                    elif staff_ident.lower() in staff_by_code:
-                        resolved_staff = staff_by_code[staff_ident.lower()]
+                if not client_name:
+                    err_cat = ERR_MISSING_REQUIRED
+                    err_msg = "Client Name is missing."
+                    action_req = "Enter customer name."
+                    err_col = "Client Name"
+                    err_val = None
+                elif not product_name:
+                    err_cat = ERR_MISSING_REQUIRED
+                    err_msg = "Product name is missing."
+                    action_req = "Enter retail product sold."
+                    err_col = "Product Name"
+                    err_val = None
+                elif not staff_ident:
+                    err_cat = ERR_MISSING_REQUIRED
+                    err_msg = "Selling staff (Sold By) is missing."
+                    action_req = "Assign selling employee."
+                    err_col = "Sold By Staff"
+                    err_val = None
+
+                utc_dt = None
+                if not err_cat:
+                    utc_dt, date_err = self._parse_row_date(date_raw, time_raw, salon_tz)
+                    if date_err:
+                        err_cat = ERR_INVALID_DATE
+                        err_msg = date_err
+                        action_req = "Correct date format to YYYY-MM-DD."
+                        err_col = "Bill Date"
+                        err_val = str(date_raw) if date_raw is not None else None
+
+                # Parse quantity
+                quantity = 1
+                if not err_cat:
+                    try:
+                        q_val = _safe_float(qty_raw, 1.0)
+                        quantity = int(q_val if q_val is not None else 1)
+                        if quantity < 1:
+                            raise ValueError("Quantity must be >= 1")
+                    except Exception:
+                        err_cat = ERR_INVALID_QUANTITY
+                        err_msg = f"Invalid product quantity '{qty_raw}'."
+                        action_req = "Enter an integer quantity >= 1."
+                        err_col = "Quantity"
+                        err_val = str(qty_raw) if qty_raw is not None else None
+
+                unit_price = 0.0
+                discount = 0.0
+                tax_rate = 0.0
+                if not err_cat:
+                    parsed_price = _safe_float(unit_price_raw)
+                    if parsed_price is None or parsed_price < 0:
+                        err_cat = ERR_INVALID_PRICE
+                        err_msg = f"Invalid product selling price '{unit_price_raw}'."
+                        action_req = "Enter a valid numeric price."
+                        err_col = "Selling Price"
+                        err_val = str(unit_price_raw) if unit_price_raw is not None else None
                     else:
-                        norm_sp, _ = normalize_mobile(staff_ident)
-                        if norm_sp and norm_sp in staff_by_phone:
-                            resolved_staff = staff_by_phone[norm_sp]
+                        unit_price = parsed_price
 
-                if not resolved_staff and staff_ident.lower() in staff_by_label:
-                    cand_list = staff_by_name.get(name_prefix.lower(), [])
-                    if len(cand_list) <= 1:
-                        resolved_staff = staff_by_label[staff_ident.lower()]
+                if not err_cat:
+                    discount = max(0.0, _safe_float(discount_raw, 0.0) or 0.0)
+                    tax_rate = max(0.0, _safe_float(tax_rate_raw, 0.0) or 0.0)
 
-                if not resolved_staff:
-                    lookup_name = (name_prefix or staff_ident).strip().lower()
-                    cand_list = staff_by_name.get(lookup_name, [])
-                    if len(cand_list) == 1:
-                        resolved_staff = cand_list[0]
-                    elif len(cand_list) > 1:
-                        err_cat = ERR_AMBIGUOUS_STAFF
-                        err_msg = f"Multiple staff members match '{staff_ident}'. Please select the correct employee."
-                        action_req = "Select correct employee from the mapping dropdown."
-                        ambiguous_staff_map[staff_ident] = [
-                            {"id": str(u.id), "name": f"{user_display_name(u)} ({u.employee_code or u.role})"}
-                            for u in cand_list
-                        ]
+                # Catalog resolution
+                matched_prod = None
+                if not err_cat:
+                    prod_clean = product_name.lower()
+                    matched_prod = prod_name_map.get(prod_clean) or prod_id_map.get(product_name)
+                    if not matched_prod:
+                        norm_prod = re.sub(r"\s+", " ", prod_clean).strip()
+                        matched_prod = prod_name_map.get(norm_prod)
+                    if not matched_prod:
+                        err_cat = ERR_PRODUCT_NOT_FOUND
+                        err_msg = f"Product '{product_name}' not found in retail catalog."
+                        action_req = f"Add '{product_name}' to Salon Products catalog or verify spelling."
+                        err_col = "Product Name"
+                        err_val = product_name
+
+                # Staff resolution
+                resolved_staff: Optional[User] = None
+                if not err_cat:
+                    name_prefix, suffix_code = _extract_staff_parts(staff_ident)
+
+                    user_mapped_id = user_staff_mappings.get(staff_ident)
+                    if user_mapped_id and user_mapped_id in staff_by_id:
+                        resolved_staff = staff_by_id[user_mapped_id]
+                    elif suffix_code and suffix_code.lower() in staff_by_code:
+                        resolved_staff = staff_by_code[suffix_code.lower()]
+                    elif suffix_code:
+                        norm_suf, _ = normalize_mobile(suffix_code)
+                        if norm_suf and norm_suf in staff_by_phone:
+                            resolved_staff = staff_by_phone[norm_suf]
+
+                    if not resolved_staff:
+                        if staff_ident in staff_by_id:
+                            resolved_staff = staff_by_id[staff_ident]
+                        elif staff_ident.lower() in staff_by_code:
+                            resolved_staff = staff_by_code[staff_ident.lower()]
+                        else:
+                            norm_sp, _ = normalize_mobile(staff_ident)
+                            if norm_sp and norm_sp in staff_by_phone:
+                                resolved_staff = staff_by_phone[norm_sp]
+
+                    if not resolved_staff and staff_ident.lower() in staff_by_label:
+                        cand_list = staff_by_name.get(name_prefix.lower(), [])
+                        if len(cand_list) <= 1:
+                            resolved_staff = staff_by_label[staff_ident.lower()]
+
+                    if not resolved_staff:
+                        lookup_name = (name_prefix or staff_ident).strip().lower()
+                        cand_list = staff_by_name.get(lookup_name, [])
+                        if len(cand_list) == 1:
+                            resolved_staff = cand_list[0]
+                        elif len(cand_list) > 1:
+                            err_cat = ERR_AMBIGUOUS_STAFF
+                            err_msg = f"Multiple staff members match '{staff_ident}'. Please select the correct employee."
+                            action_req = "Select correct employee from the mapping dropdown."
+                            err_col = "Sold By Staff"
+                            err_val = staff_ident
+                            ambiguous_staff_map[staff_ident] = [
+                                {"id": str(u.id), "name": f"{user_display_name(u)} ({u.employee_code or u.role})"}
+                                for u in cand_list
+                            ]
+                        else:
+                            err_cat = ERR_STAFF_NOT_FOUND
+                            err_msg = f"Staff '{staff_ident}' not found in this salon."
+                            action_req = "Verify employee name, employee code, or active status."
+                            err_col = "Sold By Staff"
+                            err_val = staff_ident
+
+                if not err_cat and not ref.startswith("AUTO-ROW-") and ref in existing_ref_map:
+                    err_cat = ERR_DUPLICATE_BILL
+                    err_msg = f"Bill reference '{ref}' already exists in salon billing history (Invoice: {existing_ref_map[ref]})."
+                    action_req = "Skip or verify this bill was not imported previously."
+                    err_col = "Original Bill Reference"
+                    err_val = ref
+
+                # Phone validation and Client ID status
+                client_phone_clean = str(client_phone_raw or "").strip() if client_phone_raw is not None else ""
+                norm_phone = None
+                client_id_status = None
+                if client_phone_clean:
+                    if client_phone_clean.upper().startswith("CL-"):
+                        existing_cust = None
+                        try:
+                            existing_cust = await Customer.find_one({
+                                "phone": client_phone_clean.upper(),
+                                "tenant_id": effective_tenant,
+                                "is_deleted": False,
+                            })
+                        except Exception as cust_err:
+                            logger.warning("Error querying customer by CL-ID %s: %s", client_phone_clean, cust_err)
+                        if existing_cust:
+                            client_id_status = "EXISTING"
+                            norm_phone = client_phone_clean.upper()
+                        else:
+                            client_id_status = "NOT_FOUND"
+                            err_cat = ERR_MISSING_REQUIRED
+                            err_msg = f"Client ID '{client_phone_clean}' not found in salon records."
+                            action_req = "Verify Client ID or leave mobile blank to create a new client."
+                            err_col = "Mobile Number"
+                            err_val = client_phone_clean
                     else:
-                        err_cat = ERR_STAFF_NOT_FOUND
-                        err_msg = f"Staff '{staff_ident}' not found in this salon."
-                        action_req = "Verify employee name, employee code, or active status."
-
-            if not err_cat and not ref.startswith("AUTO-ROW-") and ref in existing_ref_map:
-                err_cat = ERR_DUPLICATE_BILL
-                err_msg = f"Bill reference '{ref}' already exists in salon billing history (Invoice: {existing_ref_map[ref]})."
-                action_req = "Skip or verify this bill was not imported previously."
-
-            # Phone validation and Client ID status
-            client_phone_clean = str(client_phone_raw or "").strip() if client_phone_raw is not None else ""
-            norm_phone = None
-            client_id_status = None
-            if client_phone_clean:
-                if client_phone_clean.upper().startswith("CL-"):
-                    existing_cust = await Customer.find_one({
-                        "phone": client_phone_clean.upper(),
-                        "tenant_id": effective_tenant,
-                        "is_deleted": False,
-                    })
-                    if existing_cust:
-                        client_id_status = "EXISTING"
-                        norm_phone = client_phone_clean.upper()
-                    else:
-                        client_id_status = "NOT_FOUND"
-                        err_cat = ERR_MISSING_REQUIRED
-                        err_msg = f"Client ID '{client_phone_clean}' not found in salon records."
-                        action_req = "Verify Client ID or leave mobile blank to create a new client."
+                        norm_p, phone_err = normalize_mobile(client_phone_clean)
+                        if phone_err:
+                            err_cat = ERR_MISSING_REQUIRED
+                            err_msg = f"Invalid mobile number '{client_phone_clean}': {phone_err}."
+                            action_req = "Enter a valid 10-digit Indian mobile number or leave blank."
+                            err_col = "Mobile Number"
+                            err_val = client_phone_clean
+                        else:
+                            norm_phone = norm_p
+                            existing_cust = None
+                            try:
+                                existing_cust = await find_client_by_phone(norm_p, effective_tenant)
+                            except Exception as phone_lookup_err:
+                                logger.warning("Error finding client by phone %s: %s", norm_p, phone_lookup_err)
+                            client_id_status = "EXISTING" if existing_cust else "NEW_WITH_PHONE"
                 else:
-                    norm_p, phone_err = normalize_mobile(client_phone_clean)
-                    if phone_err:
-                        err_cat = ERR_MISSING_REQUIRED
-                        err_msg = f"Invalid mobile number '{client_phone_clean}': {phone_err}."
-                        action_req = "Enter a valid 10-digit Indian mobile number or leave blank."
+                    client_id_status = "WILL_GENERATE"
+
+                row_rec.client_phone = norm_phone or (client_phone_clean if client_phone_clean else None)
+                row_rec.client_id_status = client_id_status
+
+                # Payment validation & multi-row consistency
+                if not err_cat:
+                    if ref in bill_groups:
+                        grp_exist = bill_groups[ref]
+                        if status_raw:
+                            if status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
+                                err_cat = ERR_INVALID_PAYMENT
+                                err_msg = f"Invalid payment status '{status_raw}'. Allowed: PAID, PARTIALLY_PAID, PENDING."
+                                action_req = "Select a valid payment status from the dropdown."
+                                err_col = "Payment Status"
+                                err_val = str(status_val) if status_val is not None else None
+                            elif grp_exist.get("payment_status") and status_raw != grp_exist["payment_status"]:
+                                err_cat = ERR_CONFLICTING_BILL
+                                err_msg = f"Conflicting payment status in bill '{ref}' ('{grp_exist['payment_status']}' vs '{status_raw}')."
+                                action_req = "Ensure payment status matches across all rows of the same bill."
+                                err_col = "Payment Status"
+                                err_val = str(status_val) if status_val is not None else None
+                        else:
+                            status_raw = grp_exist.get("payment_status")
+
+                        if not err_cat:
+                            if method_raw:
+                                if method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
+                                    err_cat = ERR_INVALID_PAYMENT
+                                    err_msg = f"Invalid payment method '{method_raw}'. Allowed: CASH, UPI, CARD, SPLIT."
+                                    action_req = "Select a valid payment method from the dropdown."
+                                    err_col = "Payment Method"
+                                    err_val = str(method_val) if method_val is not None else None
+                                elif grp_exist.get("payment_method") and method_raw != grp_exist["payment_method"]:
+                                    err_cat = ERR_CONFLICTING_BILL
+                                    err_msg = f"Conflicting payment method in bill '{ref}' ('{grp_exist['payment_method']}' vs '{method_raw}')."
+                                    action_req = "Ensure payment method matches across all rows of the same bill."
+                                    err_col = "Payment Method"
+                                    err_val = str(method_val) if method_val is not None else None
+                            else:
+                                method_raw = grp_exist.get("payment_method")
+
+                        if not err_cat and utc_dt and grp_exist.get("bill_date"):
+                            if utc_dt.date() != grp_exist["bill_date"].date():
+                                err_cat = ERR_CONFLICTING_BILL
+                                err_msg = f"Conflicting bill date in bill '{ref}'. All rows for the same bill must share the same date."
+                                action_req = "Ensure all rows for the same bill have the same date."
+                                err_col = "Bill Date"
+                                err_val = str(date_raw) if date_raw is not None else None
                     else:
-                        norm_phone = norm_p
-                        existing_cust = await find_client_by_phone(norm_p, effective_tenant)
-                        client_id_status = "EXISTING" if existing_cust else "NEW_WITH_PHONE"
-            else:
-                client_id_status = "WILL_GENERATE"
-
-            row_rec.client_phone = norm_phone or (client_phone_clean if client_phone_clean else None)
-            row_rec.client_id_status = client_id_status
-
-            # Payment validation & multi-row consistency
-            if not err_cat:
-                if ref in bill_groups:
-                    grp_exist = bill_groups[ref]
-                    if status_raw:
-                        if status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
+                        if not status_raw:
+                            err_cat = ERR_MISSING_REQUIRED
+                            err_msg = "Payment Status is required."
+                            action_req = "Select Payment Status (PAID, PARTIALLY_PAID, or PENDING)."
+                            err_col = "Payment Status"
+                            err_val = None
+                        elif status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
                             err_cat = ERR_INVALID_PAYMENT
                             err_msg = f"Invalid payment status '{status_raw}'. Allowed: PAID, PARTIALLY_PAID, PENDING."
                             action_req = "Select a valid payment status from the dropdown."
-                        elif grp_exist.get("payment_status") and status_raw != grp_exist["payment_status"]:
-                            err_cat = ERR_CONFLICTING_BILL
-                            err_msg = f"Conflicting payment status in bill '{ref}' ('{grp_exist['payment_status']}' vs '{status_raw}')."
-                            action_req = "Ensure payment status matches across all rows of the same bill."
-                    else:
-                        status_raw = grp_exist.get("payment_status")
+                            err_col = "Payment Status"
+                            err_val = str(status_val) if status_val is not None else None
 
-                    if not err_cat:
-                        if method_raw:
-                            if method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
+                        if not err_cat:
+                            if not method_raw:
+                                err_cat = ERR_MISSING_REQUIRED
+                                err_msg = "Payment Method is required."
+                                action_req = "Select Payment Method (CASH, UPI, CARD, or SPLIT)."
+                                err_col = "Payment Method"
+                                err_val = None
+                            elif method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
                                 err_cat = ERR_INVALID_PAYMENT
                                 err_msg = f"Invalid payment method '{method_raw}'. Allowed: CASH, UPI, CARD, SPLIT."
                                 action_req = "Select a valid payment method from the dropdown."
-                            elif grp_exist.get("payment_method") and method_raw != grp_exist["payment_method"]:
-                                err_cat = ERR_CONFLICTING_BILL
-                                err_msg = f"Conflicting payment method in bill '{ref}' ('{grp_exist['payment_method']}' vs '{method_raw}')."
-                                action_req = "Ensure payment method matches across all rows of the same bill."
-                        else:
-                            method_raw = grp_exist.get("payment_method")
+                                err_col = "Payment Method"
+                                err_val = str(method_val) if method_val is not None else None
 
-                    if not err_cat and utc_dt and grp_exist.get("bill_date"):
-                        if utc_dt.date() != grp_exist["bill_date"].date():
-                            err_cat = ERR_CONFLICTING_BILL
-                            err_msg = f"Conflicting bill date in bill '{ref}'. All rows for the same bill must share the same date."
-                            action_req = "Ensure all rows for the same bill have the same date."
-                else:
-                    if not status_raw:
-                        err_cat = ERR_MISSING_REQUIRED
-                        err_msg = "Payment Status is required."
-                        action_req = "Select Payment Status (PAID, PARTIALLY_PAID, or PENDING)."
-                    elif status_raw not in ("PAID", "PARTIALLY_PAID", "PENDING"):
+                # Paid amount validation
+                parsed_paid = _safe_float(paid_amount_raw)
+                if not err_cat and status_raw == "PARTIALLY_PAID":
+                    if parsed_paid is None:
                         err_cat = ERR_INVALID_PAYMENT
-                        err_msg = f"Invalid payment status '{status_raw}'. Allowed: PAID, PARTIALLY_PAID, PENDING."
-                        action_req = "Select a valid payment status from the dropdown."
+                        err_msg = "Paid Amount is required when Payment Status is PARTIALLY_PAID."
+                        action_req = "Enter the amount paid so far."
+                        err_col = "Paid Amount"
+                        err_val = str(paid_amount_raw) if paid_amount_raw is not None else None
+                    elif parsed_paid <= 0:
+                        err_cat = ERR_INVALID_PAYMENT
+                        err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
+                        action_req = "Enter the actual positive amount paid."
+                        err_col = "Paid Amount"
+                        err_val = str(paid_amount_raw) if paid_amount_raw is not None else None
 
-                    if not err_cat:
-                        if not method_raw:
-                            err_cat = ERR_MISSING_REQUIRED
-                            err_msg = "Payment Method is required."
-                            action_req = "Select Payment Method (CASH, UPI, CARD, or SPLIT)."
-                        elif method_raw not in ("CASH", "UPI", "CARD", "SPLIT"):
-                            err_cat = ERR_INVALID_PAYMENT
-                            err_msg = f"Invalid payment method '{method_raw}'. Allowed: CASH, UPI, CARD, SPLIT."
-                            action_req = "Select a valid payment method from the dropdown."
+                line_subtotal = max(0.0, (unit_price * quantity) - discount)
+                line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
+                line_total = round(line_subtotal + line_tax, 2)
 
-            # Paid amount validation
-            parsed_paid = _safe_float(paid_amount_raw)
-            if not err_cat and status_raw == "PARTIALLY_PAID":
-                if parsed_paid is None:
-                    err_cat = ERR_INVALID_PAYMENT
-                    err_msg = "Paid Amount is required when Payment Status is PARTIALLY_PAID."
-                    action_req = "Enter the amount paid so far."
-                elif parsed_paid <= 0:
-                    err_cat = ERR_INVALID_PAYMENT
-                    err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
-                    action_req = "Enter the actual positive amount paid."
+                row_rec.quantity = quantity
+                row_rec.unit_price = unit_price
+                row_rec.discount = discount
+                row_rec.tax_rate = tax_rate
+                row_rec.line_total = line_total
+                row_rec.bill_date = utc_dt.isoformat() if utc_dt else None
+                row_rec.payment_status = status_raw
+                row_rec.payment_method = method_raw
+                row_rec.paid_amount = parsed_paid
+                row_rec.notes = notes
 
-            line_subtotal = max(0.0, (unit_price * quantity) - discount)
-            line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
-            line_total = round(line_subtotal + line_tax, 2)
+                if resolved_staff:
+                    row_rec.resolved_staff_id = str(resolved_staff.id)
+                    row_rec.resolved_staff_name = user_display_name(resolved_staff)
 
-            row_rec.quantity = quantity
-            row_rec.unit_price = unit_price
-            row_rec.discount = discount
-            row_rec.tax_rate = tax_rate
-            row_rec.line_total = line_total
-            row_rec.bill_date = utc_dt.isoformat() if utc_dt else None
-            row_rec.payment_status = status_raw
-            row_rec.payment_method = method_raw
-            row_rec.paid_amount = parsed_paid
-            row_rec.notes = notes
+                if err_cat:
+                    row_rec.status = "DUPLICATE" if err_cat == ERR_DUPLICATE_BILL else "FAILED"
+                    row_rec.error_category = err_cat
+                    row_rec.error_message = err_msg
+                    row_rec.action_required = action_req
+                    row_rec.column_name = err_col
+                    row_rec.invalid_value = err_val
 
-            if resolved_staff:
-                row_rec.resolved_staff_id = str(resolved_staff.id)
-                row_rec.resolved_staff_name = user_display_name(resolved_staff)
+                row_records.append(row_rec)
 
-            if err_cat:
-                row_rec.status = "DUPLICATE" if err_cat == ERR_DUPLICATE_BILL else "FAILED"
-                row_rec.error_category = err_cat
-                row_rec.error_message = err_msg
-                row_rec.action_required = action_req
+                grp = bill_groups.setdefault(ref, {
+                    "ref": ref,
+                    "bill_group": bg_val,
+                    "client_name": client_name,
+                    "client_phone": norm_phone,
+                    "client_id_status": client_id_status,
+                    "bill_date": utc_dt,
+                    "payment_status": status_raw,
+                    "payment_method": method_raw,
+                    "paid_amount": parsed_paid,
+                    "service_items": [],
+                    "product_items": [],
+                    "row_records": [],
+                    "has_error": False,
+                    "is_duplicate": False,
+                })
+                grp["row_records"].append(row_rec)
+                if err_cat:
+                    grp["has_error"] = True
+                    if err_cat == ERR_DUPLICATE_BILL:
+                        grp["is_duplicate"] = True
 
-            row_records.append(row_rec)
+                # Sync phone across group if one row has it
+                if not grp.get("client_phone") and norm_phone:
+                    grp["client_phone"] = norm_phone
+                    grp["client_id_status"] = client_id_status
 
-            grp = bill_groups.setdefault(ref, {
-                "ref": ref,
-                "bill_group": bg_val,
-                "client_name": client_name,
-                "client_phone": norm_phone,
-                "client_id_status": client_id_status,
-                "bill_date": utc_dt,
-                "payment_status": status_raw,
-                "payment_method": method_raw,
-                "paid_amount": parsed_paid,
-                "service_items": [],
-                "product_items": [],
-                "row_records": [],
-                "has_error": False,
-                "is_duplicate": False,
-            })
-            grp["row_records"].append(row_rec)
-            if err_cat:
-                grp["has_error"] = True
-                if err_cat == ERR_DUPLICATE_BILL:
-                    grp["is_duplicate"] = True
+                if grp["client_name"] and client_name and grp["client_name"].lower() != client_name.lower():
+                    row_rec.status = "FAILED"
+                    row_rec.error_category = ERR_CONFLICTING_BILL
+                    row_rec.error_message = f"Conflicting client name in bill {ref} ('{grp['client_name']}' vs '{client_name}')."
+                    row_rec.action_required = "Ensure client name is consistent across rows of the same bill."
+                    row_rec.column_name = "Client Name"
+                    row_rec.invalid_value = client_name
+                    grp["has_error"] = True
 
-            # Sync phone across group if one row has it
-            if not grp.get("client_phone") and norm_phone:
-                grp["client_phone"] = norm_phone
-                grp["client_id_status"] = client_id_status
-
-            if grp["client_name"] and client_name and grp["client_name"].lower() != client_name.lower():
-                row_rec.status = "FAILED"
-                row_rec.error_category = ERR_CONFLICTING_BILL
-                row_rec.error_message = f"Conflicting client name in bill {ref} ('{grp['client_name']}' vs '{client_name}')."
-                row_rec.action_required = "Ensure client name is consistent across rows of the same bill."
-                grp["has_error"] = True
-
-            grp["product_items"].append({
-                "product": matched_prod,
-                "name": product_name,
-                "quantity": quantity,
-                "staff": resolved_staff,
-                "unit_price": unit_price,
-                "discount": discount,
-                "tax_rate": tax_rate,
-                "line_total": line_total,
-            })
+                grp["product_items"].append({
+                    "product": matched_prod,
+                    "name": product_name,
+                    "quantity": quantity,
+                    "staff": resolved_staff,
+                    "unit_price": unit_price,
+                    "discount": discount,
+                    "tax_rate": tax_rate,
+                    "line_total": line_total,
+                })
+            except Exception as row_exc:
+                logger.warning("Unexpected error validating product row %d: %s", r_num, row_exc, exc_info=True)
+                fallback_rec = BulkBillingRowRecord(
+                    file_type="PRODUCT",
+                    excel_row=r_num,
+                    original_bill_reference=f"AUTO-ROW-P-{r_num}",
+                    client_name="Unknown",
+                    item_type="PRODUCT",
+                    status="FAILED",
+                    column_name="General",
+                    invalid_value=None,
+                    error_category="ROW_PARSING_ERROR",
+                    error_message=f"Row could not be processed due to unexpected data format: {str(row_exc)}",
+                    action_required="Check row data format in Excel and retry.",
+                    raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
+                )
+                row_records.append(fallback_rec)
+                grp = bill_groups.setdefault(fallback_rec.original_bill_reference, {
+                    "ref": fallback_rec.original_bill_reference,
+                    "bill_group": None,
+                    "client_name": "Unknown",
+                    "client_phone": None,
+                    "client_id_status": None,
+                    "bill_date": None,
+                    "payment_status": None,
+                    "payment_method": None,
+                    "paid_amount": None,
+                    "service_items": [],
+                    "product_items": [],
+                    "row_records": [],
+                    "has_error": True,
+                    "is_duplicate": False,
+                })
+                grp["row_records"].append(fallback_rec)
 
         # Reconcile Bill Groups
         total_unique_bills = len(bill_groups)
@@ -2202,6 +2427,8 @@ class BulkImportBillingService:
                         r.error_category = ERR_CONFLICTING_BILL
                         r.error_message = f"Bill {ref} contains another row with validation errors."
                         r.action_required = "Correct all rows for this bill reference."
+                        r.column_name = "Bill Group"
+                        r.invalid_value = ref
                 continue
 
             # Calculate complete bill totals
@@ -2231,6 +2458,8 @@ class BulkImportBillingService:
                         r.error_category = ERR_INVALID_PAYMENT
                         r.error_message = "Payment status is PARTIALLY_PAID but Paid Amount is missing or zero."
                         r.action_required = "Provide actual paid amount."
+                        r.column_name = "Paid Amount"
+                        r.invalid_value = str(paid_amount) if paid_amount is not None else None
                     continue
                 elif paid_amount >= computed_total:
                     pay_status = "PAID"
@@ -2260,6 +2489,10 @@ class BulkImportBillingService:
             )
         )
 
+        valid_rows = sum(1 for r in row_records if r.status == "VALID")
+        invalid_rows = sum(1 for r in row_records if r.status == "FAILED")
+        skipped_rows = sum(1 for r in row_records if r.status == "DUPLICATE")
+
         batch = BulkBillingBatch(
             batch_id=batch_id,
             salon_id=salon_id,
@@ -2269,6 +2502,9 @@ class BulkImportBillingService:
             deduct_inventory=deduct_inventory,
             status="VALIDATED",
             total_rows=len(row_records),
+            valid_rows=valid_rows,
+            invalid_rows=invalid_rows,
+            skipped_rows=skipped_rows,
             total_bills=total_unique_bills,
             valid_bills=valid_bills,
             invalid_bills=invalid_bills,
@@ -2789,6 +3025,8 @@ class BulkImportBillingService:
             "Error Category",
             "Error Message",
             "Action Required",
+            "Column Name",
+            "Invalid Value",
             "Import Batch Reference",
         ]
         _apply_excel_header_styles(ws, headers, primary_color="DC2626")
@@ -2807,6 +3045,8 @@ class BulkImportBillingService:
                     r.error_category or "VALIDATION_ERROR",
                     r.error_message or "Validation failed",
                     r.action_required or "Correct data in Excel and retry",
+                    r.column_name or "-",
+                    str(r.invalid_value) if r.invalid_value is not None else "-",
                     batch.batch_id,
                 ])
 
@@ -2968,10 +3208,18 @@ class BulkImportBillingService:
                 s_name = (getattr(master_svc_by_id[str(ss.service_id)], "name", "") or "").strip()
             if s_name:
                 svc_name_map[s_name.lower()] = ss
+                svc_name_map[re.sub(r"\s+", " ", s_name.lower()).strip()] = ss
         for ms in master_services:
             svc_id_map[str(ms.id)] = ms
-            if ms.name and ms.name.strip().lower() not in svc_name_map:
-                svc_name_map[ms.name.strip().lower()] = ms
+            if ms.name:
+                norm_m = re.sub(r"\s+", " ", ms.name.lower()).strip()
+                if norm_m not in svc_name_map:
+                    svc_name_map[norm_m] = ms
+                if ms.name.strip().lower() not in svc_name_map:
+                    svc_name_map[ms.name.strip().lower()] = ms
+            cat = (getattr(ms, "category", None) or "").strip().lower()
+            if cat and cat not in svc_name_map:
+                svc_name_map[cat] = ms
 
         salon_products = await SalonProduct.find({
             "$or": [{"salon_id": str(salon.id) if salon else salon_id}, {"salon_id": salon_id}, {"tenant_id": eff_tenant}],
@@ -3010,19 +3258,27 @@ class BulkImportBillingService:
             err_cat = None
             err_msg = None
             action_req = None
+            err_col = None
+            err_val = None
 
             if not r.client_name:
                 err_cat = ERR_MISSING_REQUIRED
                 err_msg = "Client Name is missing."
                 action_req = "Enter customer name."
+                err_col = "Client Name"
+                err_val = None
             elif not r.item_name:
                 err_cat = ERR_MISSING_REQUIRED
                 err_msg = f"{r.item_type.capitalize()} name is missing."
                 action_req = f"Enter {r.item_type.lower()}."
+                err_col = f"{r.item_type.capitalize()} Name"
+                err_val = None
             elif not r.staff_identifier:
                 err_cat = ERR_MISSING_REQUIRED
                 err_msg = "Staff Identifier is missing."
                 action_req = "Assign performing stylist or employee."
+                err_col = "Staff Name"
+                err_val = None
 
             # Phone & Client ID status
             client_phone_clean = (r.client_phone or "").strip()
@@ -3030,7 +3286,11 @@ class BulkImportBillingService:
             client_id_status = None
             if client_phone_clean:
                 if client_phone_clean.upper().startswith("CL-"):
-                    existing_cust = await Customer.find_one({"phone": client_phone_clean.upper(), "tenant_id": effective_tenant, "is_deleted": False})
+                    existing_cust = None
+                    try:
+                        existing_cust = await Customer.find_one({"phone": client_phone_clean.upper(), "tenant_id": effective_tenant, "is_deleted": False})
+                    except Exception as cust_err:
+                        logger.warning("Error querying customer by CL-ID %s: %s", client_phone_clean, cust_err)
                     if existing_cust:
                         client_id_status = "EXISTING"
                         norm_phone = client_phone_clean.upper()
@@ -3039,15 +3299,23 @@ class BulkImportBillingService:
                         err_cat = ERR_MISSING_REQUIRED
                         err_msg = f"Client ID '{client_phone_clean}' not found in salon records."
                         action_req = "Verify Client ID or leave mobile blank."
+                        err_col = "Mobile Number"
+                        err_val = client_phone_clean
                 else:
                     norm_p, phone_err = normalize_mobile(client_phone_clean)
                     if phone_err:
                         err_cat = ERR_MISSING_REQUIRED
                         err_msg = f"Invalid mobile number '{client_phone_clean}': {phone_err}."
                         action_req = "Enter a valid 10-digit mobile number or leave blank."
+                        err_col = "Mobile Number"
+                        err_val = client_phone_clean
                     else:
                         norm_phone = norm_p
-                        existing_cust = await find_client_by_phone(norm_p, effective_tenant)
+                        existing_cust = None
+                        try:
+                            existing_cust = await find_client_by_phone(norm_p, effective_tenant)
+                        except Exception as phone_lookup_err:
+                            logger.warning("Error finding client by phone %s: %s", norm_p, phone_lookup_err)
                         client_id_status = "EXISTING" if existing_cust else "NEW_WITH_PHONE"
             else:
                 client_id_status = "WILL_GENERATE"
@@ -3063,21 +3331,29 @@ class BulkImportBillingService:
                     err_cat = ERR_INVALID_DATE
                     err_msg = date_err
                     action_req = "Correct date format to YYYY-MM-DD."
+                    err_col = "Bill Date"
+                    err_val = str(r.bill_date)
 
             # Catalog
             if not err_cat:
+                item_clean = (r.item_name or "").strip().lower()
+                norm_item = re.sub(r"\s+", " ", item_clean).strip()
                 if r.item_type == "SERVICE":
-                    matched_svc = svc_name_map.get((r.item_name or "").strip().lower()) or svc_id_map.get(r.item_name)
+                    matched_svc = svc_name_map.get(item_clean) or svc_name_map.get(norm_item) or svc_id_map.get(r.item_name)
                     if not matched_svc:
                         err_cat = ERR_SERVICE_NOT_FOUND
                         err_msg = f"Service '{r.item_name}' not found in salon catalog."
                         action_req = "Verify service name in catalog."
+                        err_col = "Service Name"
+                        err_val = r.item_name
                 else:
-                    matched_prod = prod_name_map.get((r.item_name or "").strip().lower()) or prod_id_map.get(r.item_name)
+                    matched_prod = prod_name_map.get(item_clean) or prod_name_map.get(norm_item) or prod_id_map.get(r.item_name)
                     if not matched_prod:
                         err_cat = ERR_PRODUCT_NOT_FOUND
                         err_msg = f"Product '{r.item_name}' not found in retail catalog."
                         action_req = "Verify product name in catalog."
+                        err_col = "Product Name"
+                        err_val = r.item_name
 
             # Staff
             resolved_staff = None
@@ -3102,10 +3378,14 @@ class BulkImportBillingService:
                         err_cat = ERR_AMBIGUOUS_STAFF
                         err_msg = f"Multiple staff members match '{s_ident}'."
                         action_req = "Select correct employee."
+                        err_col = "Staff Name"
+                        err_val = s_ident
                     else:
                         err_cat = ERR_STAFF_NOT_FOUND
                         err_msg = f"Staff '{s_ident}' not found."
                         action_req = "Verify staff name."
+                        err_col = "Staff Name"
+                        err_val = s_ident
 
             if resolved_staff:
                 r.resolved_staff_id = str(resolved_staff.id)
@@ -3116,6 +3396,8 @@ class BulkImportBillingService:
                 err_cat = ERR_DUPLICATE_BILL
                 err_msg = f"Bill reference '{ref}' already exists in salon billing history."
                 action_req = "Skip or verify duplicate."
+                err_col = "Original Bill Reference"
+                err_val = ref
 
             # Line calculation
             unit_p = max(0.0, float(r.unit_price or 0.0))
@@ -3131,11 +3413,15 @@ class BulkImportBillingService:
                 r.error_category = err_cat
                 r.error_message = err_msg
                 r.action_required = action_req
+                r.column_name = err_col
+                r.invalid_value = err_val
             else:
                 r.status = "VALID"
                 r.error_category = None
                 r.error_message = None
                 r.action_required = None
+                r.column_name = None
+                r.invalid_value = None
 
             # Add to group
             grp = bill_groups.setdefault(ref, {
@@ -3175,11 +3461,16 @@ class BulkImportBillingService:
                         r.status = "FAILED"
                         r.error_category = ERR_CONFLICTING_BILL
                         r.error_message = f"Bill {ref} contains another row with validation errors."
+                        r.column_name = "Bill Group"
+                        r.invalid_value = ref
             else:
                 valid_bills += 1
                 total_valid_amount += grp["total"]
 
         batch.total_rows = len(batch.row_records)
+        batch.valid_rows = sum(1 for r in batch.row_records if r.status == "VALID")
+        batch.invalid_rows = sum(1 for r in batch.row_records if r.status == "FAILED")
+        batch.skipped_rows = sum(1 for r in batch.row_records if r.status == "DUPLICATE")
         batch.total_bills = len(bill_groups)
         batch.valid_bills = valid_bills
         batch.invalid_bills = invalid_bills

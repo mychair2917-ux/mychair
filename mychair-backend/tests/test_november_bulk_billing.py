@@ -26,7 +26,7 @@ import pytest
 from beanie import PydanticObjectId
 from fastapi import UploadFile
 from fastapi.responses import JSONResponse
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from app.api.v1.endpoints.bulk_billing import validate_bulk_billing, confirm_bulk_billing
 from app.models.bulk_billing import BulkBillingBatch, BulkBillingRowRecord
@@ -542,4 +542,162 @@ async def test_api_endpoint_validate_returns_422_on_invalid_file(boho_salon_mock
 
     assert excinfo.value.status_code == 422
     assert "Missing required columns in SERVICE template" in excinfo.value.detail
+
+
+@pytest.mark.asyncio
+async def test_failure_safe_row_validation_imperfect_data(boho_salon_mock_context):
+    """
+    Verifies that rows with various imperfect, blank, missing, or malformed data
+    are validated independently without raising HTTP 500.
+    Ensures all rows are reported in row_records with diagnostic column_name and invalid_value.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Billing Data"
+    ws.append([
+        "Bill Date", "Client Name", "Mobile Number", "Service Name",
+        "Staff Name", "Service Amount", "Payment Method", "Payment Status",
+        "Paid Amount", "Bill Group", "Discount", "Notes"
+    ])
+
+    test_rows = [
+        # 1: Valid row
+        ["2026-11-01", "Client One", "9876543210", "Hair Cut", "Aashu Sen – 6968", 500, "CASH", "PAID", 500, None, 0, "Valid row"],
+        # 2: Blank customer name
+        ["2026-11-01", "", "9876543210", "Hair Cut", "Aashu Sen – 6968", 500, "CASH", "PAID", 500, None, 0, "Blank client"],
+        # 3: Missing mobile number (Valid business rule: creates CL-ID)
+        ["2026-11-01", "Client Three", None, "Hair Cut", "Aashu Sen – 6968", 500, "CASH", "PAID", 500, None, 0, "No phone"],
+        # 4: Blank service name
+        ["2026-11-01", "Client Four", "9876543212", "", "Aashu Sen – 6968", 500, "CASH", "PAID", 500, None, 0, "Blank service"],
+        # 5: Unmatched service name
+        ["2026-11-01", "Client Five", "9876543213", "Alien Spaceship Cut", "Aashu Sen – 6968", 500, "CASH", "PAID", 500, None, 0, "Unmatched service"],
+        # 6: Blank staff name
+        ["2026-11-01", "Client Six", "9876543214", "Hair Cut", "", 500, "CASH", "PAID", 500, None, 0, "Blank staff"],
+        # 7: Unknown staff name
+        ["2026-11-01", "Client Seven", "9876543215", "Hair Cut", "Gandalf The Grey", 500, "CASH", "PAID", 500, None, 0, "Unknown staff"],
+        # 8: Invalid payment status
+        ["2026-11-01", "Client Eight", "9876543216", "Hair Cut", "Aashu Sen – 6968", 500, "CASH", "MAYBE", 500, None, 0, "Invalid status"],
+        # 9: Missing payment method
+        ["2026-11-01", "Client Nine", "9876543217", "Hair Cut", "Aashu Sen – 6968", 500, None, "PAID", 500, None, 0, "Missing method"],
+        # 10: Invalid date string
+        ["not-a-valid-date", "Client Ten", "9876543218", "Hair Cut", "Aashu Sen – 6968", 500, "CASH", "PAID", 500, None, 0, "Invalid date"],
+        # 11: Combo service name (mapped in salon_services mock)
+        ["2026-11-01", "Client Eleven", "9876543219", "combo", "Aashu Sen – 6968", 1200, "UPI", "PAID", 1200, None, 0, "Combo service"],
+        # 12: PARTIALLY_PAID with 0 paid amount
+        ["2026-11-01", "Client Twelve", "9876543220", "Hair Cut", "Aashu Sen – 6968", 500, "CARD", "PARTIALLY_PAID", 0, None, 0, "Zero paid"],
+    ]
+
+    for r in test_rows:
+        ws.append(r)
+
+    # Add an empty row between records to test safe skipping
+    ws.append([None] * 12)
+
+    # 13: Another valid row after empty line
+    ws.append(["2026-11-02", "Client Thirteen", "9876543221", "Hair Cut", "Sagar Sen – 1991", 400, "CASH", "PAID", 400, None, 0, "After empty row"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    file_bytes = buf.getvalue()
+
+    batch = await bulk_import_billing_service.validate_import(
+        salon_id="64b000000000000000000001",
+        service_content=file_bytes,
+        service_filename="test_imperfect.xlsx",
+        tenant_id="64b000000000000000000001",
+    )
+
+    assert batch.total_rows == 13
+    assert batch.valid_rows == 4  # rows 1, 3, 11, 13
+    assert batch.invalid_rows == 9  # rows 2, 4, 5, 6, 7, 8, 9, 10, 12
+
+    # Verify diagnostic reporting for failed rows
+    row_by_num = {r.excel_row: r for r in batch.row_records}
+
+    # Row 2: Valid
+    assert row_by_num[2].status == "VALID"
+
+    # Row 3: Blank Client Name
+    assert row_by_num[3].status == "FAILED"
+    assert row_by_num[3].column_name == "Client Name"
+
+    # Row 4: Blank phone (Valid, generates Client ID)
+    assert row_by_num[4].status == "VALID"
+    assert row_by_num[4].client_id_status == "WILL_GENERATE"
+
+    # Row 5: Blank Service Name
+    assert row_by_num[5].status == "FAILED"
+    assert row_by_num[5].column_name == "Service Name"
+
+    # Row 6: Unmatched Service
+    assert row_by_num[6].status == "FAILED"
+    assert row_by_num[6].column_name == "Service Name"
+    assert row_by_num[6].invalid_value == "Alien Spaceship Cut"
+
+    # Row 7: Blank Staff
+    assert row_by_num[7].status == "FAILED"
+    assert row_by_num[7].column_name == "Staff Name"
+
+    # Row 8: Unknown Staff
+    assert row_by_num[8].status == "FAILED"
+    assert row_by_num[8].column_name == "Staff Name"
+    assert row_by_num[8].invalid_value == "Gandalf The Grey"
+
+    # Row 9: Invalid Payment Status
+    assert row_by_num[9].status == "FAILED"
+    assert row_by_num[9].column_name == "Payment Status"
+    assert row_by_num[9].invalid_value == "MAYBE"
+
+    # Row 10: Missing Payment Method
+    assert row_by_num[10].status == "FAILED"
+    assert row_by_num[10].column_name == "Payment Method"
+
+    # Row 11: Invalid Date
+    assert row_by_num[11].status == "FAILED"
+    assert row_by_num[11].column_name == "Bill Date"
+    assert row_by_num[11].invalid_value == "not-a-valid-date"
+
+    # Row 12: Combo Service matched successfully
+    assert row_by_num[12].status == "VALID"
+    assert row_by_num[12].item_name == "combo"
+
+    # Row 13: PARTIALLY_PAID with 0 amount
+    assert row_by_num[13].status == "FAILED"
+    assert row_by_num[13].column_name == "Paid Amount"
+
+    # Row 15: Valid after empty line
+    assert row_by_num[15].status == "VALID"
+
+    # Verify Excel error export contains problematic column and invalid value
+    failed_xlsx = bulk_import_billing_service.build_failed_records_xlsx(batch)
+    assert len(failed_xlsx) > 0
+    wb_err = load_workbook(filename=io.BytesIO(failed_xlsx), read_only=True)
+    ws_err = wb_err["Failed Billing Records"]
+    err_rows = list(ws_err.iter_rows(values_only=True))
+    assert len(err_rows) == 10  # 1 header + 9 failed rows
+    assert "Problematic Column" in err_rows[0] or "Column Name" in err_rows[0]
+
+    # Test API endpoint returns 200 with detailed preview data
+    upload_file = UploadFile(
+        file=io.BytesIO(file_bytes),
+        size=len(file_bytes),
+        filename="test_imperfect.xlsx",
+    )
+    dummy_user = MagicMock(spec=User)
+    dummy_user.id = PydanticObjectId("64b000000000000000000011")
+
+    response = await validate_bulk_billing(
+        salon_id="64b000000000000000000001",
+        service_file=upload_file,
+        product_file=None,
+        staff_mappings=None,
+        deduct_inventory=False,
+        current_user=dummy_user,
+    )
+    assert response.status_code == 200
+    body = json.loads(response.body.decode("utf-8"))
+    assert body["data"]["total_rows"] == 13
+    assert body["data"]["valid_rows"] == 4
+    assert body["data"]["invalid_rows"] == 9
+
 
