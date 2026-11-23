@@ -7,6 +7,7 @@ confirming batch imports, viewing batch history, and exporting failed records.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
@@ -19,6 +20,8 @@ from app.models.user import User
 from app.services.bulk_billing_import import bulk_import_billing_service
 from app.utils.api_response import success_response
 from beanie import PydanticObjectId
+
+logger = logging.getLogger("bulk_billing")
 
 router = APIRouter()
 
@@ -176,9 +179,16 @@ async def validate_bulk_billing(
             tenant_id=active_tenant or salon.tenant_id,
         )
     except ValueError as val_err:
+        logger.warning("Bulk billing validation error for salon %s: %s", salon_id, val_err)
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(val_err))
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Validation failed: {str(exc)}")
+        logger.exception("Unexpected error in validate_bulk_billing for salon %s: %s", salon_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while validating the bulk billing file. Please try again or contact support.",
+        )
 
     return success_response(
         "Bulk billing validation completed successfully",
@@ -197,7 +207,7 @@ async def validate_bulk_billing(
             "client_ids_generated_count": batch.client_ids_generated_count,
             "customers_created_count": batch.customers_created_count,
             "ambiguous_staff": batch.ambiguous_staff,
-            "row_records": [r.model_dump() for r in batch.row_records],
+            "row_records": [r.model_dump(mode="json") for r in batch.row_records],
         },
     )
 
@@ -233,9 +243,16 @@ async def confirm_bulk_billing(
             deduct_inventory=payload.deduct_inventory,
         )
     except ValueError as val_err:
+        logger.warning("Bulk billing confirmation error for batch %s: %s", payload.batch_id, val_err)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(val_err))
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Import execution failed: {str(exc)}")
+        logger.exception("Unexpected error in confirm_bulk_billing for batch %s: %s", payload.batch_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while confirming bulk billing import. Please try again or contact support.",
+        )
 
     return success_response(
         f"Bulk billing import completed with status {updated_batch.status}",
@@ -349,7 +366,7 @@ async def get_bulk_batch_detail(
             "customers_created_count": batch.customers_created_count,
             "generated_client_ids": batch.generated_client_ids,
             "ambiguous_staff": batch.ambiguous_staff,
-            "row_records": [r.model_dump() for r in batch.row_records],
+            "row_records": [r.model_dump(mode="json") for r in batch.row_records],
             "created_at": batch.created_at.isoformat() if batch.created_at else None,
             "imported_at": batch.imported_at.isoformat() if batch.imported_at else None,
         },
@@ -465,9 +482,16 @@ async def edit_bulk_billing_row(
             tenant_id=active_tenant or salon.tenant_id,
         )
     except ValueError as val_err:
+        logger.warning("Bulk billing edit row error for batch %s row %d: %s", batch_id, excel_row, val_err)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(val_err))
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Row edit failed: {str(exc)}")
+        logger.exception("Unexpected error in edit_bulk_billing_row for batch %s row %d: %s", batch_id, excel_row, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while updating row. Please try again or contact support.",
+        )
 
     return success_response(
         f"Row {excel_row} updated and batch revalidated successfully",
@@ -483,6 +507,6 @@ async def edit_bulk_billing_row(
             "client_ids_generated_count": updated_batch.client_ids_generated_count,
             "customers_created_count": updated_batch.customers_created_count,
             "ambiguous_staff": updated_batch.ambiguous_staff,
-            "row_records": [r.model_dump() for r in updated_batch.row_records],
+            "row_records": [r.model_dump(mode="json") for r in updated_batch.row_records],
         },
     )

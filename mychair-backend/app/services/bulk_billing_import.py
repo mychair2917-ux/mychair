@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import re
-from datetime import datetime, timezone, time
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from zoneinfo import ZoneInfo
 
@@ -98,63 +99,180 @@ PRODUCT_HEADERS = [
     "Notes",
 ]
 
+def _safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+            return default
+        return float(val)
+    s = str(val).replace("₹", "").replace("$", "").replace(",", "").strip()
+    if not s or s.lower() in ("none", "null", "nan", "n/a", "-", ""):
+        return default
+    try:
+        f = float(s)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
+
+def _sanitize_for_storage(val: Any) -> Any:
+    """
+    Sanitizes raw Excel cell values to BSON and JSON-serializable primitives.
+    Converts datetime.date and datetime.time to ISO strings so neither MongoDB BSON
+    encoder nor Starlette JSONResponse crashes with InvalidDocument / TypeError.
+    """
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.isoformat()
+    if isinstance(val, date):
+        return val.isoformat()
+    if isinstance(val, time):
+        return val.isoformat()
+    if isinstance(val, (int, bool)):
+        return val
+    if isinstance(val, float):
+        if math.isnan(val) or math.isinf(val):
+            return None
+        return val
+    if isinstance(val, str):
+        return val
+    if isinstance(val, (list, tuple)):
+        return [_sanitize_for_storage(x) for x in val]
+    if isinstance(val, dict):
+        return {str(k): _sanitize_for_storage(v) for k, v in val.items()}
+    return str(val)
+
+
 # Aliases for flexible header matching
 _HEADER_ALIASES = {
     # Reference & Bill Group
     "bill group": "bill_group",
     "bill_group": "bill_group",
     "group": "bill_group",
+    "group id": "bill_group",
+    "bill group id": "bill_group",
+    "invoice group": "bill_group",
+    "group no": "bill_group",
+    "group number": "bill_group",
     "original bill reference": "original_bill_reference",
     "original_bill_reference": "original_bill_reference",
     "bill reference": "original_bill_reference",
     "bill no": "original_bill_reference",
+    "bill no.": "original_bill_reference",
     "bill number": "original_bill_reference",
     "invoice number": "original_bill_reference",
     "invoice no": "original_bill_reference",
+    "invoice no.": "original_bill_reference",
     "reference": "original_bill_reference",
+    "bill id": "original_bill_reference",
+    "invoice id": "original_bill_reference",
     # Date & Time
     "bill date": "bill_date",
     "date": "bill_date",
     "invoice date": "bill_date",
+    "billing date": "bill_date",
+    "service date": "bill_date",
+    "appointment date": "bill_date",
+    "bill_date": "bill_date",
+    "invoicedate": "bill_date",
+    "billdate": "bill_date",
     "bill time": "bill_time",
     "time": "bill_time",
+    "service time": "bill_time",
+    "appointment time": "bill_time",
+    "bill_time": "bill_time",
+    "billtime": "bill_time",
     # Client
     "client name": "client_name",
     "customer name": "client_name",
     "customer": "client_name",
     "client": "client_name",
     "name": "client_name",
+    "client_name": "client_name",
+    "customer_name": "client_name",
+    "guest name": "client_name",
+    "guest": "client_name",
     "mobile number": "client_phone",
+    "mobile no": "client_phone",
+    "mobile no.": "client_phone",
+    "mobile": "client_phone",
+    "phone number": "client_phone",
+    "phone no": "client_phone",
+    "phone no.": "client_phone",
+    "phone": "client_phone",
+    "contact number": "client_phone",
+    "contact no": "client_phone",
+    "contact": "client_phone",
     "client mobile / id": "client_phone",
     "client mobile": "client_phone",
     "customer mobile": "client_phone",
-    "phone": "client_phone",
-    "mobile": "client_phone",
+    "customer phone": "client_phone",
+    "client phone": "client_phone",
     "customer id": "client_phone",
     "client id": "client_phone",
     # Item - Service
     "service name": "item_name",
     "service": "item_name",
     "service id": "item_id",
+    "service description": "item_name",
+    "service_name": "item_name",
     # Item - Product
     "product name": "item_name",
     "product": "item_name",
     "product id": "item_id",
+    "product description": "item_name",
+    "product_name": "item_name",
     "brand": "brand",
     "brand name": "brand",
+    # Generic item
+    "item name": "item_name",
+    "item": "item_name",
+    "particulars": "item_name",
+    "description": "item_name",
     # Quantity & Price
     "quantity": "quantity",
     "qty": "quantity",
+    "count": "quantity",
+    "units": "quantity",
+    "nos": "quantity",
     "service amount": "unit_price",
     "service price": "unit_price",
     "selling price": "unit_price",
     "price": "unit_price",
     "unit price": "unit_price",
+    "amount": "unit_price",
+    "total amount": "unit_price",
+    "rate": "unit_price",
+    "cost": "unit_price",
+    "service cost": "unit_price",
+    "service fee": "unit_price",
+    "fee": "unit_price",
+    "charge": "unit_price",
+    "service charge": "unit_price",
+    "gross amount": "unit_price",
+    "net amount": "unit_price",
+    "mrp": "unit_price",
+    "service_amount": "unit_price",
+    "unit_price": "unit_price",
+    "selling_price": "unit_price",
     "discount": "discount",
     "discount amount": "discount",
+    "disc": "discount",
+    "disc amount": "discount",
+    "discount (₹)": "discount",
+    "discount rs": "discount",
     "tax rate": "tax_rate",
     "tax rate (%)": "tax_rate",
     "tax": "tax_rate",
+    "gst": "tax_rate",
+    "gst rate": "tax_rate",
+    "gst (%)": "tax_rate",
+    "tax %": "tax_rate",
+    "gst %": "tax_rate",
     # Staff
     "staff name": "staff_identifier",
     "staff identifier": "staff_identifier",
@@ -162,17 +280,43 @@ _HEADER_ALIASES = {
     "sold by staff": "staff_identifier",
     "sold by": "staff_identifier",
     "stylist": "staff_identifier",
+    "stylist name": "staff_identifier",
+    "staff member": "staff_identifier",
+    "assigned to": "staff_identifier",
+    "attended by": "staff_identifier",
+    "served by": "staff_identifier",
+    "service provider": "staff_identifier",
+    "stylist / staff": "staff_identifier",
     "employee": "staff_identifier",
+    "employee name": "staff_identifier",
+    "staff_name": "staff_identifier",
+    "staff_identifier": "staff_identifier",
     # Payment
     "payment status": "payment_status",
     "status": "payment_status",
+    "pay status": "payment_status",
+    "bill status": "payment_status",
     "payment method": "payment_method",
     "payment mode": "payment_method",
+    "payment type": "payment_method",
+    "pay method": "payment_method",
+    "pay mode": "payment_method",
+    "mode of payment": "payment_method",
     "method": "payment_method",
+    "mode": "payment_method",
     "paid amount": "paid_amount",
     "amount paid": "paid_amount",
+    "advance": "paid_amount",
+    "advance paid": "paid_amount",
+    "received amount": "paid_amount",
+    "amount received": "paid_amount",
+    "paid_amount": "paid_amount",
     "notes": "notes",
     "note": "notes",
+    "remarks": "notes",
+    "remark": "notes",
+    "comment": "notes",
+    "comments": "notes",
 }
 
 
@@ -979,7 +1123,8 @@ class BulkImportBillingService:
     def _parse_excel_bytes(self, content: bytes, file_type: str) -> Tuple[Dict[str, int], List[Tuple[int, List[Any]]]]:
         """
         Safely parses Excel workbook in read-only and data-only mode.
-        Specifically reads the 'Billing Data' sheet, ignoring guide and example sheets.
+        Specifically reads the intended billing data sheet, ignoring guide, instruction, and audit sheets.
+        Dynamically detects the header row within the first 15 rows.
         Returns header mapping and list of (1-indexed row number, row values).
         """
         if not content:
@@ -994,54 +1139,7 @@ class BulkImportBillingService:
         except Exception as exc:
             raise ValueError(f"Unable to read Excel workbook: {str(exc)}") from exc
 
-        # Strictly locate data worksheet (prioritize 'Billing Data')
-        data_sheet = None
-        for name in wb.sheetnames:
-            clean = name.strip().lower()
-            if clean == "billing data":
-                data_sheet = wb[name]
-                break
-
-        # Fallback for older templates (excluding instructions, guide, and example sheets)
-        if data_sheet is None:
-            for name in wb.sheetnames:
-                clean = name.strip().lower()
-                if any(ign in clean for ign in ("how to fill", "instruction", "guide", "example", "sample")):
-                    continue
-                if file_type == "SERVICE" and "service" in clean:
-                    data_sheet = wb[name]
-                    break
-                elif file_type == "PRODUCT" and "product" in clean:
-                    data_sheet = wb[name]
-                    break
-                elif clean in ("billing", "data", "sheet1"):
-                    data_sheet = wb[name]
-                    break
-
-        if data_sheet is None:
-            for name in wb.sheetnames:
-                clean = name.strip().lower()
-                if not any(ign in clean for ign in ("how to fill", "instruction", "guide", "example", "sample")):
-                    data_sheet = wb[name]
-                    break
-
-        if data_sheet is None:
-            raise ValueError(f"Could not find 'Billing Data' sheet in uploaded {file_type} Excel file.")
-
-        rows_iter = data_sheet.iter_rows(values_only=True)
-        try:
-            header_row = next(rows_iter)
-        except StopIteration:
-            raise ValueError("Excel worksheet is empty.")
-
-        header_map: Dict[str, int] = {}
-        for idx, col in enumerate(header_row):
-            if col is not None:
-                alias = _HEADER_ALIASES.get(_norm_header(col))
-                if alias and alias not in header_map:
-                    header_map[alias] = idx
-
-        # Verify required headers
+        # Required aliases for billing data
         required_aliases = [
             "bill_date",
             "client_name",
@@ -1052,27 +1150,105 @@ class BulkImportBillingService:
         if file_type == "PRODUCT":
             required_aliases.append("quantity")
 
-        missing = [req for req in required_aliases if req not in header_map]
+        ignore_sheet_words = (
+            "how to fill", "instruction", "guide", "example", "sample",
+            "skipped", "excluded", "catalog", "help", "readme",
+        )
+
+        def _scan_sheet_header_and_rows(ws) -> Tuple[int, Dict[str, int], List[Tuple[int, List[Any]]], Optional[int]]:
+            """
+            Scans rows of a sheet to detect header row and collect data rows.
+            Returns (matched_required_count, header_map, parsed_rows, header_row_num).
+            """
+            header_map: Dict[str, int] = {}
+            header_row_num = None
+            rows_list: List[Tuple[int, List[Any]]] = []
+
+            for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+                if not row or all(v is None or str(v).strip() == "" for v in row):
+                    continue
+
+                if header_row_num is None:
+                    if row_idx <= 15:
+                        cand_map: Dict[str, int] = {}
+                        for idx, col in enumerate(row):
+                            if col is not None:
+                                alias = _HEADER_ALIASES.get(_norm_header(col))
+                                if alias and alias not in cand_map:
+                                    cand_map[alias] = idx
+                        matched_reqs = sum(1 for req in required_aliases if req in cand_map)
+                        # Header detected if it contains at least 3 required columns (or all if fewer than 3)
+                        if matched_reqs >= min(3, len(required_aliases)):
+                            header_map = cand_map
+                            header_row_num = row_idx
+                            continue
+                else:
+                    first_val = str(row[0] or "")
+                    if "[example" in first_val.lower() or ("example" in str(row).lower() and "delete" in str(row).lower()):
+                        continue
+                    rows_list.append((row_idx, [_sanitize_for_storage(v) for v in row]))
+                    if len(rows_list) > MAX_ROWS:
+                        raise ValueError(f"File exceeds maximum allowed rows ({MAX_ROWS:,}).")
+
+            score = sum(1 for req in required_aliases if req in header_map)
+            return score, header_map, rows_list, header_row_num
+
+        # 1. First priority: Sheet named exactly "Billing Data" (case-insensitive)
+        chosen_sheet = None
+        best_header_map: Dict[str, int] = {}
+        best_rows: List[Tuple[int, List[Any]]] = []
+        best_score = 0
+
+        for name in wb.sheetnames:
+            if name.strip().lower() == "billing data":
+                ws = wb[name]
+                score, h_map, r_list, _ = _scan_sheet_header_and_rows(ws)
+                if score == len(required_aliases):
+                    return h_map, r_list
+                chosen_sheet = ws
+                best_header_map = h_map
+                best_rows = r_list
+                best_score = score
+                break
+
+        # 2. If "Billing Data" wasn't complete or present, search other candidate sheets
+        if best_score < len(required_aliases):
+            for name in wb.sheetnames:
+                clean = name.strip().lower()
+                if any(ign in clean for ign in ignore_sheet_words):
+                    continue
+                ws = wb[name]
+                score, h_map, r_list, _ = _scan_sheet_header_and_rows(ws)
+                if score > best_score:
+                    best_score = score
+                    best_header_map = h_map
+                    best_rows = r_list
+                    chosen_sheet = ws
+                    if best_score == len(required_aliases):
+                        break
+
+        # 3. If still nothing found among non-ignored sheets, check any sheet not in ignore_sheet_words
+        if chosen_sheet is None:
+            for name in wb.sheetnames:
+                clean = name.strip().lower()
+                if not any(ign in clean for ign in ignore_sheet_words):
+                    ws = wb[name]
+                    score, h_map, r_list, _ = _scan_sheet_header_and_rows(ws)
+                    chosen_sheet = ws
+                    best_header_map = h_map
+                    best_rows = r_list
+                    best_score = score
+                    break
+
+        if chosen_sheet is None:
+            raise ValueError(f"Could not find 'Billing Data' sheet in uploaded {file_type} Excel file.")
+
+        # Verify required headers
+        missing = [req for req in required_aliases if req not in best_header_map]
         if missing:
             raise ValueError(f"Missing required columns in {file_type} template: {', '.join(missing)}")
 
-        parsed_rows: List[Tuple[int, List[Any]]] = []
-        excel_row_num = 1
-        for row in rows_iter:
-            excel_row_num += 1
-            # Safely skip empty and blank formatted template rows
-            if not row or all(v is None or str(v).strip() == "" for v in row):
-                continue
-            # Skip example rows if user left them in
-            first_val = str(row[0] or "")
-            if "[example" in first_val.lower() or ("example" in str(row).lower() and "delete" in str(row).lower()):
-                continue
-
-            parsed_rows.append((excel_row_num, list(row)))
-            if len(parsed_rows) > MAX_ROWS:
-                raise ValueError(f"File exceeds maximum allowed rows ({MAX_ROWS:,}).")
-
-        return header_map, parsed_rows
+        return best_header_map, best_rows
 
     def _parse_row_date(self, raw_date: Any, raw_time: Any, salon_tz: str) -> Tuple[Optional[datetime], Optional[str]]:
         """
@@ -1087,17 +1263,43 @@ class BulkImportBillingService:
 
         if isinstance(raw_date, datetime):
             parsed_d = raw_date
+        elif isinstance(raw_date, date):
+            parsed_d = datetime(raw_date.year, raw_date.month, raw_date.day)
         elif hasattr(raw_date, "year") and hasattr(raw_date, "month") and hasattr(raw_date, "day") and not isinstance(raw_date, str):
             parsed_d = datetime(int(raw_date.year), int(raw_date.month), int(raw_date.day))
-        else:
+        elif isinstance(raw_date, (int, float)) and not isinstance(raw_date, bool):
+            # Excel serial date (e.g. 45000 is ~2023, 46327 is ~Nov 2026)
+            try:
+                serial = float(raw_date)
+                if 20000 <= serial <= 80000:
+                    base = datetime(1899, 12, 30)
+                    parsed_d = base + timedelta(days=serial)
+            except Exception:
+                pass
+
+        if not parsed_d:
             text = str(raw_date).strip()
-            # 1. Unambiguous ISO formats
-            for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-                try:
-                    parsed_d = datetime.strptime(text, fmt)
-                    break
-                except ValueError:
-                    pass
+            # 1. Unambiguous ISO formats (with or without time / tz)
+            iso_clean = text.replace("Z", "+00:00")
+            try:
+                parsed_d = datetime.fromisoformat(iso_clean)
+            except Exception:
+                pass
+
+            if not parsed_d:
+                for fmt in (
+                    "%Y-%m-%d",
+                    "%Y/%m/%d",
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y/%m/%d %H:%M:%S",
+                    "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%dT%H:%M:%S.%f",
+                ):
+                    try:
+                        parsed_d = datetime.strptime(text, fmt)
+                        break
+                    except ValueError:
+                        pass
 
             # 2. Unambiguous Indian DD/MM/YYYY or DD-MM-YYYY when day > 12
             if not parsed_d:
@@ -1106,8 +1308,9 @@ class BulkImportBillingService:
                     parts = text.split(sep)
                     if len(parts) == 3:
                         p0, p1, p2 = parts[0].strip(), parts[1].strip(), parts[2].strip()
-                        if p0.isdigit() and p1.isdigit() and len(p2) == 4 and p2.isdigit():
-                            d_val, m_val, y_val = int(p0), int(p1), int(p2)
+                        p2_date = p2.split()[0] if " " in p2 else p2
+                        if p0.isdigit() and p1.isdigit() and len(p2_date) == 4 and p2_date.isdigit():
+                            d_val, m_val, y_val = int(p0), int(p1), int(p2_date)
                             if 13 <= d_val <= 31 and 1 <= m_val <= 12:
                                 try:
                                     parsed_d = datetime(y_val, m_val, d_val)
@@ -1121,6 +1324,7 @@ class BulkImportBillingService:
 
         # Parse optional time - preserve date-only start of day if omitted
         parsed_t = time(0, 0)
+        time_explicitly_set = False
         if raw_time is not None and str(raw_time).strip() != "":
             parsed_time_found = False
             if isinstance(raw_time, time):
@@ -1140,6 +1344,14 @@ class BulkImportBillingService:
                         pass
             if not parsed_time_found:
                 return None, f"Invalid time format '{raw_time}'. Expected format HH:MM (e.g., 14:30)."
+            time_explicitly_set = True
+        elif parsed_d and (parsed_d.hour != 0 or parsed_d.minute != 0 or parsed_d.second != 0):
+            parsed_t = parsed_d.time()
+            time_explicitly_set = True
+
+        if parsed_d.tzinfo is not None and not time_explicitly_set:
+            utc_dt = parsed_d.astimezone(timezone.utc)
+            return utc_dt, None
 
         local_dt = datetime.combine(parsed_d.date(), parsed_t).replace(tzinfo=tz)
         utc_dt = local_dt.astimezone(timezone.utc)
@@ -1352,7 +1564,7 @@ class BulkImportBillingService:
                 item_type="SERVICE",
                 staff_identifier=staff_ident,
                 quantity=1,
-                raw_data={"row": r_vals},
+                raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
             )
 
             # Validations
@@ -1387,22 +1599,17 @@ class BulkImportBillingService:
             discount = 0.0
             tax_rate = 0.0
             if not err_cat:
-                try:
-                    unit_price = float(unit_price_raw or 0.0)
-                    if unit_price < 0:
-                        raise ValueError("Price must be >= 0")
-                except Exception:
+                parsed_price = _safe_float(unit_price_raw)
+                if parsed_price is None or parsed_price < 0:
                     err_cat = ERR_INVALID_PRICE
                     err_msg = f"Invalid service price '{unit_price_raw}'."
                     action_req = "Enter a valid numeric price."
+                else:
+                    unit_price = parsed_price
 
             if not err_cat:
-                try:
-                    discount = max(0.0, float(discount_raw or 0.0))
-                    tax_rate = max(0.0, float(tax_rate_raw or 0.0))
-                except Exception:
-                    discount = 0.0
-                    tax_rate = 0.0
+                discount = max(0.0, _safe_float(discount_raw, 0.0) or 0.0)
+                tax_rate = max(0.0, _safe_float(tax_rate_raw, 0.0) or 0.0)
 
             # Catalog resolution
             matched_svc = None
@@ -1558,22 +1765,16 @@ class BulkImportBillingService:
                             action_req = "Select a valid payment method from the dropdown."
 
             # Paid amount validation
+            parsed_paid = _safe_float(paid_amount_raw)
             if not err_cat and status_raw == "PARTIALLY_PAID":
-                if paid_amount_raw is None or str(paid_amount_raw).strip() == "":
+                if parsed_paid is None:
                     err_cat = ERR_INVALID_PAYMENT
                     err_msg = "Paid Amount is required when Payment Status is PARTIALLY_PAID."
                     action_req = "Enter the amount paid so far."
-                else:
-                    try:
-                        p_val = float(paid_amount_raw)
-                        if p_val <= 0:
-                            err_cat = ERR_INVALID_PAYMENT
-                            err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
-                            action_req = "Enter the actual positive amount paid."
-                    except ValueError:
-                        err_cat = ERR_INVALID_PAYMENT
-                        err_msg = f"Invalid Paid Amount '{paid_amount_raw}'."
-                        action_req = "Enter a valid numeric amount."
+                elif parsed_paid <= 0:
+                    err_cat = ERR_INVALID_PAYMENT
+                    err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
+                    action_req = "Enter the actual positive amount paid."
 
             line_subtotal = max(0.0, unit_price - discount)
             line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
@@ -1586,7 +1787,7 @@ class BulkImportBillingService:
             row_rec.bill_date = utc_dt.isoformat() if utc_dt else None
             row_rec.payment_status = status_raw
             row_rec.payment_method = method_raw
-            row_rec.paid_amount = float(paid_amount_raw) if (paid_amount_raw is not None and str(paid_amount_raw).strip() != "") else None
+            row_rec.paid_amount = parsed_paid
             row_rec.notes = notes
 
             if resolved_staff:
@@ -1611,7 +1812,7 @@ class BulkImportBillingService:
                 "bill_date": utc_dt,
                 "payment_status": status_raw,
                 "payment_method": method_raw,
-                "paid_amount": float(paid_amount_raw) if (paid_amount_raw is not None and str(paid_amount_raw).strip() != "") else None,
+                "paid_amount": parsed_paid,
                 "service_items": [],
                 "product_items": [],
                 "row_records": [],
@@ -1688,7 +1889,7 @@ class BulkImportBillingService:
                 item_name=product_name,
                 item_type="PRODUCT",
                 staff_identifier=staff_ident,
-                raw_data={"row": r_vals},
+                raw_data={"row": [_sanitize_for_storage(v) for v in r_vals]},
             )
 
             err_cat = None
@@ -1720,7 +1921,8 @@ class BulkImportBillingService:
             quantity = 1
             if not err_cat:
                 try:
-                    quantity = int(qty_raw or 1)
+                    q_val = _safe_float(qty_raw, 1.0)
+                    quantity = int(q_val if q_val is not None else 1)
                     if quantity < 1:
                         raise ValueError("Quantity must be >= 1")
                 except Exception:
@@ -1732,22 +1934,17 @@ class BulkImportBillingService:
             discount = 0.0
             tax_rate = 0.0
             if not err_cat:
-                try:
-                    unit_price = float(unit_price_raw or 0.0)
-                    if unit_price < 0:
-                        raise ValueError("Price must be >= 0")
-                except Exception:
+                parsed_price = _safe_float(unit_price_raw)
+                if parsed_price is None or parsed_price < 0:
                     err_cat = ERR_INVALID_PRICE
                     err_msg = f"Invalid product selling price '{unit_price_raw}'."
                     action_req = "Enter a valid numeric price."
+                else:
+                    unit_price = parsed_price
 
             if not err_cat:
-                try:
-                    discount = max(0.0, float(discount_raw or 0.0))
-                    tax_rate = max(0.0, float(tax_rate_raw or 0.0))
-                except Exception:
-                    discount = 0.0
-                    tax_rate = 0.0
+                discount = max(0.0, _safe_float(discount_raw, 0.0) or 0.0)
+                tax_rate = max(0.0, _safe_float(tax_rate_raw, 0.0) or 0.0)
 
             # Catalog resolution
             matched_prod = None
@@ -1902,22 +2099,16 @@ class BulkImportBillingService:
                             action_req = "Select a valid payment method from the dropdown."
 
             # Paid amount validation
+            parsed_paid = _safe_float(paid_amount_raw)
             if not err_cat and status_raw == "PARTIALLY_PAID":
-                if paid_amount_raw is None or str(paid_amount_raw).strip() == "":
+                if parsed_paid is None:
                     err_cat = ERR_INVALID_PAYMENT
                     err_msg = "Paid Amount is required when Payment Status is PARTIALLY_PAID."
                     action_req = "Enter the amount paid so far."
-                else:
-                    try:
-                        p_val = float(paid_amount_raw)
-                        if p_val <= 0:
-                            err_cat = ERR_INVALID_PAYMENT
-                            err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
-                            action_req = "Enter the actual positive amount paid."
-                    except ValueError:
-                        err_cat = ERR_INVALID_PAYMENT
-                        err_msg = f"Invalid Paid Amount '{paid_amount_raw}'."
-                        action_req = "Enter a valid numeric amount."
+                elif parsed_paid <= 0:
+                    err_cat = ERR_INVALID_PAYMENT
+                    err_msg = "Paid Amount must be greater than zero for PARTIALLY_PAID status."
+                    action_req = "Enter the actual positive amount paid."
 
             line_subtotal = max(0.0, (unit_price * quantity) - discount)
             line_tax = round(line_subtotal * (tax_rate / 100.0), 2)
@@ -1931,7 +2122,7 @@ class BulkImportBillingService:
             row_rec.bill_date = utc_dt.isoformat() if utc_dt else None
             row_rec.payment_status = status_raw
             row_rec.payment_method = method_raw
-            row_rec.paid_amount = float(paid_amount_raw) if (paid_amount_raw is not None and str(paid_amount_raw).strip() != "") else None
+            row_rec.paid_amount = parsed_paid
             row_rec.notes = notes
 
             if resolved_staff:
@@ -1955,7 +2146,7 @@ class BulkImportBillingService:
                 "bill_date": utc_dt,
                 "payment_status": status_raw,
                 "payment_method": method_raw,
-                "paid_amount": float(paid_amount_raw) if (paid_amount_raw is not None and str(paid_amount_raw).strip() != "") else None,
+                "paid_amount": parsed_paid,
                 "service_items": [],
                 "product_items": [],
                 "row_records": [],

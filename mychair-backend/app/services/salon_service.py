@@ -1,6 +1,8 @@
 from beanie import PydanticObjectId
 
 from app.auth.rbac_config import ROLE_SUPER_ADMIN, normalize_role
+from __future__ import annotations
+
 from app.constants.master_services import MASTER_SERVICE_NAMES
 from app.core.exceptions import PermissionDeniedException, ResourceNotFoundException
 from app.models.tenant import Tenant

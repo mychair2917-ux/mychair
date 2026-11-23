@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from typing import Optional
 from pydantic import Field
 
 from app.models.base import BaseTenantDocument

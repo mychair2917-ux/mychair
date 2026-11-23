@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from beanie import PydanticObjectId
 
 from app.auth.rbac_config import ROLE_SUPER_ADMIN, normalize_role
